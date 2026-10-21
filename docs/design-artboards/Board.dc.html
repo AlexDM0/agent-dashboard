@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Board</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.theme-light, .theme-dark {
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --r-1: 4px; --r-2: 6px; --r-3: 10px; --r-pill: 999px;
+  --fs-micro: 11px; --fs-small: 12px; --fs-body: 13px;
+  --fs-title: 15px; --fs-page: 20px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --row-h: 30px;
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --pulse-status: 1.6s;
+}
+.theme-light {
+  color-scheme: light;
+  --bg:          oklch(0.975 0.004 265);
+  --surface:     oklch(1 0 0);
+  --surface-2:   oklch(0.961 0.006 265);
+  --ink:         oklch(0.24 0.02 265);
+  --ink-muted:   oklch(0.52 0.02 265);
+  --line:        oklch(0.905 0.008 265);
+  --line-strong: oklch(0.82 0.012 265);
+  --link:        oklch(0.48 0.13 255);
+  --link-tint:   oklch(0.48 0.13 255 / 0.10);
+  --link-soft:   oklch(0.48 0.13 255 / 0.45);
+  --surface-selected: oklch(0.93 0.008 262);
+  --status-live: oklch(0.62 0.17 150);
+  --now:         oklch(0.54 0.19 25);
+  --now-soft:    oklch(0.54 0.19 25 / 0.55);
+  --warn-tint:   oklch(0.965 0.045 85);
+  --warn-edge:   oklch(0.80 0.10 80);
+  --warn-ink:    oklch(0.44 0.10 70);
+  --err-tint:    oklch(0.962 0.035 25);
+  --err-edge:    oklch(0.80 0.10 25);
+  --err-ink:     oklch(0.46 0.14 25);
+  --shadow-control: oklch(0 0 0 / 0.08);
+  --shadow-panel:   oklch(0 0 0 / 0.08);
+  --hatch-live:     oklch(1 0 0 / 0.38);
+  --hatch-idle:     oklch(1 0 0 / 0.45);
+}
+.theme-dark {
+  color-scheme: dark;
+  --bg:          oklch(0.185 0.012 265);
+  --surface:     oklch(0.232 0.014 265);
+  --surface-2:   oklch(0.275 0.014 265);
+  --ink:         oklch(0.94 0.008 265);
+  --ink-muted:   oklch(0.70 0.015 265);
+  --line:        oklch(0.33 0.014 265);
+  --line-strong: oklch(0.42 0.016 265);
+  --link:        oklch(0.78 0.10 255);
+  --link-tint:   oklch(0.78 0.10 255 / 0.14);
+  --link-soft:   oklch(0.78 0.10 255 / 0.50);
+  --surface-selected: oklch(0.25 0.022 262);
+  --status-live: oklch(0.76 0.18 150);
+  --now:         oklch(0.70 0.17 25);
+  --now-soft:    oklch(0.70 0.17 25 / 0.6);
+  --warn-tint:   oklch(0.31 0.055 80);
+  --warn-edge:   oklch(0.50 0.09 80);
+  --warn-ink:    oklch(0.92 0.06 85);
+  --err-tint:    oklch(0.30 0.06 25);
+  --err-edge:    oklch(0.50 0.11 25);
+  --err-ink:     oklch(0.92 0.05 25);
+  --shadow-control: oklch(0 0 0 / 0.08);
+  --shadow-panel:   oklch(0 0 0 / 0.4);
+  --hatch-live:     oklch(1 0 0 / 0.38);
+  --hatch-idle:     oklch(1 0 0 / 0.45);
+}
+.theme-light [data-state="pending"]     { --s-fill: oklch(0.875 0.008 265); --s-tint: oklch(0.965 0.005 265); --s-ink: oklch(0.47 0.015 265); --s-edge: oklch(0.885 0.008 265); }
+.theme-light [data-state="in-progress"] { --s-fill: oklch(0.79 0.145 80);   --s-tint: oklch(0.963 0.048 85);  --s-ink: oklch(0.44 0.105 70);  --s-edge: oklch(0.83 0.11 80); }
+.theme-light [data-state="in-review"]   { --s-fill: oklch(0.66 0.145 255);  --s-tint: oklch(0.957 0.028 255); --s-ink: oklch(0.44 0.135 255); --s-edge: oklch(0.80 0.085 255); }
+.theme-light [data-state="reviewing"]   { --s-fill: oklch(0.70 0.115 205);  --s-tint: oklch(0.957 0.028 205); --s-ink: oklch(0.43 0.09 205);  --s-edge: oklch(0.80 0.07 205); }
+.theme-light [data-state="reviewed"]    { --s-fill: oklch(0.70 0.135 155);  --s-tint: oklch(0.957 0.033 155); --s-ink: oklch(0.42 0.095 155); --s-edge: oklch(0.79 0.08 155); }
+.theme-light [data-state="delivered"]   { --s-fill: oklch(0.65 0.145 300);  --s-tint: oklch(0.957 0.030 300); --s-ink: oklch(0.44 0.125 300); --s-edge: oklch(0.80 0.075 300); }
+.theme-dark [data-state="pending"]     { --s-fill: oklch(0.42 0.012 265); --s-tint: oklch(0.29 0.010 265); --s-ink: oklch(0.80 0.012 265); --s-edge: oklch(0.40 0.012 265); }
+.theme-dark [data-state="in-progress"] { --s-fill: oklch(0.76 0.145 80);  --s-tint: oklch(0.33 0.065 80);  --s-ink: oklch(0.91 0.075 85);  --s-edge: oklch(0.52 0.10 80); }
+.theme-dark [data-state="in-review"]   { --s-fill: oklch(0.66 0.150 255); --s-tint: oklch(0.32 0.060 255); --s-ink: oklch(0.88 0.065 255); --s-edge: oklch(0.50 0.10 255); }
+.theme-dark [data-state="reviewing"]   { --s-fill: oklch(0.72 0.115 205); --s-tint: oklch(0.32 0.050 205); --s-ink: oklch(0.89 0.055 205); --s-edge: oklch(0.50 0.075 205); }
+.theme-dark [data-state="reviewed"]    { --s-fill: oklch(0.72 0.135 155); --s-tint: oklch(0.32 0.055 155); --s-ink: oklch(0.89 0.060 155); --s-edge: oklch(0.50 0.080 155); }
+.theme-dark [data-state="delivered"]   { --s-fill: oklch(0.68 0.145 300); --s-tint: oklch(0.32 0.060 300); --s-ink: oklch(0.89 0.060 300); --s-edge: oklch(0.51 0.095 300); }
+
+.page { background: var(--bg); color: var(--ink); font: var(--fs-body)/1.5 var(--font-ui); -webkit-font-smoothing: antialiased; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--ink); text-decoration: underline; }
+
+.status-dot { flex: none; width: 10px; height: 10px; border-radius: var(--r-pill); background: var(--ink-muted); }
+.status-dot.is-live { background: var(--status-live); }
+.status-dot.is-amber { background: oklch(0.79 0.145 80); }
+.theme-dark .status-dot.is-amber { background: oklch(0.76 0.145 80); }
+.status-dot.is-error { background: var(--err-ink); }
+.status-dot.is-small { width: 8px; height: 8px; }
+@keyframes ap-pulse { 50% { opacity: 0.45; transform: scale(0.8); } }
+@media (prefers-reduced-motion: no-preference) { .status-dot.is-pulsing { animation: ap-pulse var(--pulse-status) ease-in-out infinite; } }
+.status-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font: 400 var(--fs-small)/1.5 var(--font-mono); color: var(--ink-muted); }
+.status-label { font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-number { font: 500 18px/1.25 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--ink); }
+.stat-label { font: 400 var(--fs-small)/1.3 var(--font-ui); color: var(--ink-muted); }
+
+.theme-switch { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); }
+.theme-switch button { padding: 3px 8px; font: 500 var(--fs-micro)/normal var(--font-mono); border: 0; border-radius: 5px; background: transparent; color: var(--ink-muted); cursor: pointer; }
+.theme-switch button:hover { color: var(--ink); }
+.theme-switch button[aria-pressed="true"] { background: var(--surface-selected); color: var(--ink); }
+
+.rail-title { font-size: var(--fs-small); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+.rail-row { display: flex; align-items: center; gap: var(--sp-2); padding: 6px var(--sp-3); border-radius: var(--r-2); color: var(--ink); transition: background-color var(--motion-fast) var(--ease-out); }
+.rail-row:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
+.rail-row.is-selected { background: var(--surface-selected); font-weight: 600; }
+.rail-row:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.rail-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-agents { font: 500 var(--fs-micro)/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+
+.pill { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 19px; padding: 0 8px; font: 500 var(--fs-micro)/1 var(--font-ui); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; border: 1px solid var(--s-edge, var(--line-strong)); border-radius: var(--r-pill); background: var(--s-tint, var(--surface-2)); color: var(--s-ink, var(--ink-muted)); white-space: nowrap; }
+.pill.is-fixed { width: 104px; }
+.pill[data-state="pending"] { border-style: dashed; }
+.slot-cell { width: 14px; height: 8px; border-radius: 2px; background: var(--s-fill); border: 1px solid var(--s-edge); }
+.control { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; font: 500 var(--fs-small)/1 var(--font-ui); color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-2); cursor: pointer; transition: border-color var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out); }
+.control:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
+.control:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.control:active { transform: scale(0.98); }
+.control.is-quiet { border-color: transparent; background: transparent; color: var(--link); }
+.control.is-quiet:hover { background: var(--link-tint); color: var(--link); }
+.control svg { width: 13px; height: 13px; }
+.kbd { display: inline-flex; align-items: center; height: 16px; padding: 0 4px; font: 500 10px/1 var(--font-mono); color: var(--ink-muted); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-1); background: var(--surface); }
+
+.frame { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-3); overflow: auto; }
+.embedded-tabs button { margin-bottom: -1px; padding: 8px 12px 10px; font: 600 15px/normal var(--font-ui); border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink-muted); cursor: pointer; }
+.embedded-tabs button:hover { color: var(--ink); }
+.embedded-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.gantt-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-3); }
+.gantt-row { display: grid; grid-template-columns: 300px 120px minmax(0, 1fr); align-items: stretch; border-bottom: 1px solid var(--line); }
+.gantt-row:last-child { border-bottom: 0; }
+.gantt-name { display: flex; align-items: center; gap: 6px; padding: 0 var(--sp-3) 0 var(--sp-4); min-width: 0; min-height: var(--row-h); }
+.gantt-number { flex: 0 0 34px; font: var(--fs-micro) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); text-align: right; }
+.gantt-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt-pill-cell { display: flex; align-items: center; box-shadow: 1px 0 0 var(--line); padding-right: var(--sp-3); }
+.gantt-track { position: relative; min-height: var(--row-h); }
+.gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 12px; min-width: 3px; border-radius: var(--r-1); background: var(--s-fill); }
+.gantt-bar.is-live { background-image: repeating-linear-gradient(45deg, var(--hatch-live) 0 5px, transparent 5px 10px); }
+.gantt-bar.is-pending { background: transparent; border: 1px dashed var(--s-edge); }
+.gantt-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+.gantt-tick-label { position: absolute; left: 5px; top: 7px; font: var(--fs-micro) var(--font-mono); color: var(--ink-muted); white-space: nowrap; }
+.now-line { position: absolute; top: 0; bottom: 0; border-left: 2px solid var(--now); pointer-events: none; }
+.now-label { position: absolute; top: 0; left: 4px; font: 600 var(--fs-micro)/1 var(--font-ui); color: var(--now); background: var(--surface); padding: 1px 3px; border-radius: 3px; }
+</style>
+</helmet>
+<div class="{{ themeClass }}" style="min-height: 900px;">
+<div class="page" style="min-height: 900px; padding: 16px 24px 24px;">
+<div style="max-width: 1680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding-bottom: 14px; border-bottom: 1px solid var(--line);">
+    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0;">
+      <a href="Main.dc.html" style="font: 700 var(--fs-page)/1 var(--font-ui); letter-spacing: -0.02em; color: var(--ink);">agent-dashboard</a>
+      <div class="status-line">
+        <span class="status-dot is-live is-pulsing" aria-hidden="true"></span>
+        <span class="status-label">Live</span>
+        <span>updated 12 s ago</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; margin-left: auto;">
+      <div class="stat"><span class="stat-number">5</span><span class="stat-label">Projects</span></div>
+      <div class="stat"><span class="stat-number">7/9</span><span class="stat-label">Agents</span></div>
+      <div class="stat"><span class="stat-number">6</span><span class="stat-label">Ready</span></div>
+      <div class="stat"><span class="stat-number">2</span><span class="stat-label">Awaiting review</span></div>
+      <div class="stat"><span class="stat-number">1</span><span class="stat-label">Held</span></div>
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button type="button" aria-pressed="false">auto</button>
+        <button type="button" aria-pressed="{{ lightPressed }}">light</button>
+        <button type="button" aria-pressed="{{ darkPressed }}">dark</button>
+      </div>
+    </div>
+  </header>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px 24px;">
+
+    <nav aria-label="Projects" style="flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+      <div class="rail-title" style="padding: 0 12px 4px;">Projects</div>
+      <sc-for list="{{ railRows }}" as="row" hint-placeholder-count="5">
+        <a href="Board.dc.html" class="{{ row.rowClass }}" aria-current="{{ row.ariaCurrent }}" onClick="{{ row.select }}">
+          <span class="{{ row.dotClass }}" aria-hidden="true"></span>
+          <span class="rail-name">{{ row.name }}</span>
+          <span class="rail-agents">{{ row.agents }}</span>
+        </a>
+      </sc-for>
+    </nav>
+
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 8px;">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0;">
+        <a href="Main.dc.html" class="control is-quiet" style="padding-left: 6px;">
+          <span aria-hidden="true">←</span> Overview <span class="kbd">Esc</span>
+        </a>
+        <span style="width: 1px; height: 18px; background: var(--line);" aria-hidden="true"></span>
+        <span style="font: 600 var(--fs-title)/1.2 var(--font-ui);">{{ selectedName }}</span>
+        <span class="mono" style="font-size: var(--fs-small); color: var(--ink-muted); min-width: 0; overflow-wrap: anywhere;">{{ selectedRoot }}</span>
+        <span class="pill" data-state="reviewed"><span class="status-dot is-live is-small" aria-hidden="true"></span>running</span>
+        <span role="img" style="display: inline-flex; align-items: center; gap: 6px;" aria-label="2 of 2 slots busy">
+          <span data-state="in-progress" class="slot-cell"></span>
+          <span data-state="in-progress" class="slot-cell"></span>
+          <span class="mono" style="font-size: var(--fs-micro); color: var(--ink-muted);">2/2</span>
+        </span>
+        <div style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
+          <button type="button" class="control">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"></path><path d="M13.5 2.5v3h-3"></path></svg>
+            Reload
+          </button>
+          <a href="Board.dc.html" class="control is-quiet">
+            Open in new tab
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h4v4"></path><path d="M13 3 7.5 8.5"></path><path d="M11.5 9.5v3.5h-8.5v-8.5h3.5"></path></svg>
+          </a>
+        </div>
+      </div>
+      <div class="mono" style="font-size: var(--fs-micro); color: var(--ink-muted);">progress.html · served from .agent-progress/</div>
+
+      <section class="frame" style="height: 760px;" aria-label="{{ frameLabel }}">
+        <div style="min-width: 760px; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px;">
+
+          <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div class="status-line">
+                <span class="status-dot is-live is-pulsing" aria-hidden="true"></span>
+                <span class="status-label">Live</span>
+                <span>{{ selectedOrigin }}</span>
+              </div>
+              <div style="font: 700 30px/1 var(--font-ui); letter-spacing: -0.03em;">{{ selectedName }}</div>
+            </div>
+            <div style="display: flex; gap: 24px;">
+              <div class="stat"><span class="stat-number">2/2</span><span class="stat-label">Agents</span></div>
+              <div class="stat"><span class="stat-number">16/56</span><span class="stat-label">Delivered</span></div>
+              <div class="stat"><span class="stat-number">2</span><span class="stat-label">In review</span></div>
+              <div class="stat"><span class="stat-number">37</span><span class="stat-label">Pending</span></div>
+              <div class="stat"><span class="stat-number">1.4M</span><span class="stat-label">Tokens</span></div>
+            </div>
+          </div>
+
+          <div class="embedded-tabs" role="tablist" aria-label="Board views" style="display: flex; gap: 4px; border-bottom: 1px solid var(--line);">
+            <button type="button" role="tab" aria-selected="true">Gantt</button>
+            <button type="button" role="tab" aria-selected="false">Kanban</button>
+            <button type="button" role="tab" aria-selected="false">Tickets</button>
+            <button type="button" role="tab" aria-selected="false">Log</button>
+          </div>
+
+          <div class="gantt-card">
+            <div class="gantt-row" style="min-height: 30px;">
+              <div class="gantt-name" style="font-size: var(--fs-small); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted);">Task</div>
+              <div class="gantt-pill-cell" style="font-size: var(--fs-small); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted);">Status</div>
+              <div class="gantt-track">
+                <sc-for list="{{ ticks }}" as="tick" hint-placeholder-count="5">
+                  <div class="gantt-tick" style="left: {{ tick.left }}%;"><span class="gantt-tick-label">{{ tick.label }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="position: relative;">
+              <sc-for list="{{ ganttRows }}" as="task" hint-placeholder-count="8">
+                <div class="gantt-row" data-state="{{ task.state }}">
+                  <div class="gantt-name">
+                    <span class="gantt-number">{{ task.number }}</span>
+                    <span class="gantt-title" style="padding-left: {{ task.indent }}px;">{{ task.title }}</span>
+                  </div>
+                  <div class="gantt-pill-cell"><span class="pill is-fixed" data-state="{{ task.state }}">{{ task.label }}</span></div>
+                  <div class="gantt-track">
+                    <div class="{{ task.barClass }}" style="left: {{ task.left }}%; width: {{ task.width }}%;"></div>
+                  </div>
+                </div>
+              </sc-for>
+              <div style="position: absolute; top: 0; bottom: 0; left: 420px; right: 0; pointer-events: none;">
+                <div class="now-line" style="left: 82%;"><span class="now-label">now</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 16px; font-size: var(--fs-small); color: var(--ink-muted);">
+            <span>8 of 56 rows shown</span>
+            <span class="mono">updated 14:52:08</span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const isDark = this.props.dark ?? false;
+    const selectedKey = (this.state && this.state.selectedKey) || 'example-storefront';
+    const projects = [
+      { name: 'example-storefront', agents: '2/2', dot: 'is-live is-pulsing' },
+      { name: 'invoice-service', agents: '1/2', dot: 'is-live is-pulsing' },
+      { name: 'field-notes-app', agents: '0/2', dot: 'is-amber' },
+      { name: 'example-agency-site', agents: '0/1', dot: '' },
+      { name: 'research-wiki', agents: '0/2', dot: 'is-error' }
+    ];
+    const railRows = projects.map((project) => {
+      const isSelected = project.name === selectedKey;
+      return {
+        name: project.name,
+        agents: project.agents,
+        rowClass: isSelected ? 'rail-row is-selected' : 'rail-row',
+        ariaCurrent: isSelected ? 'page' : 'false',
+        dotClass: 'status-dot ' + project.dot,
+        select: (event) => {
+          if (event && event.preventDefault) event.preventDefault();
+          this.setState({ selectedKey: project.name });
+        }
+      };
+    });
+    const ganttRows = [
+      { number: '#049', title: 'Add saved carts to the account page', state: 'in-progress', label: 'In progress', left: 58, width: 24, live: true },
+      { number: '#048', title: 'Review 1 of #047', state: 'reviewing', label: 'Reviewing', left: 71, width: 11, live: true, indent: 14 },
+      { number: '#047', title: 'Cache product images at the edge', state: 'in-review', label: 'In review', left: 42, width: 28 },
+      { number: '#046', title: 'Show stock per warehouse on the product page', state: 'reviewed', label: 'Reviewed', left: 30, width: 26 },
+      { number: '#045', title: 'Retry failed payment webhooks', state: 'delivered', label: 'Delivered', left: 14, width: 24 },
+      { number: '#044', title: 'Fix VAT rounding on mixed-rate orders', state: 'delivered', label: 'Delivered', left: 4, width: 20 },
+      { number: '#050', title: 'Export orders as CSV from the admin', state: 'pending', label: 'Pending', left: 83, width: 9 },
+      { number: '#051', title: 'Split checkout into address, shipping and payment steps', state: 'pending', label: 'Pending', left: 83, width: 14 }
+    ].map((row) => ({
+      number: row.number,
+      title: row.title,
+      state: row.state,
+      label: row.label,
+      left: row.left,
+      width: row.width,
+      indent: row.indent || 0,
+      barClass: 'gantt-bar' + (row.live ? ' is-live' : '') + (row.state === 'pending' ? ' is-pending' : '')
+    }));
+    const ticks = [
+      { left: 0, label: '09:00' },
+      { left: 20, label: '10:30' },
+      { left: 40, label: '12:00' },
+      { left: 60, label: '13:30' },
+      { left: 80, label: '15:00' }
+    ];
+    const selectedName = selectedKey;
+    return {
+      themeClass: isDark ? 'theme-dark' : 'theme-light',
+      lightPressed: isDark ? 'false' : 'true',
+      darkPressed: isDark ? 'true' : 'false',
+      railRows: railRows,
+      ganttRows: ganttRows,
+      ticks: ticks,
+      selectedName: selectedName,
+      selectedOrigin: 'example/' + selectedName + ' · 21 Oct 14:52',
+      frameLabel: 'Embedded progress.html of ' + selectedName,
+      selectedRoot: '/Users/alex.example/development/' + selectedName
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+/* agent-progress's design tokens, copied verbatim from its `resources/template.html`: spacing, radii, type, motion, every
+   colour in light and `:root[data-theme="dark"]`, and the `[data-state]` status palette. Change them there first. */
+
+:root {
+  color-scheme: light dark;
+
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+
+  --r-1: 4px; --r-2: 6px; --r-3: 10px; --r-pill: 999px;
+
+  --fs-micro: 11px; --fs-small: 12px; --fs-body: 13px;
+  --fs-title: 15px; --fs-page: 20px;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --row-h: 30px;
+  --col-name: 336px;
+  --col-name-wide: 780px;
+  --col-pill: 144px;
+
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --motion-slow: 220ms;
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --pulse-status:   1.6s;
+  --pulse-activity: 1.4s;
+
+  --bg:          oklch(0.975 0.004 265);
+  --surface:     oklch(1 0 0);
+  --surface-2:   oklch(0.961 0.006 265);
+  --ink:         oklch(0.24 0.02 265);
+  --ink-muted:   oklch(0.52 0.02 265);
+  --line:        oklch(0.905 0.008 265);
+  --line-strong: oklch(0.82 0.012 265);
+  --link:        oklch(0.48 0.13 255);
+  --link-tint:   oklch(0.48 0.13 255 / 0.10);
+  --link-soft:   oklch(0.48 0.13 255 / 0.45);
+  --reach-track: oklch(0.905 0.008 265);
+  --surface-selected: oklch(0.93 0.008 262);
+  --status-live: oklch(0.62 0.17 150);
+
+  --now:         oklch(0.54 0.19 25);
+  --now-soft:    oklch(0.54 0.19 25 / 0.55);
+
+  --warn-tint:   oklch(0.965 0.045 85);
+  --warn-edge:   oklch(0.80 0.10 80);
+  --warn-ink:    oklch(0.44 0.10 70);
+  --err-tint:    oklch(0.962 0.035 25);
+  --err-edge:    oklch(0.80 0.10 25);
+  --err-ink:     oklch(0.46 0.14 25);
+
+  --shadow-control: oklch(0 0 0 / 0.08);
+  --shadow-popover: oklch(0 0 0 / 0.14);
+  --shadow-panel:   oklch(0 0 0 / 0.08);
+  --shadow-card-lift: oklch(0 0 0 / 0.12);
+  --hatch-live:     oklch(1 0 0 / 0.38);
+  --hatch-idle:     oklch(1 0 0 / 0.45);
+
+  --badge-in-progress-tint: oklch(0.963 0.048 85);  --badge-in-progress-ink: oklch(0.44 0.105 70);  --badge-in-progress-edge: oklch(0.83 0.11 80);
+  --badge-in-review-tint:   oklch(0.957 0.028 205); --badge-in-review-ink:   oklch(0.43 0.09 205);  --badge-in-review-edge:   oklch(0.80 0.07 205);
+  --badge-reviewed-tint:    oklch(0.957 0.033 155); --badge-reviewed-ink:    oklch(0.42 0.095 155); --badge-reviewed-edge:    oklch(0.79 0.08 155);
+  --badge-delivered-tint:   oklch(0.957 0.030 300); --badge-delivered-ink:   oklch(0.44 0.125 300); --badge-delivered-edge:   oklch(0.80 0.075 300);
+  --badge-abandoned-tint:   oklch(0.955 0.004 265); --badge-abandoned-ink:   oklch(0.50 0.008 265); --badge-abandoned-edge:   oklch(0.885 0.006 265);
+
+  /* Six epic colours, given out in the order epics are added; the hues sit between the status hues, and slot 4's deep teal stays far darker
+     than the Reviewing cyan. */
+  --epic-1-fill: oklch(0.60 0.17 355); --epic-1-tint: oklch(0.955 0.030 355); --epic-1-ink: oklch(0.46 0.15 355);
+  --epic-2-fill: oklch(0.66 0.15 45);  --epic-2-tint: oklch(0.960 0.035 45);  --epic-2-ink: oklch(0.47 0.12 45);
+  --epic-3-fill: oklch(0.62 0.13 125); --epic-3-tint: oklch(0.960 0.040 125); --epic-3-ink: oklch(0.44 0.10 125);
+  --epic-4-fill: oklch(0.48 0.08 180); --epic-4-tint: oklch(0.955 0.025 180); --epic-4-ink: oklch(0.38 0.07 180);
+  --epic-5-fill: oklch(0.52 0.16 280); --epic-5-tint: oklch(0.955 0.030 280); --epic-5-ink: oklch(0.44 0.15 280);
+  --epic-6-fill: oklch(0.56 0.17 325); --epic-6-tint: oklch(0.955 0.030 325); --epic-6-ink: oklch(0.45 0.15 325);
+}
+
+/* One row per state: pills, bars and badges all read these four properties. */
+[data-state="pending"]     { --s-fill: oklch(0.875 0.008 265); --s-tint: oklch(0.965 0.005 265); --s-ink: oklch(0.47 0.015 265); --s-edge: oklch(0.885 0.008 265); }
+[data-state="in-progress"] { --s-fill: oklch(0.79 0.145 80);   --s-tint: oklch(0.963 0.048 85);  --s-ink: oklch(0.44 0.105 70);  --s-edge: oklch(0.83 0.11 80); }
+[data-state="paused"]      { --s-fill: oklch(0.78 0.045 265);  --s-tint: oklch(0.955 0.014 265); --s-ink: oklch(0.44 0.040 265); --s-edge: oklch(0.83 0.035 265); }
+[data-state="in-review"]   { --s-fill: oklch(0.66 0.145 255);  --s-tint: oklch(0.957 0.028 255); --s-ink: oklch(0.44 0.135 255); --s-edge: oklch(0.80 0.085 255); }
+[data-state="reviewing"]   { --s-fill: oklch(0.70 0.115 205);  --s-tint: oklch(0.957 0.028 205); --s-ink: oklch(0.43 0.09 205);  --s-edge: oklch(0.80 0.07 205); }
+[data-state="re-review"]   { --s-fill: oklch(0.60 0.155 205);  --s-tint: oklch(0.945 0.052 205); --s-ink: oklch(0.37 0.115 205); --s-edge: oklch(0.72 0.105 205); }
+[data-state="reviewed"]    { --s-fill: oklch(0.70 0.135 155);  --s-tint: oklch(0.957 0.033 155); --s-ink: oklch(0.42 0.095 155); --s-edge: oklch(0.79 0.08 155); }
+[data-state="delivered"]   { --s-fill: oklch(0.65 0.145 300);  --s-tint: oklch(0.957 0.030 300); --s-ink: oklch(0.44 0.125 300); --s-edge: oklch(0.80 0.075 300); }
+[data-state="abandoned"]   { --s-fill: oklch(0.80 0.006 265);  --s-tint: oklch(0.955 0.004 265); --s-ink: oklch(0.50 0.008 265); --s-edge: oklch(0.885 0.006 265); }
+
+/* Theme is resolved to data-theme="light"|"dark" on <html> by the head script,
+   from the saved choice or the OS preference; the toggle rewrites it. */
+/* The resolved theme, not the OS preference, picks native scrollbars and controls. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg:          oklch(0.185 0.012 265);
+    --surface:     oklch(0.232 0.014 265);
+    --surface-2:   oklch(0.275 0.014 265);
+    --ink:         oklch(0.94 0.008 265);
+    --ink-muted:   oklch(0.70 0.015 265);
+    --line:        oklch(0.33 0.014 265);
+    --line-strong: oklch(0.42 0.016 265);
+    --link:        oklch(0.78 0.10 255);
+    --link-tint:   oklch(0.78 0.10 255 / 0.14);
+    --link-soft:   oklch(0.78 0.10 255 / 0.50);
+    --reach-track: oklch(0.36 0.014 265);
+    --surface-selected: oklch(0.25 0.022 262);
+    --status-live: oklch(0.76 0.18 150);
+
+    --now:         oklch(0.70 0.17 25);
+    --now-soft:    oklch(0.70 0.17 25 / 0.6);
+
+    --warn-tint:   oklch(0.31 0.055 80);
+    --warn-edge:   oklch(0.50 0.09 80);
+    --warn-ink:    oklch(0.92 0.06 85);
+    --err-tint:    oklch(0.30 0.06 25);
+    --err-edge:    oklch(0.50 0.11 25);
+    --err-ink:     oklch(0.92 0.05 25);
+
+    --shadow-popover: oklch(0 0 0 / 0.45);
+    --shadow-panel:   oklch(0 0 0 / 0.4);
+    --shadow-card-lift: oklch(0 0 0 / 0.3);
+
+    --badge-in-progress-tint: oklch(0.33 0.065 80);  --badge-in-progress-ink: oklch(0.91 0.075 85);  --badge-in-progress-edge: oklch(0.52 0.10 80);
+    --badge-in-review-tint:   oklch(0.32 0.050 205); --badge-in-review-ink:   oklch(0.89 0.055 205); --badge-in-review-edge:   oklch(0.50 0.075 205);
+    --badge-reviewed-tint:    oklch(0.32 0.055 155); --badge-reviewed-ink:    oklch(0.89 0.060 155); --badge-reviewed-edge:    oklch(0.50 0.080 155);
+    --badge-delivered-tint:   oklch(0.32 0.060 300); --badge-delivered-ink:   oklch(0.89 0.060 300); --badge-delivered-edge:   oklch(0.51 0.095 300);
+    --badge-abandoned-tint:   oklch(0.28 0.006 265); --badge-abandoned-ink:   oklch(0.72 0.010 265); --badge-abandoned-edge:   oklch(0.38 0.008 265);
+
+    --epic-1-fill: oklch(0.70 0.16 355); --epic-1-tint: oklch(0.31 0.060 355); --epic-1-ink: oklch(0.89 0.060 355);
+    --epic-2-fill: oklch(0.74 0.14 45);  --epic-2-tint: oklch(0.32 0.055 45);  --epic-2-ink: oklch(0.90 0.060 45);
+    --epic-3-fill: oklch(0.74 0.13 125); --epic-3-tint: oklch(0.31 0.050 125); --epic-3-ink: oklch(0.90 0.070 125);
+    --epic-4-fill: oklch(0.58 0.08 180); --epic-4-tint: oklch(0.29 0.035 180); --epic-4-ink: oklch(0.86 0.050 180);
+    --epic-5-fill: oklch(0.68 0.14 280); --epic-5-tint: oklch(0.31 0.060 280); --epic-5-ink: oklch(0.89 0.060 280);
+    --epic-6-fill: oklch(0.70 0.16 325); --epic-6-tint: oklch(0.31 0.060 325); --epic-6-ink: oklch(0.89 0.060 325);
+}
+:root[data-theme="dark"] [data-state="pending"]     { --s-fill: oklch(0.42 0.012 265); --s-tint: oklch(0.29 0.010 265); --s-ink: oklch(0.80 0.012 265); --s-edge: oklch(0.40 0.012 265); }
+:root[data-theme="dark"] [data-state="in-progress"] { --s-fill: oklch(0.76 0.145 80);  --s-tint: oklch(0.33 0.065 80);  --s-ink: oklch(0.91 0.075 85);  --s-edge: oklch(0.52 0.10 80); }
+:root[data-theme="dark"] [data-state="paused"]      { --s-fill: oklch(0.62 0.045 265); --s-tint: oklch(0.31 0.022 265); --s-ink: oklch(0.85 0.030 265); --s-edge: oklch(0.47 0.030 265); }
+:root[data-theme="dark"] [data-state="in-review"]   { --s-fill: oklch(0.66 0.150 255); --s-tint: oklch(0.32 0.060 255); --s-ink: oklch(0.88 0.065 255); --s-edge: oklch(0.50 0.10 255); }
+:root[data-theme="dark"] [data-state="reviewing"]   { --s-fill: oklch(0.72 0.115 205); --s-tint: oklch(0.32 0.050 205); --s-ink: oklch(0.89 0.055 205); --s-edge: oklch(0.50 0.075 205); }
+:root[data-theme="dark"] [data-state="re-review"]   { --s-fill: oklch(0.64 0.155 205); --s-tint: oklch(0.37 0.085 205); --s-ink: oklch(0.94 0.080 205); --s-edge: oklch(0.58 0.115 205); }
+:root[data-theme="dark"] [data-state="reviewed"]    { --s-fill: oklch(0.72 0.135 155); --s-tint: oklch(0.32 0.055 155); --s-ink: oklch(0.89 0.060 155); --s-edge: oklch(0.50 0.080 155); }
+:root[data-theme="dark"] [data-state="delivered"]   { --s-fill: oklch(0.68 0.145 300); --s-tint: oklch(0.32 0.060 300); --s-ink: oklch(0.89 0.060 300); --s-edge: oklch(0.51 0.095 300); }
+:root[data-theme="dark"] [data-state="abandoned"]   { --s-fill: oklch(0.40 0.008 265); --s-tint: oklch(0.28 0.006 265); --s-ink: oklch(0.72 0.010 265); --s-edge: oklch(0.38 0.008 265); }

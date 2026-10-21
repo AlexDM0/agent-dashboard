@@ -1,0 +1,408 @@
+{
+  "version": 1,
+  "trackerId": "733e1735-46e9-4e2a-b820-3a09acaba874",
+  "project": "example-storefront",
+  "startedAt": "2026-10-21T20:26:09+02:00",
+  "view": {
+    "kind": "auto"
+  },
+  "nextTaskId": 8,
+  "concurrencyLimit": 2,
+  "tasks": [
+    {
+      "id": 1,
+      "name": "#001 Add the example checkout page",
+      "status": "in-progress",
+      "start": "2026-10-21T19:56:09+02:00",
+      "end": null,
+      "owner": "opus",
+      "note": "",
+      "ticket": "001",
+      "tokens": null,
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-10-21T20:26:09+02:00"
+        },
+        {
+          "status": "in-progress",
+          "at": "2026-10-21T19:56:09+02:00"
+        }
+      ],
+      "agent": "001"
+    },
+    {
+      "id": 2,
+      "name": "#002 Fix the example cart total",
+      "status": "in-review",
+      "start": "2026-10-21T19:46:10+02:00",
+      "end": "2026-10-21T20:16:10+02:00",
+      "owner": "",
+      "note": "",
+      "ticket": "002",
+      "tokens": null,
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-10-21T20:26:09+02:00"
+        },
+        {
+          "status": "in-progress",
+          "at": "2026-10-21T19:46:10+02:00"
+        },
+        {
+          "status": "in-review",
+          "at": "2026-10-21T20:16:10+02:00"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "#003 Research example payment options",
+      "status": "pending",
+      "start": null,
+      "end": null,
+      "owner": "",
+      "note": "",
+      "ticket": "003",
+      "tokens": null,
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-10-21T20:26:09+02:00"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Review 1 #002 — Fix the example cart total",
+      "status": "in-progress",
+      "start": "2026-10-21T20:16:10+02:00",
+      "end": null,
+      "owner": "opus",
+      "note": "",
+      "ticket": null,
+      "tokens": null,
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-10-21T20:16:10+02:00"
+        },
+        {
+          "status": "in-progress",
+          "at": "2026-10-21T20:16:10+02:00"
+        }
+      ],
+      "reviewOf": "002",
+      "reviewBarRound": 1
+    },
+    {
+      "id": 5,
+      "name": "Example free-standing chore",
+      "status": "in-progress",
+      "start": "2026-10-21T20:21:10+02:00",
+      "end": null,
+      "owner": "Alex Example",
+      "note": "",
+      "ticket": null,
+      "tokens": 1200,
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-10-21T20:21:10+02:00"
+        },
+        {
+          "status": "in-progress",
+          "at": "2026-10-21T20:21:10+02:00"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "#004 Polish the example footer",
+      "status": "abandoned",
+      "start": null,
+      "end": null,
+      "owner": "",
+      "note": "",
+      "ticket": "004",
+      "tokens": null,
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-10-21T20:26:19+02:00"
+        },
+        {
+          "status": "abandoned",
+          "at": "2026-10-21T20:26:19+02:00"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "#005 Example ready ticket",
+      "status": "pending",
+      "start": null,
+      "end": null,
+      "owner": "",
+      "note": "",
+      "ticket": "005",
+      "tokens": null,
+      "history": [
+        {
+          "status": "pending",
+          "at": "2026-10-21T20:26:19+02:00"
+        }
+      ]
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-10-21T20:26:09+02:00",
+      "text": "Ticket #001 filed: Add the example checkout page"
+    },
+    {
+      "at": "2026-10-21T20:26:09+02:00",
+      "text": "Ticket #002 filed: Fix the example cart total"
+    },
+    {
+      "at": "2026-10-21T20:26:09+02:00",
+      "text": "Ticket #003 filed: Research example payment options"
+    },
+    {
+      "at": "2026-10-21T19:56:09+02:00",
+      "text": "Ticket #001 started"
+    },
+    {
+      "at": "2026-10-21T19:46:10+02:00",
+      "text": "Ticket #002 started"
+    },
+    {
+      "at": "2026-10-21T20:16:10+02:00",
+      "text": "Ticket #002 in review"
+    },
+    {
+      "at": "2026-10-21T20:16:10+02:00",
+      "text": "Review row #4 started: Review 1 #002 — Fix the example cart total"
+    },
+    {
+      "at": "2026-10-21T20:26:10+02:00",
+      "text": "Example milestone reached"
+    },
+    {
+      "at": "2026-10-21T20:26:19+02:00",
+      "text": "Ticket #004 filed: Polish the example footer"
+    },
+    {
+      "at": "2026-10-21T20:26:19+02:00",
+      "text": "Ticket #004 abandoned: Example Agency dropped it"
+    },
+    {
+      "at": "2026-10-21T20:26:19+02:00",
+      "text": "Ticket #003 held: waiting on Example Agency"
+    },
+    {
+      "at": "2026-10-21T20:26:19+02:00",
+      "text": "Ticket #005 filed: Example ready ticket"
+    }
+  ],
+  "tickets": [
+    {
+      "id": "001",
+      "title": "Add the example checkout page",
+      "type": "ticket",
+      "status": "in-progress",
+      "filed": "2026-10-21T20:26:09+02:00",
+      "updated": "2026-10-21T19:56:09+02:00",
+      "started": "2026-10-21T19:56:09+02:00",
+      "finished": null,
+      "delivered": null,
+      "abandonedAt": null,
+      "claimedBodyHash": "31d960d0cfcb703f",
+      "task": 1,
+      "extra": [],
+      "priority": "normal",
+      "epics": [],
+      "bodyChangedSinceClaim": false,
+      "filePath": "/Users/alex.example/development/example-storefront/.agent-progress/tickets/001-add-the-example-checkout-page.md"
+    },
+    {
+      "id": "002",
+      "title": "Fix the example cart total",
+      "type": "bug",
+      "status": "in-review",
+      "filed": "2026-10-21T20:26:09+02:00",
+      "updated": "2026-10-21T20:16:10+02:00",
+      "started": "2026-10-21T19:46:10+02:00",
+      "finished": "2026-10-21T20:16:10+02:00",
+      "delivered": null,
+      "abandonedAt": null,
+      "claimedBodyHash": "c4b3ca6b39de52ed",
+      "task": 2,
+      "extra": [],
+      "priority": "normal",
+      "epics": [],
+      "bodyChangedSinceClaim": false,
+      "filePath": "/Users/alex.example/development/example-storefront/.agent-progress/tickets/002-fix-the-example-cart-total.md"
+    },
+    {
+      "id": "003",
+      "title": "Research example payment options",
+      "type": "research",
+      "hold": "waiting on Example Agency",
+      "status": "pending",
+      "filed": "2026-10-21T20:26:09+02:00",
+      "updated": "2026-10-21T20:26:09+02:00",
+      "started": null,
+      "finished": null,
+      "delivered": null,
+      "abandonedAt": null,
+      "task": 3,
+      "extra": [],
+      "priority": "normal",
+      "epics": [],
+      "filePath": "/Users/alex.example/development/example-storefront/.agent-progress/tickets/003-research-example-payment-options.md"
+    },
+    {
+      "id": "004",
+      "title": "Polish the example footer",
+      "type": "ticket",
+      "status": "abandoned",
+      "filed": "2026-10-21T20:26:19+02:00",
+      "updated": "2026-10-21T20:26:19+02:00",
+      "started": null,
+      "finished": null,
+      "delivered": null,
+      "abandonedAt": "2026-10-21T20:26:19+02:00",
+      "reason": "Example Agency dropped it",
+      "task": 6,
+      "extra": [],
+      "priority": "normal",
+      "epics": [],
+      "filePath": "/Users/alex.example/development/example-storefront/.agent-progress/tickets/004-polish-the-example-footer.md"
+    },
+    {
+      "id": "005",
+      "title": "Example ready ticket",
+      "type": "ticket",
+      "status": "pending",
+      "filed": "2026-10-21T20:26:19+02:00",
+      "updated": "2026-10-21T20:26:19+02:00",
+      "started": null,
+      "finished": null,
+      "delivered": null,
+      "abandonedAt": null,
+      "task": 7,
+      "extra": [],
+      "priority": "normal",
+      "epics": [],
+      "filePath": "/Users/alex.example/development/example-storefront/.agent-progress/tickets/005-example-ready-ticket.md"
+    }
+  ],
+  "epics": [],
+  "concurrency": {
+    "limit": 2,
+    "agentsInFlight": 3,
+    "freeSlots": 0,
+    "readyTicketIds": [
+      "003",
+      "005"
+    ],
+    "dispatcherState": "stopped",
+    "heldTicketIds": [
+      "003"
+    ],
+    "inProgressTicketIds": [
+      "001"
+    ],
+    "inProgressReviewOfIds": [
+      "002"
+    ]
+  },
+  "readyTickets": [
+    {
+      "id": "003",
+      "priority": "normal",
+      "model": "opus",
+      "effort": "medium",
+      "held": true
+    },
+    {
+      "id": "005",
+      "priority": "normal",
+      "model": "opus",
+      "effort": "medium"
+    }
+  ],
+  "reviewWaitingTickets": [],
+  "pausedBuilds": [],
+  "ticketRows": [
+    {
+      "id": "001",
+      "row": {
+        "id": 1,
+        "status": "in-progress",
+        "note": ""
+      },
+      "reviewBars": []
+    },
+    {
+      "id": "002",
+      "row": {
+        "id": 2,
+        "status": "in-review",
+        "note": ""
+      },
+      "reviewBars": [
+        {
+          "id": 4,
+          "status": "in-progress",
+          "round": 1
+        }
+      ]
+    },
+    {
+      "id": "003",
+      "row": {
+        "id": 3,
+        "status": "pending",
+        "note": ""
+      },
+      "reviewBars": []
+    },
+    {
+      "id": "004",
+      "row": {
+        "id": 6,
+        "status": "abandoned",
+        "note": ""
+      },
+      "reviewBars": []
+    },
+    {
+      "id": "005",
+      "row": {
+        "id": 7,
+        "status": "pending",
+        "note": ""
+      },
+      "reviewBars": []
+    }
+  ],
+  "tokensByOwner": {
+    "owners": [
+      {
+        "owner": "Alex Example",
+        "tokens": 1200,
+        "rows": 1
+      }
+    ],
+    "withoutOwner": {
+      "tokens": 0,
+      "rows": 0
+    },
+    "withoutTokens": {
+      "rows": 6
+    }
+  }
+}

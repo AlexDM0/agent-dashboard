@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overview phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.theme-light,.theme-dark{
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;
+  --r-1:4px;--r-2:6px;--r-3:10px;--r-pill:999px;
+  --fs-micro:11px;--fs-small:12px;--fs-body:13px;--fs-title:15px;--fs-page:20px;
+  --font-ui:-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --motion-fast:120ms;--motion-base:160ms;--ease-out:cubic-bezier(0.22, 1, 0.36, 1);
+  --pulse-status:1.6s;
+}
+.theme-light{
+  color-scheme:light;
+  --bg:oklch(0.975 0.004 265);--surface:oklch(1 0 0);--surface-2:oklch(0.961 0.006 265);
+  --ink:oklch(0.24 0.02 265);--ink-muted:oklch(0.52 0.02 265);
+  --line:oklch(0.905 0.008 265);--line-strong:oklch(0.82 0.012 265);
+  --link:oklch(0.48 0.13 255);--link-tint:oklch(0.48 0.13 255 / 0.10);
+  --surface-selected:oklch(0.93 0.008 262);--status-live:oklch(0.62 0.17 150);
+  --warn-tint:oklch(0.965 0.045 85);--warn-edge:oklch(0.80 0.10 80);--warn-ink:oklch(0.44 0.10 70);
+  --err-tint:oklch(0.962 0.035 25);--err-edge:oklch(0.80 0.10 25);--err-ink:oklch(0.46 0.14 25);
+  --shadow-control:oklch(0 0 0 / 0.08);
+  --badge-in-progress-tint:oklch(0.963 0.048 85);--badge-in-progress-ink:oklch(0.44 0.105 70);--badge-in-progress-edge:oklch(0.83 0.11 80);
+  --badge-in-review-tint:oklch(0.957 0.028 205);--badge-in-review-ink:oklch(0.43 0.09 205);--badge-in-review-edge:oklch(0.80 0.07 205);
+  --badge-reviewed-tint:oklch(0.957 0.033 155);--badge-reviewed-ink:oklch(0.42 0.095 155);--badge-reviewed-edge:oklch(0.79 0.08 155);
+  --badge-delivered-tint:oklch(0.957 0.030 300);--badge-delivered-ink:oklch(0.44 0.125 300);--badge-delivered-edge:oklch(0.80 0.075 300);
+  --badge-abandoned-tint:oklch(0.955 0.004 265);--badge-abandoned-ink:oklch(0.50 0.008 265);--badge-abandoned-edge:oklch(0.885 0.006 265);
+}
+.theme-light [data-state="pending"]{--s-fill:oklch(0.875 0.008 265);--s-tint:oklch(0.965 0.005 265);--s-ink:oklch(0.47 0.015 265);--s-edge:oklch(0.885 0.008 265)}
+.theme-light [data-state="in-progress"]{--s-fill:oklch(0.79 0.145 80);--s-tint:oklch(0.963 0.048 85);--s-ink:oklch(0.44 0.105 70);--s-edge:oklch(0.83 0.11 80)}
+.theme-light [data-state="in-review"]{--s-fill:oklch(0.66 0.145 255);--s-tint:oklch(0.957 0.028 255);--s-ink:oklch(0.44 0.135 255);--s-edge:oklch(0.80 0.085 255)}
+.theme-light [data-state="reviewing"]{--s-fill:oklch(0.70 0.115 205);--s-tint:oklch(0.957 0.028 205);--s-ink:oklch(0.43 0.09 205);--s-edge:oklch(0.80 0.07 205)}
+.theme-light [data-state="reviewed"]{--s-fill:oklch(0.70 0.135 155);--s-tint:oklch(0.957 0.033 155);--s-ink:oklch(0.42 0.095 155);--s-edge:oklch(0.79 0.08 155)}
+.theme-light [data-state="delivered"]{--s-fill:oklch(0.65 0.145 300);--s-tint:oklch(0.957 0.030 300);--s-ink:oklch(0.44 0.125 300);--s-edge:oklch(0.80 0.075 300)}
+.theme-light [data-state="abandoned"]{--s-fill:oklch(0.80 0.006 265);--s-tint:oklch(0.955 0.004 265);--s-ink:oklch(0.50 0.008 265);--s-edge:oklch(0.885 0.006 265)}
+.theme-dark{
+  color-scheme:dark;
+  --bg:oklch(0.185 0.012 265);--surface:oklch(0.232 0.014 265);--surface-2:oklch(0.275 0.014 265);
+  --ink:oklch(0.94 0.008 265);--ink-muted:oklch(0.70 0.015 265);
+  --line:oklch(0.33 0.014 265);--line-strong:oklch(0.42 0.016 265);
+  --link:oklch(0.78 0.10 255);--link-tint:oklch(0.78 0.10 255 / 0.14);
+  --surface-selected:oklch(0.25 0.022 262);--status-live:oklch(0.76 0.18 150);
+  --warn-tint:oklch(0.31 0.055 80);--warn-edge:oklch(0.50 0.09 80);--warn-ink:oklch(0.92 0.06 85);
+  --err-tint:oklch(0.30 0.06 25);--err-edge:oklch(0.50 0.11 25);--err-ink:oklch(0.92 0.05 25);
+  --shadow-control:oklch(0 0 0 / 0.08);
+  --badge-in-progress-tint:oklch(0.33 0.065 80);--badge-in-progress-ink:oklch(0.91 0.075 85);--badge-in-progress-edge:oklch(0.52 0.10 80);
+  --badge-in-review-tint:oklch(0.32 0.050 205);--badge-in-review-ink:oklch(0.89 0.055 205);--badge-in-review-edge:oklch(0.50 0.075 205);
+  --badge-reviewed-tint:oklch(0.32 0.055 155);--badge-reviewed-ink:oklch(0.89 0.060 155);--badge-reviewed-edge:oklch(0.50 0.080 155);
+  --badge-delivered-tint:oklch(0.32 0.060 300);--badge-delivered-ink:oklch(0.89 0.060 300);--badge-delivered-edge:oklch(0.51 0.095 300);
+  --badge-abandoned-tint:oklch(0.28 0.006 265);--badge-abandoned-ink:oklch(0.72 0.010 265);--badge-abandoned-edge:oklch(0.38 0.008 265);
+}
+.theme-dark [data-state="pending"]{--s-fill:oklch(0.42 0.012 265);--s-tint:oklch(0.29 0.010 265);--s-ink:oklch(0.80 0.012 265);--s-edge:oklch(0.40 0.012 265)}
+.theme-dark [data-state="in-progress"]{--s-fill:oklch(0.76 0.145 80);--s-tint:oklch(0.33 0.065 80);--s-ink:oklch(0.91 0.075 85);--s-edge:oklch(0.52 0.10 80)}
+.theme-dark [data-state="in-review"]{--s-fill:oklch(0.66 0.150 255);--s-tint:oklch(0.32 0.060 255);--s-ink:oklch(0.88 0.065 255);--s-edge:oklch(0.50 0.10 255)}
+.theme-dark [data-state="reviewing"]{--s-fill:oklch(0.72 0.115 205);--s-tint:oklch(0.32 0.050 205);--s-ink:oklch(0.89 0.055 205);--s-edge:oklch(0.50 0.075 205)}
+.theme-dark [data-state="reviewed"]{--s-fill:oklch(0.72 0.135 155);--s-tint:oklch(0.32 0.055 155);--s-ink:oklch(0.89 0.060 155);--s-edge:oklch(0.50 0.080 155)}
+.theme-dark [data-state="delivered"]{--s-fill:oklch(0.68 0.145 300);--s-tint:oklch(0.32 0.060 300);--s-ink:oklch(0.89 0.060 300);--s-edge:oklch(0.51 0.095 300)}
+.theme-dark [data-state="abandoned"]{--s-fill:oklch(0.40 0.008 265);--s-tint:oklch(0.28 0.006 265);--s-ink:oklch(0.72 0.010 265);--s-edge:oklch(0.38 0.008 265)}
+
+.ad-root{background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5 var(--font-ui);-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-muted)}
+
+.ap-status-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);font:400 var(--fs-small)/1.5 var(--font-mono);color:var(--ink-muted)}
+.ap-status-dot{flex:none;width:10px;height:10px;border-radius:var(--r-pill);background:var(--ink-muted)}
+.ap-status-dot[data-dot="live"]{background:var(--status-live)}
+.ap-status-dot[data-dot="dispatching"]{background:oklch(0.79 0.145 80)}
+.theme-dark .ap-status-dot[data-dot="dispatching"]{background:oklch(0.76 0.145 80)}
+.ap-status-label{font-weight:700;letter-spacing:0.14em;text-transform:uppercase}
+@keyframes ap-pulse{50%{opacity:0.45;transform:scale(0.8)}}
+@media (prefers-reduced-motion: no-preference){.ap-status-dot[data-dot="live"]{animation:ap-pulse var(--pulse-status) ease-in-out infinite}}
+
+.ap-stat{display:flex;flex-direction:column;gap:2px;padding:var(--sp-2) 10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-2);min-width:0}
+.ap-stat-n{font:500 18px/1.25 var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:-0.02em;color:var(--ink)}
+.ap-stat-n small{font-size:var(--fs-small);color:var(--ink-muted);letter-spacing:0}
+.ap-stat-label{font:400 var(--fs-small)/1.3 var(--font-ui);color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.ad-icon-button{flex:none;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;color:var(--ink-muted);background:transparent;border:0;border-radius:var(--r-2);box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.ad-icon-button:hover{color:var(--ink)}
+.ad-icon-button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+.ap-search{position:relative;display:flex;align-items:center}
+.ap-search svg{position:absolute;left:12px;width:14px;height:14px;color:var(--ink-muted);pointer-events:none}
+.ap-search input{width:100%;height:44px;padding:0 12px 0 34px;font:var(--fs-body)/1.4 var(--font-ui);color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-2)}
+.ap-search input::placeholder{color:var(--ink-muted);opacity:1}
+.ap-search input:focus-visible{outline:2px solid var(--link);outline-offset:1px}
+
+.ap-seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:2px;background:var(--surface-2);border-radius:var(--r-2)}
+.ap-seg button{min-height:40px;font:500 var(--fs-small)/1 var(--font-mono);font-variant-numeric:tabular-nums;border:0;border-radius:var(--r-1);background:transparent;color:var(--ink-muted);cursor:pointer}
+.ap-seg button:hover{color:var(--ink)}
+.ap-seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px var(--shadow-control)}
+.ap-seg button:focus-visible{outline:2px solid var(--link);outline-offset:1px}
+
+.ad-group-title{margin:0;font-size:var(--fs-small);font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink-muted)}
+
+.ap-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3)}
+.ad-card-name{margin:0;font:600 var(--fs-title)/1.3 var(--font-ui);color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ap-pill{display:inline-flex;align-items:center;justify-content:center;height:19px;padding:0 8px;font:500 var(--fs-micro)/1 var(--font-ui);font-variant-numeric:tabular-nums;letter-spacing:0.01em;border:1px solid var(--s-edge);border-radius:var(--r-pill);background:var(--s-tint);color:var(--s-ink);white-space:nowrap}
+.ap-pill[data-state="pending"]{border-style:dashed}
+.ad-slot{height:10px;border-radius:var(--r-1);background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line)}
+.ad-slot[data-busy="true"]{background:var(--s-fill);box-shadow:none}
+.ad-ticket-bar{display:flex;height:8px;border-radius:var(--r-pill);overflow:hidden;background:var(--surface-2)}
+.ad-ticket-bar span{display:block;height:100%;background:var(--s-fill)}
+.ap-badge{display:inline-flex;align-items:center;justify-content:center;min-width:70px;height:19px;font:500 var(--fs-micro)/1 var(--font-ui);padding:0 8px;border:1px solid var(--s-edge);border-radius:var(--r-pill);background:var(--s-tint);color:var(--s-ink);white-space:nowrap}
+.ap-badge.in-progress{--s-tint:var(--badge-in-progress-tint);--s-ink:var(--badge-in-progress-ink);--s-edge:var(--badge-in-progress-edge)}
+.ap-badge.in-review{--s-tint:var(--badge-in-review-tint);--s-ink:var(--badge-in-review-ink);--s-edge:var(--badge-in-review-edge)}
+.ap-badge.pending{--s-tint:var(--surface-2);--s-ink:var(--ink-muted);--s-edge:var(--line-strong)}
+.ad-row-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.ap-chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;font:500 var(--fs-micro)/1 var(--font-mono);color:var(--ink-muted);background:transparent;border:1px solid var(--line);border-radius:var(--r-pill)}
+.ad-queue-label{font-size:var(--fs-small);color:var(--ink-muted)}
+.ad-log{display:flex;gap:var(--sp-2);min-width:0;font-size:var(--fs-small)}
+.ad-log span:last-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+
+.ad-open-board{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;font:500 var(--fs-small)/1 var(--font-ui);color:var(--surface);background:var(--link);border:1px solid var(--link);border-radius:var(--r-2);text-decoration:none}
+.ad-open-board:hover{color:var(--surface);text-decoration:none;filter:brightness(1.08)}
+.ad-open-board:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+.ad-disclosure{display:flex;align-items:center;gap:var(--sp-2);width:100%;min-height:44px;padding:0 var(--sp-3);font:500 var(--fs-body)/1 var(--font-ui);color:var(--ink-muted);background:transparent;border:1px dashed var(--line-strong);border-radius:var(--r-3);cursor:pointer;text-align:left}
+.ad-disclosure:hover{color:var(--ink);border-color:var(--ink-muted)}
+.ad-disclosure:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+
+a{color:var(--link);text-decoration:none}
+a:hover{color:var(--ink);text-decoration:underline}
+</style>
+</helmet>
+<div class="{{ themeClass }}" style="width:390px;min-height:1400px">
+<div class="ad-root" style="width:390px;min-height:1400px;padding:20px 16px 32px;display:flex;flex-direction:column;gap:20px">
+
+  <header style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+        <h1 style="margin:0;font:700 var(--fs-page)/1.2 var(--font-ui);letter-spacing:-0.02em;color:var(--ink)">agent-dashboard</h1>
+        <div class="ap-status-line" role="status">
+          <span class="ap-status-dot" data-dot="live" aria-hidden="true"></span>
+          <span class="ap-status-label">Live</span>
+          <span>updated 12 s ago</span>
+        </div>
+      </div>
+      <button class="ad-icon-button" type="button" aria-label="{{ themeToggleLabel }}" onClick="{{ toggleTheme }}">
+        <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+        </sc-if>
+        <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+        </sc-if>
+      </button>
+    </div>
+    <dl style="margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">
+      <sc-for list="{{ headerStats }}" as="stat" hint-placeholder-count="5">
+        <div class="ap-stat" data-state="{{ stat.state }}" style="flex-direction:column-reverse;justify-content:flex-end">
+          <dt class="ap-stat-label">{{ stat.label }}</dt>
+          <dd class="ap-stat-n" style="margin:0">{{ stat.value }}<small>{{ stat.suffix }}</small></dd>
+        </div>
+      </sc-for>
+    </dl>
+  </header>
+
+  <section aria-label="Filter projects" style="display:flex;flex-direction:column;gap:8px">
+    <label class="ap-search">
+      <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">Search projects</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input type="search" placeholder="Search project name or path">
+    </label>
+    <div class="ap-seg" role="group" aria-label="Show projects">
+      <button type="button" aria-pressed="{{ allPressed }}" onClick="{{ showAll }}">All</button>
+      <button type="button" aria-pressed="{{ activePressed }}" onClick="{{ showActive }}">Active</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="group-active" style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <h2 id="group-active" class="ad-group-title">Active</h2>
+      <span class="mono muted" style="font-size:var(--fs-small)">2 projects</span>
+    </div>
+    <sc-for list="{{ activeProjects }}" as="project" hint-placeholder-count="2">
+      <article class="ap-card" style="display:flex;flex-direction:column;gap:12px;padding:14px">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0">
+          <span class="ap-status-dot" data-dot="{{ project.dot }}" aria-hidden="true"></span>
+          <h3 class="ad-card-name" style="flex:1">{{ project.name }}</h3>
+          <span class="ap-pill" data-state="{{ project.dispatcherState }}">{{ project.dispatcherLabel }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:-6px;min-width:0">
+          <span class="mono muted" style="font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ project.root }}</span>
+          <span class="mono muted" style="font-size:var(--fs-small)">{{ project.origin }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:grid;grid-template-columns:repeat({{ project.slotCount }}, 22px);gap:3px" aria-hidden="true">
+            <sc-for list="{{ project.slots }}" as="slot" hint-placeholder-count="2">
+              <span class="ad-slot" data-state="in-progress" data-busy="{{ slot.busy }}"></span>
+            </sc-for>
+          </div>
+          <span style="font-size:var(--fs-small);color:var(--ink)">{{ project.slotCaption }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div class="ad-ticket-bar" role="img" aria-label="{{ project.ticketCaption }}">
+            <sc-for list="{{ project.segments }}" as="segment" hint-placeholder-count="5">
+              <span data-state="{{ segment.state }}" style="width:{{ segment.widthPercent }}%"></span>
+            </sc-for>
+          </div>
+          <span class="muted" style="font-size:var(--fs-small)">{{ project.ticketCaption }}</span>
+        </div>
+        <ul style="list-style:none;margin:0;padding:10px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ project.rows }}" as="row" hint-placeholder-count="2">
+            <li style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                <span class="{{ row.badgeClass }}">{{ row.badge }}</span>
+                <span class="mono muted" style="font-size:var(--fs-small)">{{ row.ticketId }}</span>
+                <span class="ad-row-title">{{ row.title }}</span>
+              </div>
+              <div class="mono muted" style="display:flex;gap:8px;font-size:var(--fs-micro);padding-left:2px">
+                <span>{{ row.owner }}</span><span aria-hidden="true">·</span><span style="color:var(--ink);font-weight:700">{{ row.elapsed }}</span>
+              </div>
+            </li>
+          </sc-for>
+        </ul>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px">
+          <sc-for list="{{ project.queues }}" as="queue" hint-placeholder-count="2">
+            <span style="display:inline-flex;align-items:center;gap:4px">
+              <span class="ad-queue-label">{{ queue.label }}</span>
+              <sc-for list="{{ queue.ticketIds }}" as="ticketId" hint-placeholder-count="2">
+                <span class="ap-chip">{{ ticketId }}</span>
+              </sc-for>
+            </span>
+          </sc-for>
+        </div>
+        <div class="ad-log">
+          <span class="mono muted">{{ project.logTime }}</span>
+          <span>{{ project.logText }}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:10px;border-top:1px solid var(--line)">
+          <span class="muted" style="font-size:var(--fs-small);min-width:0">{{ project.changed }}</span>
+          <a class="ad-open-board" href="Board.dc.html">Open board</a>
+        </div>
+      </article>
+    </sc-for>
+  </section>
+
+  <section aria-labelledby="group-idle" style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <h2 id="group-idle" class="ad-group-title">Idle</h2>
+      <span class="mono muted" style="font-size:var(--fs-small)">3 projects</span>
+    </div>
+    <article class="ap-card" style="display:flex;flex-direction:column;gap:12px;padding:14px">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <span class="ap-status-dot" aria-hidden="true"></span>
+        <h3 class="ad-card-name" style="flex:1">field-notes-app</h3>
+        <span class="ap-pill" data-state="reviewed">finished</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:-6px;min-width:0">
+        <span class="mono muted" style="font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">~/development/field-notes-app</span>
+        <span class="mono muted" style="font-size:var(--fs-small)">example/field-notes-app</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:grid;grid-template-columns:repeat(2, 22px);gap:3px" aria-hidden="true">
+          <span class="ad-slot"></span><span class="ad-slot"></span>
+        </div>
+        <span class="muted" style="font-size:var(--fs-small)">0 of 2 slots busy</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="ad-ticket-bar" role="img" aria-label="21 of 23 delivered, 2 abandoned">
+          <span data-state="delivered" style="width:91.3%"></span>
+          <span data-state="abandoned" style="width:8.7%"></span>
+        </div>
+        <span class="muted" style="font-size:var(--fs-small)">21 of 23 delivered · 2 abandoned</span>
+      </div>
+      <div class="ad-log">
+        <span class="mono muted">Mon 17:42</span>
+        <span>Released #023 into main; the board is empty</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:10px;border-top:1px solid var(--line)">
+        <span class="muted" style="font-size:var(--fs-small)">Changed 2d ago · release</span>
+        <a class="ad-open-board" href="Board.dc.html">Open board</a>
+      </div>
+    </article>
+    <button class="ad-disclosure" type="button" aria-expanded="false">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+      <span>Idle · 2 more</span>
+      <span class="mono" style="margin-left:auto;font-size:var(--fs-small)">research-wiki, example-agency-site</span>
+    </button>
+  </section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":1400}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all', themeOverride: null, overrideSetAgainstTweak: null };
+  }
+  renderVals() {
+    const darkFromTweak = this.props.dark ?? false;
+    const overrideStillApplies = this.state.themeOverride !== null && this.state.overrideSetAgainstTweak === darkFromTweak;
+    const isDark = overrideStillApplies ? this.state.themeOverride === 'dark' : darkFromTweak;
+    const segmentsOf = (counts, total) => counts
+      .filter((entry) => entry.count > 0)
+      .map((entry) => ({ state: entry.state, widthPercent: (entry.count / total * 100).toFixed(2) }));
+    const slotsOf = (busyCount, slotCount) => Array.from({ length: slotCount }, (unused, i) => ({ busy: i < busyCount ? 'true' : 'false' }));
+    return {
+      themeClass: isDark ? 'theme-dark' : 'theme-light',
+      isDark: isDark,
+      isLight: !isDark,
+      themeToggleLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ themeOverride: isDark ? 'light' : 'dark', overrideSetAgainstTweak: darkFromTweak }),
+      allPressed: this.state.filter === 'all' ? 'true' : 'false',
+      activePressed: this.state.filter === 'active' ? 'true' : 'false',
+      showAll: () => this.setState({ filter: 'all' }),
+      showActive: () => this.setState({ filter: 'active' }),
+      headerStats: [
+        { label: 'Projects', value: '5', suffix: '', state: 'pending' },
+        { label: 'Agents', value: '3', suffix: ' / 5', state: 'in-progress' },
+        { label: 'Ready', value: '4', suffix: '', state: 'pending' },
+        { label: 'Awaiting review', value: '2', suffix: '', state: 'in-review' },
+        { label: 'Held', value: '1', suffix: '', state: 'pending' }
+      ],
+      activeProjects: [
+        {
+          name: 'example-storefront', dot: 'live', dispatcherState: 'in-progress', dispatcherLabel: 'running',
+          root: '~/development/example-storefront', origin: 'example/example-storefront',
+          slotCount: 2, slots: slotsOf(2, 2), slotCaption: '2 of 2 slots busy',
+          segments: segmentsOf([
+            { state: 'delivered', count: 16 }, { state: 'reviewed', count: 0 }, { state: 'in-review', count: 2 },
+            { state: 'in-progress', count: 1 }, { state: 'pending', count: 37 }, { state: 'abandoned', count: 0 }
+          ], 56),
+          ticketCaption: '16 of 56 delivered · 2 in review · 37 pending',
+          rows: [
+            { badge: 'Building', badgeClass: 'ap-badge in-progress', ticketId: '#042', title: 'Persist the cart across sign-in so a guest basket survives checkout', owner: 'opus', elapsed: '12m' },
+            { badge: 'Review 1', badgeClass: 'ap-badge in-review', ticketId: '#038', title: 'Refuse a coupon code that expired before the order was placed', owner: 'opus', elapsed: '4m' }
+          ],
+          queues: [
+            { label: 'Ready', ticketIds: ['#043', '#045'] },
+            { label: 'Awaiting review', ticketIds: ['#040'] },
+            { label: 'Held', ticketIds: ['#031'] }
+          ],
+          logTime: '14:06', logText: 'Started review round 1 of #038',
+          changed: 'Changed 3m ago · ticket claim'
+        },
+        {
+          name: 'invoice-service', dot: 'live', dispatcherState: 'in-progress', dispatcherLabel: 'running',
+          root: '~/development/invoice-service', origin: 'example/invoice-service',
+          slotCount: 3, slots: slotsOf(1, 3), slotCaption: '1 of 3 slots busy',
+          segments: segmentsOf([
+            { state: 'delivered', count: 9 }, { state: 'reviewed', count: 1 }, { state: 'in-review', count: 1 },
+            { state: 'in-progress', count: 1 }, { state: 'pending', count: 6 }, { state: 'abandoned', count: 1 }
+          ], 19),
+          ticketCaption: '9 of 19 delivered · 1 reviewed · 1 in review · 6 pending',
+          rows: [
+            { badge: 'Building', badgeClass: 'ap-badge in-progress', ticketId: '#014', title: 'Round VAT per line instead of per invoice total', owner: 'opus', elapsed: '27m' }
+          ],
+          queues: [
+            { label: 'Ready', ticketIds: ['#016', '#017'] },
+            { label: 'Awaiting review', ticketIds: ['#012'] }
+          ],
+          logTime: '13:51', logText: 'Claimed #014 for a build on its own worktree',
+          changed: 'Changed 18m ago · ticket start'
+        }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

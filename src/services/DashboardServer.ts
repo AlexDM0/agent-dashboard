@@ -1,0 +1,283 @@
+/**
+ * The dashboard's HTTP server, bound to 127.0.0.1 only: the React app, the server identity, the snapshot and its event
+ * stream, each project's page folder, and a shutdown the CLI's `stop` asks for. Every route but the app shell refuses a
+ * request whose Host is not this server's own, against DNS rebinding; Bun answers the shell before `fetch`, and it holds
+ * no data.
+ */
+import { normalize } from 'node:path';
+
+import dashboardApplication from '../../web/index.html';
+
+import { readBoardStatus }                             from '../adapters/BoardStatusReader.ts';
+import { resolveContainedPath }                        from '../lib/contained-path/ContainedPath.ts';
+import { type DashboardSnapshot, type ServerIdentity } from '../shared/DashboardContract.ts';
+import { UnknownValueUtil }                            from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_FILES }                             from '../shared/constants/DashboardFiles.ts';
+import { DASHBOARD_LIMITS }                            from '../shared/constants/DashboardLimits.ts';
+import { DASHBOARD_PROTOCOL }                          from '../shared/constants/DashboardProtocol.ts';
+import { type ProjectMonitor, createProjectMonitor }   from './ProjectMonitor.ts';
+
+export interface DashboardServerOptions {
+  port:                    number;
+  homeDirectory:           string;
+  agentProgressExecutable: string | null;
+  /** The Bun running the server, which runs a Bun-script agent-progress itself. */
+  runtimeExecutablePath:   string;
+  version:                 string;
+  clock:                   () => Date;
+}
+
+export interface RunningDashboardServer {
+  url:     string;
+  port:    number;
+  stop():  Promise<void>;
+  stopped: Promise<void>;
+}
+
+export type DashboardServerStart = { kind: 'started'; server: RunningDashboardServer } | { kind: 'port-in-use'; port: number };
+
+const LOOPBACK_ADDRESS = '127.0.0.1';
+
+const LOOPBACK_HOST_NAMES = [LOOPBACK_ADDRESS, 'localhost', '[::1]'] as const;
+
+/** A browser leaves this port out of the Host header it sends. */
+const HTTP_DEFAULT_PORT = 80;
+
+/**
+ * `progress.html` is self-contained, inline scripts and styles, polling its stamp beside it; it may reach nothing but
+ * this server and be framed by nothing but the dashboard.
+ */
+const BOARD_PAGE_POLICY = [
+  'default-src \'self\'',
+  'script-src \'self\' \'unsafe-inline\'',
+  'style-src \'self\' \'unsafe-inline\'',
+  'img-src \'self\' data:',
+  'font-src \'self\' data:',
+  'connect-src \'self\'',
+  'object-src \'none\'',
+  'base-uri \'none\'',
+  'form-action \'none\'',
+  'frame-ancestors \'self\'',
+].join('; ');
+
+/** Any other file in the folder (a ticket, a brief, something a repository brought) opens in an origin of its own with no script. */
+const SANDBOXED_FILE_POLICY = 'sandbox';
+
+const PAGE_ROUTE_PATTERN = /^\/projects\/([^/]+)\/page\/(.+)$/;
+
+const HTTP_STATUS = {
+  FORBIDDEN:          403,
+  NOT_FOUND:          404,
+  METHOD_NOT_ALLOWED: 405,
+} as const;
+
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' } as const;
+
+/** Each loopback name with the port; on the default HTTP port also bare, as a browser sends it there. */
+export function allowedHostHeadersOf(port: number): Set<string> {
+  const withPort = LOOPBACK_HOST_NAMES.map((hostName) => `${hostName}:${port}`);
+  return new Set(port === HTTP_DEFAULT_PORT ? [...withPort, ...LOOPBACK_HOST_NAMES] : withPort);
+}
+
+/** Asked of a path already contained in the page folder, so its normal form is relative to it. */
+function contentSecurityPolicyOf(containedRequestedPath: string): string {
+  const relativePath = normalize(containedRequestedPath);
+  return relativePath === DASHBOARD_FILES.PAGE_FILE_NAME || relativePath === DASHBOARD_FILES.STAMP_FILE_NAME ? BOARD_PAGE_POLICY : SANDBOXED_FILE_POLICY;
+}
+
+function plainResponse(status: number, text: string, extraHeaders: Record<string, string> = {}): Response {
+  return new Response(text, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...NO_STORE_HEADERS, ...extraHeaders } });
+}
+
+function methodNotAllowed(allowedMethods: string): Response {
+  return plainResponse(HTTP_STATUS.METHOD_NOT_ALLOWED, 'Method not allowed', { Allow: allowedMethods });
+}
+
+function decodedOrNull(text: string): string | null {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return null;
+  }
+}
+
+function snapshotEvent(snapshot: DashboardSnapshot): string {
+  return `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`;
+}
+
+interface ServingDependencies {
+  monitor:                       ProjectMonitor;
+  heartbeatIntervalMilliseconds: number;
+}
+
+/** The server with its monitor given; `startDashboardServer` builds the real monitor, a spec may pass its own. */
+export async function serveDashboard(options: DashboardServerOptions, dependencies: ServingDependencies): Promise<DashboardServerStart> {
+  const { monitor } = dependencies;
+  const closeOpenStreams = new Set<() => void>();
+  let stopping: Promise<void> | null = null;
+  let resolveStopped = (): void => {};
+  const stopped = new Promise<void>((resolve) => {
+    resolveStopped = resolve;
+  });
+
+  let server: Bun.Server<undefined>;
+  try {
+    server = Bun.serve({
+      hostname:    LOOPBACK_ADDRESS,
+      port:        options.port,
+      development: false,
+      // Bun turns SO_REUSEPORT on without development mode, which would let a second dashboard share the port.
+      reusePort:   false,
+      routes:      { '/': dashboardApplication },
+      fetch:       (request, servingServer) => answer(request, servingServer),
+    });
+  } catch (error) {
+    if (UnknownValueUtil.errorCodeOf(error) === 'EADDRINUSE') return { kind: 'port-in-use', port: options.port };
+    throw error;
+  }
+
+  const port = server.port ?? options.port;
+  const url = `http://${LOOPBACK_ADDRESS}:${port}`;
+  const allowedHosts = allowedHostHeadersOf(port);
+  const ownOrigins = new Set([...allowedHosts].map((host) => `http://${host}`));
+  const monitorStarted = monitor.start();
+
+  function stop(): Promise<void> {
+    stopping ??= (async () => {
+      for (const closeStream of [...closeOpenStreams]) closeStream();
+      await monitor.stop();
+      await server.stop(true);
+      resolveStopped();
+    })();
+    return stopping;
+  }
+
+  function identityResponse(): Response {
+    const identity: ServerIdentity = { application: 'agent-dashboard', version: options.version, pid: process.pid };
+    return Response.json(identity, { headers: NO_STORE_HEADERS });
+  }
+
+  function eventStreamResponse(request: Request, servingServer: Bun.Server<undefined>): Response {
+    servingServer.timeout(request, 0);
+    const encoder = new TextEncoder();
+    let releaseStream = (): void => {};
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        function send(text: string): void {
+          try {
+            controller.enqueue(encoder.encode(text));
+          } catch {
+            releaseStream();
+          }
+        }
+        const unsubscribe = monitor.subscribe((snapshot) => send(snapshotEvent(snapshot)));
+        const heartbeat = setInterval(() => send(': heartbeat\n\n'), dependencies.heartbeatIntervalMilliseconds);
+
+        function closeStream(): void {
+          releaseStream();
+          try {
+            controller.close();
+          } catch {
+            // The client may already have gone, which closed it.
+          }
+        }
+        let released = false;
+        releaseStream = () => {
+          if (released) return;
+          released = true;
+          unsubscribe();
+          clearInterval(heartbeat);
+          closeOpenStreams.delete(closeStream);
+        };
+        closeOpenStreams.add(closeStream);
+        request.signal.addEventListener('abort', () => releaseStream());
+        send(snapshotEvent(monitor.snapshot()));
+      },
+      cancel() {
+        releaseStream();
+      },
+    });
+    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Connection': 'keep-alive', ...NO_STORE_HEADERS }, });
+  }
+
+  function shutdownResponse(request: Request): Response {
+    const origin = request.headers.get('Origin');
+    const shutdownHeader = request.headers.get(DASHBOARD_PROTOCOL.SHUTDOWN_HEADER_NAME);
+    if (shutdownHeader !== DASHBOARD_PROTOCOL.SHUTDOWN_HEADER_VALUE || (origin !== null && !ownOrigins.has(origin))) {
+      return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    }
+    // The answer leaves before the server closes its connections.
+    setTimeout(() => void stop(), 0);
+    return plainResponse(DASHBOARD_PROTOCOL.SHUTDOWN_ACCEPTED_STATUS, 'Stopping');
+  }
+
+  async function pageFileResponse(pathname: string): Promise<Response> {
+    const notFound = plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const match = PAGE_ROUTE_PATTERN.exec(pathname);
+    const trackerId = match?.[1] === undefined ? null : decodedOrNull(match[1]);
+    const requestedPath = match?.[2] === undefined ? null : decodedOrNull(match[2]);
+    if (trackerId === null || requestedPath === null) return notFound;
+    const pageFolder = monitor.pageFolderOf(trackerId);
+    if (pageFolder === null) return notFound;
+    const verdict = resolveContainedPath(pageFolder, requestedPath);
+    if (verdict.kind === 'refused') return notFound;
+    const file = Bun.file(verdict.path);
+    try {
+      if (!(await file.stat()).isFile()) return notFound;
+    } catch {
+      return notFound;
+    }
+    return new Response(file, {
+      headers: {
+        'Content-Type':            file.type,
+        'X-Content-Type-Options':  'nosniff',
+        'Content-Security-Policy': contentSecurityPolicyOf(requestedPath),
+        ...NO_STORE_HEADERS,
+      },
+    });
+  }
+
+  async function answer(request: Request, servingServer: Bun.Server<undefined>): Promise<Response> {
+    if (!allowedHosts.has(request.headers.get('Host') ?? '')) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden host');
+    const { pathname } = new URL(request.url);
+    const isRead = request.method === 'GET' || request.method === 'HEAD';
+
+    if (pathname === DASHBOARD_PROTOCOL.SHUTDOWN_PATH) return request.method === 'POST' ? shutdownResponse(request) : methodNotAllowed('POST');
+    if (pathname === DASHBOARD_PROTOCOL.IDENTITY_PATH) return isRead ? identityResponse() : methodNotAllowed('GET, HEAD');
+    if (pathname === '/api/snapshot' || pathname === '/api/events' || pathname.startsWith('/projects/')) {
+      if (!isRead) return methodNotAllowed('GET, HEAD');
+      await monitorStarted;
+      if (pathname === '/api/snapshot') return Response.json(monitor.snapshot(), { headers: NO_STORE_HEADERS });
+      if (pathname === '/api/events') return eventStreamResponse(request, servingServer);
+      return pageFileResponse(pathname);
+    }
+    return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+  }
+
+  // Returned while the first read runs: the identity answers at once, so `serve` must write its record at once too;
+  // the data routes wait for that read themselves.
+  return {
+    kind:   'started',
+    server: {
+      url, port, stop, stopped
+    }
+  };
+}
+
+export function startDashboardServer(options: DashboardServerOptions): Promise<DashboardServerStart> {
+  const monitor = createProjectMonitor({
+    homeDirectory:   options.homeDirectory,
+    readBoardStatus: (root) => readBoardStatus({
+      executable:          options.agentProgressExecutable,
+      runtimeExecutable:   options.runtimeExecutablePath,
+      root,
+      timeoutMilliseconds: DASHBOARD_LIMITS.STATUS_READ_TIMEOUT_MILLISECONDS,
+    }),
+    clock:                        options.clock,
+    quietMilliseconds:            DASHBOARD_LIMITS.REFRESH_QUIET_MILLISECONDS,
+    maximumWaitMilliseconds:      DASHBOARD_LIMITS.REFRESH_MAXIMUM_WAIT_MILLISECONDS,
+    sweepIntervalMilliseconds:    DASHBOARD_LIMITS.SAFETY_SWEEP_INTERVAL_MILLISECONDS,
+    maximumConcurrentStatusReads: DASHBOARD_LIMITS.MAXIMUM_CONCURRENT_STATUS_READS,
+  });
+  return serveDashboard(options, { monitor, heartbeatIntervalMilliseconds: DASHBOARD_LIMITS.HEARTBEAT_INTERVAL_MILLISECONDS });
+}

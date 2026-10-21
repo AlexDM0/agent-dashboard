@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overview</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+
+.theme-light, .theme-dark {
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --r-1: 4px; --r-2: 6px; --r-3: 10px; --r-pill: 999px;
+  --fs-micro: 11px; --fs-small: 12px; --fs-body: 13px;
+  --fs-title: 15px; --fs-page: 20px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --motion-slow: 220ms;
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --pulse-status:   1.6s;
+  --pulse-activity: 1.4s;
+}
+
+.theme-light {
+  color-scheme: light;
+  --bg:          oklch(0.975 0.004 265);
+  --surface:     oklch(1 0 0);
+  --surface-2:   oklch(0.961 0.006 265);
+  --ink:         oklch(0.24 0.02 265);
+  --ink-muted:   oklch(0.52 0.02 265);
+  --line:        oklch(0.905 0.008 265);
+  --line-strong: oklch(0.82 0.012 265);
+  --link:        oklch(0.48 0.13 255);
+  --link-tint:   oklch(0.48 0.13 255 / 0.10);
+  --link-soft:   oklch(0.48 0.13 255 / 0.45);
+  --surface-selected: oklch(0.93 0.008 262);
+  --status-live: oklch(0.62 0.17 150);
+  --warn-tint:   oklch(0.965 0.045 85);
+  --warn-edge:   oklch(0.80 0.10 80);
+  --warn-ink:    oklch(0.44 0.10 70);
+  --err-tint:    oklch(0.962 0.035 25);
+  --err-edge:    oklch(0.80 0.10 25);
+  --err-ink:     oklch(0.46 0.14 25);
+  --shadow-control: oklch(0 0 0 / 0.08);
+  --shadow-popover: oklch(0 0 0 / 0.14);
+  --shadow-panel:   oklch(0 0 0 / 0.08);
+  --shadow-card-lift: oklch(0 0 0 / 0.12);
+}
+
+.theme-dark {
+  color-scheme: dark;
+  --bg:          oklch(0.185 0.012 265);
+  --surface:     oklch(0.232 0.014 265);
+  --surface-2:   oklch(0.275 0.014 265);
+  --ink:         oklch(0.94 0.008 265);
+  --ink-muted:   oklch(0.70 0.015 265);
+  --line:        oklch(0.33 0.014 265);
+  --line-strong: oklch(0.42 0.016 265);
+  --link:        oklch(0.78 0.10 255);
+  --link-tint:   oklch(0.78 0.10 255 / 0.14);
+  --link-soft:   oklch(0.78 0.10 255 / 0.50);
+  --surface-selected: oklch(0.25 0.022 262);
+  --status-live: oklch(0.76 0.18 150);
+  --warn-tint:   oklch(0.31 0.055 80);
+  --warn-edge:   oklch(0.50 0.09 80);
+  --warn-ink:    oklch(0.92 0.06 85);
+  --err-tint:    oklch(0.30 0.06 25);
+  --err-edge:    oklch(0.50 0.11 25);
+  --err-ink:     oklch(0.92 0.05 25);
+  --shadow-control: oklch(0 0 0 / 0.08);
+  --shadow-popover: oklch(0 0 0 / 0.45);
+  --shadow-panel:   oklch(0 0 0 / 0.4);
+  --shadow-card-lift: oklch(0 0 0 / 0.3);
+}
+
+[data-state="pending"]     { --s-fill: oklch(0.875 0.008 265); --s-tint: oklch(0.965 0.005 265); --s-ink: oklch(0.47 0.015 265); --s-edge: oklch(0.885 0.008 265); }
+[data-state="in-progress"] { --s-fill: oklch(0.79 0.145 80);   --s-tint: oklch(0.963 0.048 85);  --s-ink: oklch(0.44 0.105 70);  --s-edge: oklch(0.83 0.11 80); }
+[data-state="paused"]      { --s-fill: oklch(0.78 0.045 265);  --s-tint: oklch(0.955 0.014 265); --s-ink: oklch(0.44 0.040 265); --s-edge: oklch(0.83 0.035 265); }
+[data-state="in-review"]   { --s-fill: oklch(0.66 0.145 255);  --s-tint: oklch(0.957 0.028 255); --s-ink: oklch(0.44 0.135 255); --s-edge: oklch(0.80 0.085 255); }
+[data-state="reviewing"]   { --s-fill: oklch(0.70 0.115 205);  --s-tint: oklch(0.957 0.028 205); --s-ink: oklch(0.43 0.09 205);  --s-edge: oklch(0.80 0.07 205); }
+[data-state="reviewed"]    { --s-fill: oklch(0.70 0.135 155);  --s-tint: oklch(0.957 0.033 155); --s-ink: oklch(0.42 0.095 155); --s-edge: oklch(0.79 0.08 155); }
+[data-state="delivered"]   { --s-fill: oklch(0.65 0.145 300);  --s-tint: oklch(0.957 0.030 300); --s-ink: oklch(0.44 0.125 300); --s-edge: oklch(0.80 0.075 300); }
+[data-state="abandoned"]   { --s-fill: oklch(0.80 0.006 265);  --s-tint: oklch(0.955 0.004 265); --s-ink: oklch(0.50 0.008 265); --s-edge: oklch(0.885 0.006 265); }
+.theme-dark [data-state="pending"]     { --s-fill: oklch(0.42 0.012 265); --s-tint: oklch(0.29 0.010 265); --s-ink: oklch(0.80 0.012 265); --s-edge: oklch(0.40 0.012 265); }
+.theme-dark [data-state="in-progress"] { --s-fill: oklch(0.76 0.145 80);  --s-tint: oklch(0.33 0.065 80);  --s-ink: oklch(0.91 0.075 85);  --s-edge: oklch(0.52 0.10 80); }
+.theme-dark [data-state="paused"]      { --s-fill: oklch(0.62 0.045 265); --s-tint: oklch(0.31 0.022 265); --s-ink: oklch(0.85 0.030 265); --s-edge: oklch(0.47 0.030 265); }
+.theme-dark [data-state="in-review"]   { --s-fill: oklch(0.66 0.150 255); --s-tint: oklch(0.32 0.060 255); --s-ink: oklch(0.88 0.065 255); --s-edge: oklch(0.50 0.10 255); }
+.theme-dark [data-state="reviewing"]   { --s-fill: oklch(0.72 0.115 205); --s-tint: oklch(0.32 0.050 205); --s-ink: oklch(0.89 0.055 205); --s-edge: oklch(0.50 0.075 205); }
+.theme-dark [data-state="reviewed"]    { --s-fill: oklch(0.72 0.135 155); --s-tint: oklch(0.32 0.055 155); --s-ink: oklch(0.89 0.060 155); --s-edge: oklch(0.50 0.080 155); }
+.theme-dark [data-state="delivered"]   { --s-fill: oklch(0.68 0.145 300); --s-tint: oklch(0.32 0.060 300); --s-ink: oklch(0.89 0.060 300); --s-edge: oklch(0.51 0.095 300); }
+.theme-dark [data-state="abandoned"]   { --s-fill: oklch(0.40 0.008 265); --s-tint: oklch(0.28 0.006 265); --s-ink: oklch(0.72 0.010 265); --s-edge: oklch(0.38 0.008 265); }
+
+.ap-root { min-height: 1180px; background: var(--bg); color: var(--ink); font: var(--fs-body)/1.5 var(--font-ui); -webkit-font-smoothing: antialiased; }
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--ink); text-decoration: underline; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-muted); }
+.ellipsis { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ap-status-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font: 400 var(--fs-small)/1.5 var(--font-mono); color: var(--ink-muted); }
+.ap-status-dot { flex: none; width: 10px; height: 10px; border-radius: var(--r-pill); background: var(--ink-muted); }
+.ap-status-line[data-freshness="live"] .ap-status-dot { background: var(--status-live); }
+.ap-status-label { font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+
+.ap-stat { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.ap-stat-n { font: 500 18px/1.25 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--ink); }
+.ap-stat-n small { font-size: var(--fs-small); color: var(--ink-muted); letter-spacing: 0; }
+.ap-stat-label { font: 400 var(--fs-small)/1.3 var(--font-ui); color: var(--ink-muted); }
+.ap-stat[data-state] .ap-stat-n { color: var(--s-ink); }
+
+.ap-theme { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); }
+.ap-theme button { padding: 3px 8px; font: 500 var(--fs-micro)/normal var(--font-mono); border: 0; border-radius: 5px; background: transparent; color: var(--ink-muted); cursor: pointer; }
+.ap-theme button:hover { color: var(--ink); }
+.ap-theme button[aria-checked="true"] { background: var(--surface-selected); color: var(--ink); }
+.ap-theme button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.ap-seg { display: flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--r-2); }
+.ap-seg button { font: 500 var(--fs-small)/1 var(--font-mono); font-variant-numeric: tabular-nums; padding: 5px 9px; border: 0; border-radius: var(--r-1); background: transparent; color: var(--ink-muted); cursor: pointer; }
+.ap-seg button:hover { color: var(--ink); }
+.ap-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px var(--shadow-control); }
+.ap-seg button:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+
+.ap-search { position: relative; display: flex; align-items: center; }
+.ap-search svg { position: absolute; left: 8px; width: 13px; height: 13px; color: var(--ink-muted); pointer-events: none; }
+.ap-search input { width: 260px; max-width: 100%; padding: 5px 8px 5px 27px; font: var(--fs-small)/1.4 var(--font-ui); color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-2); }
+.ap-search input::placeholder { color: var(--ink-muted); opacity: 1; }
+.ap-search input:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.ap-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ap-field-label { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+
+.ap-group-title { font-size: var(--fs-small); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+.ap-group-count { font: 600 var(--fs-small)/1 var(--font-mono); color: var(--ink); }
+
+.ap-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-3); transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out); }
+.ap-card:hover { border-color: var(--line-strong); box-shadow: 0 2px 8px var(--shadow-card-lift); }
+.ap-card.is-error { background: var(--err-tint); border-color: var(--err-edge); }
+.ap-card-section { padding: 10px var(--sp-4); }
+.ap-card-section + .ap-card-section { border-top: 1px solid var(--line); }
+.ap-card.is-error .ap-card-section + .ap-card-section { border-top-color: var(--err-edge); }
+.ap-card-name { font: 600 var(--fs-title)/1.3 var(--font-ui); color: var(--ink); }
+
+.ap-project-dot { flex: none; width: 10px; height: 10px; border-radius: var(--r-pill); background: var(--ink-muted); }
+.ap-project-dot[data-activity="live"] { background: var(--status-live); }
+.ap-project-dot[data-activity="waiting"] { background: oklch(0.79 0.145 80); }
+.ap-project-dot[data-activity="error"] { background: var(--err-ink); }
+@keyframes ap-pulse { 50% { opacity: 0.45; transform: scale(0.8); } }
+@media (prefers-reduced-motion: no-preference) {
+  .ap-status-line[data-freshness="live"] .ap-status-dot { animation: ap-pulse var(--pulse-status) ease-in-out infinite; }
+  .ap-project-dot[data-activity="live"] { box-shadow: 0 0 12px var(--status-live); animation: ap-pulse var(--pulse-activity) ease-in-out infinite; }
+}
+
+.ap-pill { display: inline-flex; align-items: center; justify-content: center; height: 19px; padding: 0 8px; font: 500 var(--fs-micro)/1 var(--font-ui); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; border: 1px solid var(--s-edge); border-radius: var(--r-pill); background: var(--s-tint); color: var(--s-ink); white-space: nowrap; }
+.ap-pill[data-state="pending"] { border-style: dashed; }
+.ap-pill.is-error { border-color: var(--err-edge); background: var(--surface); color: var(--err-ink); }
+
+.ap-badge { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 64px; height: 19px; font: 500 var(--fs-micro)/1 var(--font-ui); padding: 0 8px; border: 1px solid var(--s-edge); border-radius: var(--r-pill); background: var(--s-tint); color: var(--s-ink); white-space: nowrap; }
+
+.ap-slots { display: flex; gap: 3px; }
+.ap-slot { width: 22px; height: 8px; border-radius: 2px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.ap-slot[data-busy="true"] { background: var(--s-fill); box-shadow: none; }
+
+.ap-ticket-bar { display: flex; gap: 2px; height: 8px; border-radius: var(--r-pill); overflow: hidden; background: var(--surface-2); }
+.ap-ticket-bar > span { min-width: 4px; background: var(--s-fill); }
+
+.ap-flight-row { display: flex; align-items: center; gap: 10px; min-width: 0; line-height: 19px; }
+.ap-flight-id { flex: none; font: 500 var(--fs-small)/19px var(--font-mono); color: var(--ink-muted); }
+.ap-flight-title { flex: 1; }
+.ap-flight-owner { flex: none; font: 400 var(--fs-small)/19px var(--font-mono); color: var(--ink-muted); }
+.ap-flight-elapsed { flex: none; min-width: 30px; text-align: right; font: 700 var(--fs-small)/19px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+
+.ap-chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; font: 500 var(--fs-micro)/1 var(--font-mono); color: var(--ink-muted); background: transparent; border: 1px solid var(--line); border-radius: var(--r-pill); }
+.ap-chip[data-state] { color: var(--s-ink); background: var(--s-tint); border-color: var(--s-edge); }
+.ap-queue-label { font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+
+.ap-button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font: 500 var(--fs-small)/1 var(--font-ui); color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-2); cursor: pointer; text-decoration: none; transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out); }
+.ap-button:hover { border-color: var(--ink-muted); text-decoration: none; }
+.ap-button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.ap-button[data-primary] { color: var(--surface); background: var(--link); border-color: var(--link); }
+.ap-button[data-primary]:hover { color: var(--surface); background: var(--ink); border-color: var(--ink); }
+
+.ap-empty-panel { padding: var(--sp-6) var(--sp-4); text-align: center; color: var(--ink-muted); border: 1px dashed var(--line-strong); border-radius: var(--r-3); }
+</style>
+</helmet>
+<div class="{{ rootClass }}" style="width: 100%;">
+  <div style="max-width: 1680px; margin: 0 auto; padding: 28px clamp(16px, 3vw, 40px) 32px; display: flex; flex-direction: column; gap: 20px;">
+
+    <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 28px; padding-bottom: 20px; border-bottom: 1px solid var(--line);">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-width: 0;">
+        <h1 style="margin: 0; font: 700 var(--fs-page)/1.2 var(--font-ui); letter-spacing: -0.02em; color: var(--ink);">agent-dashboard</h1>
+        <div class="ap-status-line" data-freshness="live" role="status">
+          <span class="ap-status-dot" aria-hidden="true"></span>
+          <span class="ap-status-label">live</span>
+          <span>· updated 12s ago</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 12px 28px;">
+          <div class="ap-stat"><span class="ap-stat-n">5</span><span class="ap-stat-label">Projects</span></div>
+          <div class="ap-stat"><span class="ap-stat-n">3<small>/7</small></span><span class="ap-stat-label">Agents</span></div>
+          <div class="ap-stat"><span class="ap-stat-n">4</span><span class="ap-stat-label">Ready</span></div>
+          <div class="ap-stat" data-state="in-review"><span class="ap-stat-n">1</span><span class="ap-stat-label">Awaiting review</span></div>
+          <div class="ap-stat" data-state="paused"><span class="ap-stat-n">1</span><span class="ap-stat-label">Held</span></div>
+        </div>
+        <div class="ap-theme" role="radiogroup" aria-label="Theme">
+          <button type="button" role="radio" aria-checked="{{ themeAutoChecked }}" onClick="{{ chooseThemeAuto }}">Auto</button>
+          <button type="button" role="radio" aria-checked="{{ themeLightChecked }}" onClick="{{ chooseThemeLight }}">Light</button>
+          <button type="button" role="radio" aria-checked="{{ themeDarkChecked }}" onClick="{{ chooseThemeDark }}">Dark</button>
+        </div>
+      </div>
+    </header>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;">
+      <label class="ap-visually-hidden" for="project-search">Search projects by name or path</label>
+      <div class="ap-search" style="flex: 0 1 320px; min-width: 0;">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg>
+        <input id="project-search" type="search" placeholder="Search projects or paths" value="{{ searchText }}" onInput="{{ updateSearch }}" style="width: 100%;">
+      </div>
+      <div class="ap-seg" role="group" aria-label="Show projects">
+        <button type="button" aria-pressed="{{ filterAllPressed }}" onClick="{{ showAllProjects }}">All</button>
+        <button type="button" aria-pressed="{{ filterActivePressed }}" onClick="{{ showActiveProjects }}">Active</button>
+      </div>
+      <span class="mono muted" style="font-size: var(--fs-small); margin-left: auto;">{{ shownCaption }}</span>
+    </div>
+
+    <sc-for list="{{ groups }}" as="group" hint-placeholder-count="2">
+      <section style="display: flex; flex-direction: column; gap: 12px;" aria-label="{{ group.title }}">
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+          <h2 class="ap-group-title" style="margin: 0;">{{ group.title }}</h2>
+          <span class="ap-group-count">{{ group.count }}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr)); gap: 16px; align-items: start;">
+          <sc-for list="{{ group.projects }}" as="project" hint-placeholder-count="3">
+            <article class="{{ project.cardClass }}">
+
+              <div class="ap-card-section" style="display: flex; flex-direction: column; gap: 4px; padding-top: 14px;">
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                  <span class="ap-project-dot" data-activity="{{ project.activity }}" aria-hidden="true"></span>
+                  <h3 class="ap-card-name ellipsis" style="margin: 0; flex: 1;">{{ project.name }}</h3>
+                  <span class="{{ project.pillClass }}" data-state="{{ project.dispatcherState }}">{{ project.pillLabel }}</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding-left: 20px; font: 400 var(--fs-small)/1.5 var(--font-mono); color: var(--ink-muted);">
+                  <span class="ellipsis">{{ project.root }}</span>
+                  <span>{{ project.origin }}</span>
+                </div>
+              </div>
+
+              <sc-if value="{{ project.isReadable }}" hint-placeholder-val="{{ true }}">
+                <div class="ap-card-section" style="display: flex; flex-direction: column; gap: 10px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="ap-queue-label" style="width: 52px;">Slots</span>
+                    <div class="ap-slots" data-state="in-progress" aria-hidden="true">
+                      <sc-for list="{{ project.slots }}" as="slot" hint-placeholder-count="2">
+                        <span class="ap-slot" data-busy="{{ slot.busy }}"></span>
+                      </sc-for>
+                    </div>
+                    <span class="mono muted" style="font-size: var(--fs-small);">{{ project.slotCaption }}</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="ap-queue-label" style="width: 52px;">Tickets</span>
+                    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px;">
+                      <div class="ap-ticket-bar" role="img" aria-label="{{ project.ticketCaption }}">
+                        <sc-for list="{{ project.segments }}" as="segment" hint-placeholder-count="4">
+                          <span data-state="{{ segment.state }}" style="width: {{ segment.widthPercent }}%;" title="{{ segment.label }}"></span>
+                        </sc-for>
+                      </div>
+                      <span class="mono muted" style="font-size: var(--fs-small);">{{ project.ticketCaption }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <sc-if value="{{ project.hasFlight }}" hint-placeholder-val="{{ true }}">
+                  <div class="ap-card-section" style="display: flex; flex-direction: column; gap: 6px;">
+                    <span class="ap-queue-label">In flight</span>
+                    <sc-for list="{{ project.flightRows }}" as="row" hint-placeholder-count="2">
+                      <div class="ap-flight-row">
+                        <span class="ap-badge" data-state="{{ row.state }}">{{ row.kindLabel }}</span>
+                        <span class="ap-flight-id">{{ row.ticketId }}</span>
+                        <span class="ap-flight-title ellipsis" title="{{ row.title }}">{{ row.title }}</span>
+                        <span class="ap-flight-owner">{{ row.owner }}</span>
+                        <span class="ap-flight-elapsed">{{ row.elapsed }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ project.hasQueue }}" hint-placeholder-val="{{ true }}">
+                  <div class="ap-card-section" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;">
+                    <sc-for list="{{ project.queueGroups }}" as="queue" hint-placeholder-count="2">
+                      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+                        <span class="ap-queue-label" style="margin-right: 2px;">{{ queue.label }}</span>
+                        <sc-for list="{{ queue.ids }}" as="queued" hint-placeholder-count="2">
+                          <span class="ap-chip" data-state="{{ queued.state }}">{{ queued.ticketId }}</span>
+                        </sc-for>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <div class="ap-card-section" style="display: flex; align-items: baseline; gap: 10px; min-width: 0;">
+                  <span class="mono muted" style="flex: none; font-size: var(--fs-small);">{{ project.logTime }}</span>
+                  <span class="ellipsis" style="flex: 1;">{{ project.logText }}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ project.isUnreadable }}" hint-placeholder-val="{{ false }}">
+                <div class="ap-card-section" style="display: flex; flex-direction: column; gap: 6px;">
+                  <span class="ap-queue-label" style="color: var(--err-ink);">Board unreadable</span>
+                  <p class="mono" style="margin: 0; font-size: var(--fs-small); line-height: 1.55; color: var(--err-ink); overflow-wrap: anywhere;">{{ project.reason }}</p>
+                  <span class="mono muted" style="font-size: var(--fs-small);">Last page on disk {{ project.pageAge }}</span>
+                </div>
+              </sc-if>
+
+              <div class="ap-card-section" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <span class="muted" style="font-size: var(--fs-small);">Changed <span class="mono">{{ project.changedAgo }}</span> · <span class="mono">{{ project.lastCommand }}</span></span>
+                <a class="ap-button" data-primary="" href="Board.dc.html" aria-label="{{ project.openLabel }}">Open board
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"></path></svg>
+                </a>
+              </div>
+            </article>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+
+    <sc-if value="{{ nothingShown }}" hint-placeholder-val="{{ false }}">
+      <div class="ap-empty-panel">
+        <p style="margin: 0 0 4px; font: 600 var(--fs-title)/1.4 var(--font-ui); color: var(--ink);">No project matches</p>
+        <p style="margin: 0; font-size: var(--fs-small);">Nothing in the registry matches <span class="mono">{{ searchText }}</span> under this filter.</p>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { searchText: '', filter: 'all', themeChoice: 'auto' };
+  }
+
+  projects() {
+    const ticketBar = (counts) => {
+      const order = ['delivered', 'reviewed', 'in-review', 'in-progress', 'pending', 'abandoned'];
+      const total = order.reduce((sum, state) => sum + (counts[state] || 0), 0);
+      const segments = order
+        .filter((state) => (counts[state] || 0) > 0)
+        .map((state) => ({ state: state, widthPercent: ((counts[state] / total) * 100).toFixed(2), label: counts[state] + ' ' + state }));
+      const parts = [(counts.delivered || 0) + ' of ' + total + ' delivered'];
+      if (counts['in-review']) parts.push(counts['in-review'] + ' in review');
+      if (counts['in-progress']) parts.push(counts['in-progress'] + ' in progress');
+      if (counts.pending) parts.push(counts.pending + ' pending');
+      return { segments: segments, ticketCaption: parts.join(' · ') };
+    };
+    const slots = (limit, busy) => Array.from({ length: limit }, (unused, index) => ({ busy: index < busy ? 'true' : 'false' }));
+    const chips = (ids, state) => ids.map((ticketId) => ({ ticketId: ticketId, state: state }));
+
+    return [
+      Object.assign({
+        name: 'example-storefront', root: '~/development/example-storefront', origin: 'example/example-storefront',
+        group: 'active', activity: 'live', dispatcherState: 'in-progress', pillLabel: 'running',
+        slots: slots(2, 2), slotCaption: '2 of 2 slots busy',
+        flightRows: [
+          { state: 'in-progress', kindLabel: 'Building', ticketId: '#042', title: 'Add the end-to-end harness: a workspace per test', owner: 'opus', elapsed: '12m' },
+          { state: 'reviewing', kindLabel: 'Review 1', ticketId: '#038', title: 'Show the basket total with VAT per country', owner: 'opus', elapsed: '4m' }
+        ],
+        queueGroups: [{ label: 'Ready', ids: chips(['#043', '#045'], 'pending') }],
+        logTime: '20:15', logText: 'Ticket #042 started',
+        changedAgo: '12s ago', lastCommand: 'ticket start'
+      }, ticketBar({ delivered: 16, reviewed: 3, 'in-review': 2, 'in-progress': 2, pending: 32, abandoned: 1 })),
+      Object.assign({
+        name: 'invoice-service', root: '~/development/invoice-service', origin: 'example/invoice-service',
+        group: 'active', activity: 'live', dispatcherState: 'in-progress', pillLabel: 'running',
+        slots: slots(3, 1), slotCaption: '1 of 3 slots busy',
+        flightRows: [
+          { state: 'in-progress', kindLabel: 'Building', ticketId: '#014', title: 'Retry failed webhook deliveries with exponential backoff', owner: 'opus', elapsed: '7m' }
+        ],
+        queueGroups: [
+          { label: 'Ready', ids: chips(['#016', '#017'], 'pending') },
+          { label: 'Awaiting review', ids: chips(['#011'], 'in-review') }
+        ],
+        logTime: '20:11', logText: 'Ticket #011 finished; waiting for a reviewer',
+        changedAgo: '3m ago', lastCommand: 'ticket finish'
+      }, ticketBar({ delivered: 18, reviewed: 1, 'in-review': 1, 'in-progress': 1, pending: 10 })),
+      Object.assign({
+        name: 'field-notes-app', root: '~/development/field-notes-app', origin: 'example/field-notes-app',
+        group: 'idle', activity: 'idle', dispatcherState: 'pending', pillLabel: 'finished',
+        slots: slots(2, 0), slotCaption: '0 of 2 slots busy',
+        flightRows: [],
+        queueGroups: [{ label: 'Held', ids: chips(['#007'], 'paused') }],
+        logTime: '18:42', logText: 'Dispatcher finished: every ticket left is held',
+        changedAgo: '1h ago', lastCommand: 'ticket deliver'
+      }, ticketBar({ delivered: 23, pending: 1 })),
+      Object.assign({
+        name: 'example-agency-site', root: '~/development/example-agency-site', origin: 'example/example-agency-site',
+        group: 'idle', activity: 'idle', dispatcherState: 'abandoned', pillLabel: 'stopped',
+        slots: slots(2, 0), slotCaption: '0 of 2 slots busy',
+        flightRows: [],
+        queueGroups: [],
+        logTime: 'Oct 18', logText: 'Release of #008 merged into main',
+        changedAgo: '3d ago', lastCommand: 'release'
+      }, ticketBar({ delivered: 8, pending: 3, abandoned: 1 })),
+      {
+        name: 'research-wiki', root: '~/development/research-wiki', origin: 'example/research-wiki',
+        group: 'idle', activity: 'error', unreadable: true, dispatcherState: 'unreadable', pillLabel: 'unreadable',
+        reason: 'agent-progress status exited 1: progress.json is in an older format; run agent-progress update',
+        pageAge: '6d ago', changedAgo: '6d ago', lastCommand: 'log',
+        slots: [], segments: [], flightRows: [], queueGroups: [],
+        slotCaption: '', ticketCaption: '', logTime: '', logText: ''
+      }
+    ];
+  }
+
+  renderVals() {
+    const darkTweak = this.props.dark ?? false;
+    const themeChoice = this.state.themeChoice;
+    const isDark = themeChoice === 'dark' || (themeChoice === 'auto' && darkTweak);
+    const searchText = this.state.searchText;
+    const needle = searchText.trim().toLowerCase();
+    const onlyActive = this.state.filter === 'active';
+
+    const allProjects = this.projects().map((project) => Object.assign({}, project, {
+      isReadable: !project.unreadable,
+      isUnreadable: !!project.unreadable,
+      cardClass: project.unreadable ? 'ap-card is-error' : 'ap-card',
+      pillClass: project.unreadable ? 'ap-pill is-error' : 'ap-pill',
+      hasFlight: project.flightRows.length > 0,
+      hasQueue: project.queueGroups.length > 0,
+      openLabel: 'Open board of ' + project.name
+    }));
+    const shownProjects = allProjects.filter((project) =>
+      (!onlyActive || project.group === 'active') &&
+      (needle === '' || project.name.toLowerCase().includes(needle) || project.root.toLowerCase().includes(needle)));
+
+    const groups = [
+      { key: 'active', title: 'Active' },
+      { key: 'idle', title: 'Idle' }
+    ].map((group) => {
+      const projects = shownProjects.filter((project) => project.group === group.key);
+      return { title: group.title, count: String(projects.length), projects: projects };
+    }).filter((group) => group.projects.length > 0);
+
+    return {
+      rootClass: isDark ? 'ap-root theme-dark' : 'ap-root theme-light',
+      themeAutoChecked: themeChoice === 'auto' ? 'true' : 'false',
+      themeLightChecked: themeChoice === 'light' ? 'true' : 'false',
+      themeDarkChecked: themeChoice === 'dark' ? 'true' : 'false',
+      chooseThemeAuto: () => this.setState({ themeChoice: 'auto' }),
+      chooseThemeLight: () => this.setState({ themeChoice: 'light' }),
+      chooseThemeDark: () => this.setState({ themeChoice: 'dark' }),
+      searchText: searchText,
+      updateSearch: (event) => this.setState({ searchText: event.target.value }),
+      filterAllPressed: onlyActive ? 'false' : 'true',
+      filterActivePressed: onlyActive ? 'true' : 'false',
+      showAllProjects: () => this.setState({ filter: 'all' }),
+      showActiveProjects: () => this.setState({ filter: 'active' }),
+      shownCaption: shownProjects.length + ' of ' + allProjects.length + ' projects',
+      groups: groups,
+      nothingShown: groups.length === 0
+    };
+  }
+}
+</script>
+</body>
+</html>

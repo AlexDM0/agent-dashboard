@@ -1,0 +1,30 @@
+{
+  "name": "agent-dashboard",
+  "version": "0.1.0",
+  "description": "A local dashboard over every repository the agent-progress CLI tracks on this machine: an overview of the agentic work in flight and each project's own board, read live from disk",
+  "type": "module",
+  "bin": {
+    "agent-dashboard": "agent-dashboard.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && tsc -p web/tsconfig.spec.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "setup": "bash setup.sh",
+    "test": "bun test"
+  },
+  "private": true,
+  "devDependencies": {
+    "@reliquary/eslint-config": "^1.0.1",
+    "@reliquary/eslint-config-react": "^1.0.1",
+    "@types/bun": "^1.3.14",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9",
+    "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}
