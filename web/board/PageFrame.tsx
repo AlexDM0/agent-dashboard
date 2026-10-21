@@ -1,7 +1,7 @@
-import { type RefObject, useEffect }   from 'react';
-import { EMBEDDED_BOARD_ATTRIBUTE }    from '../preferences/EmbeddedBoardTheme.ts';
-import { OVERVIEW_HASH }               from '../shell/HashRoute.ts';
-import { followEscapeInEmbeddedBoard } from './EmbeddedBoardEscape.ts';
+import { type RefObject, useEffect, useState } from 'react';
+import { EMBEDDED_BOARD_ATTRIBUTE }            from '../preferences/EmbeddedBoardTheme.ts';
+import { OVERVIEW_HASH }                       from '../shell/HashRoute.ts';
+import { followEscapeInEmbeddedBoard }         from './EmbeddedBoardEscape.ts';
 
 interface PageFrameProperties {
   pageUrl:        string;
@@ -14,6 +14,9 @@ function leaveTheBoard(): void {
 }
 
 export function PageFrame({ pageUrl, projectName, frameReference }: PageFrameProperties) {
+  // The board's template carries a placeholder project name until its script runs, so the frame stays hidden until load.
+  const [isBoardLoaded, setIsBoardLoaded] = useState(false);
+
   // A key pressed inside the frame never reaches this window, so each page the frame loads is followed itself.
   useEffect(() => {
     const frame = frameReference.current;
@@ -24,10 +27,17 @@ export function PageFrame({ pageUrl, projectName, frameReference }: PageFramePro
     const followLoadedBoard = (): void => {
       stopFollowing();
       stopFollowing = () => {};
+      setIsBoardLoaded(true);
       try {
         const boardWindow = frame.contentWindow;
         if (boardWindow !== null) {
-          stopFollowing = followEscapeInEmbeddedBoard(boardWindow, leaveTheBoard);
+          const hideWhileReloading = (): void => setIsBoardLoaded(false);
+          const stopFollowingEscape = followEscapeInEmbeddedBoard(boardWindow, leaveTheBoard);
+          boardWindow.addEventListener('pagehide', hideWhileReloading);
+          stopFollowing = () => {
+            stopFollowingEscape();
+            boardWindow.removeEventListener('pagehide', hideWhileReloading);
+          };
         }
       } catch {
         // A frame from another origin cannot be reached; Esc then works only outside it.
@@ -46,7 +56,13 @@ export function PageFrame({ pageUrl, projectName, frameReference }: PageFramePro
 
   return (
     <section className="ap-frame" aria-label={`Embedded progress.html of ${projectName}`}>
-      <iframe ref={frameReference} className="ap-page-frame" src={pageUrl} title={`Board of ${projectName}`} {...{ [EMBEDDED_BOARD_ATTRIBUTE]: '' }} />
+      <iframe
+        ref={frameReference}
+        className={isBoardLoaded ? 'ap-page-frame' : 'ap-page-frame is-loading'}
+        src={pageUrl}
+        title={`Board of ${projectName}`}
+        {...{ [EMBEDDED_BOARD_ATTRIBUTE]: '' }}
+      />
     </section>
   );
 }

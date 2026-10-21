@@ -289,6 +289,7 @@ ul { padding: 0; list-style: none; }
 .ap-toolbar-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .ap-frame { flex: 1; min-height: 0; display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-3); overflow: hidden; }
 .ap-page-frame { flex: 1; display: block; width: 100%; height: 100%; border: 0; background: var(--bg); }
+.ap-page-frame.is-loading { visibility: hidden; }
 
 /* The rail becomes a strip of chips over the frame. */
 @media (max-width: 767px) {
