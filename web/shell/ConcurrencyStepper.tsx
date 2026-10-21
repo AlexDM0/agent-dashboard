@@ -1,6 +1,8 @@
-import { useState }                                        from 'react';
+import { useEffect, useReducer, useRef }                   from 'react';
+import { WEB_LIMITS }                                      from '../constants/WebLimits.ts';
 import { requestConcurrencyLimit }                         from './ConcurrencyRequest.ts';
 import { steppedConcurrencyLimitOf, type ConcurrencyStep } from './ConcurrencyStep.ts';
+import { ConcurrencyStepperStateUtil }                     from './ConcurrencyStepperState.ts';
 
 interface ConcurrencyStepperProperties {
   trackerId:   string;
@@ -10,17 +12,37 @@ interface ConcurrencyStepperProperties {
 }
 
 export function ConcurrencyStepper({ trackerId, projectName, shownLimit }: ConcurrencyStepperProperties) {
-  const [isRequestInFlight, setIsRequestInFlight] = useState(false);
-  const [refusalReason, setRefusalReason] = useState<string | null>(null);
+  const [stepperState, dispatch] = useReducer(
+    ConcurrencyStepperStateUtil.nextStateOf,
+    undefined,
+    ConcurrencyStepperStateUtil.initialState
+  );
+  const isBusy = ConcurrencyStepperStateUtil.isBusy(stepperState);
+  const note = ConcurrencyStepperStateUtil.noteOf(stepperState);
+  const isAwaitingSnapshot = stepperState.kind === 'awaiting-snapshot';
+
+  // A snapshot can carry the new limit before the request's own answer arrives; the answer then reads it here.
+  const shownLimitRef = useRef(shownLimit);
+  useEffect(() => {
+    shownLimitRef.current = shownLimit;
+    dispatch({ kind: 'snapshot-received', shownLimit });
+  }, [shownLimit]);
+
+  useEffect(() => {
+    if (!isAwaitingSnapshot) return undefined;
+    const waitTimeout = window.setTimeout(
+      () => dispatch({ kind: 'snapshot-wait-elapsed' }),
+      WEB_LIMITS.CONCURRENCY_SNAPSHOT_WAIT_MILLISECONDS
+    );
+    return () => window.clearTimeout(waitTimeout);
+  }, [isAwaitingSnapshot]);
 
   async function requestStep(step: ConcurrencyStep): Promise<void> {
     const steppedLimit = steppedConcurrencyLimitOf(shownLimit, step);
     if (steppedLimit === null) return;
-    setRefusalReason(null);
-    setIsRequestInFlight(true);
+    dispatch({ kind: 'request-sent', requestedLimit: steppedLimit });
     const verdict = await requestConcurrencyLimit(trackerId, steppedLimit);
-    setIsRequestInFlight(false);
-    if (verdict.kind === 'refused') setRefusalReason(verdict.reason);
+    dispatch({ kind: 'verdict-received', verdict, shownLimit: shownLimitRef.current });
   }
 
   return (
@@ -30,7 +52,7 @@ export function ConcurrencyStepper({ trackerId, projectName, shownLimit }: Concu
         type="button"
         className="ap-control ap-stepper-button"
         aria-label={`Lower the agent limit of ${projectName}`}
-        disabled={isRequestInFlight || steppedConcurrencyLimitOf(shownLimit, 'lower') === null}
+        disabled={isBusy || steppedConcurrencyLimitOf(shownLimit, 'lower') === null}
         onClick={() => void requestStep('lower')}
       >
         −
@@ -39,12 +61,16 @@ export function ConcurrencyStepper({ trackerId, projectName, shownLimit }: Concu
         type="button"
         className="ap-control ap-stepper-button"
         aria-label={`Raise the agent limit of ${projectName}`}
-        disabled={isRequestInFlight || steppedConcurrencyLimitOf(shownLimit, 'raise') === null}
+        disabled={isBusy || steppedConcurrencyLimitOf(shownLimit, 'raise') === null}
         onClick={() => void requestStep('raise')}
       >
         +
       </button>
-      {refusalReason === null ? null : <span className="ap-stepper-refusal" role="alert">{refusalReason}</span>}
+      {note === null ? null : (
+        <span className={note.isRefusal ? 'ap-stepper-refusal' : 'ap-stepper-note'} role={note.isRefusal ? 'alert' : 'status'}>
+          {note.text}
+        </span>
+      )}
     </span>
   );
 }

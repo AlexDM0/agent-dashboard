@@ -175,6 +175,7 @@ ul { padding: 0; list-style: none; }
 .ap-stepper { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .ap-stepper-button { width: 26px; padding: 0; justify-content: center; font-family: var(--font-mono); }
 .ap-stepper-refusal { min-width: 0; font-size: var(--fs-small); color: var(--err-ink); overflow-wrap: anywhere; }
+.ap-stepper-note { min-width: 0; font-size: var(--fs-small); color: var(--ink-muted); overflow-wrap: anywhere; }
 
 .ap-ticket-bar-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .ap-ticket-bar { display: flex; gap: 2px; height: 8px; border-radius: var(--r-pill); overflow: hidden; background: var(--surface-2); }
