@@ -62,6 +62,28 @@ export function fakeExecutablePrintingText(directory: string, standardOutput: st
   return writeScript(directory, 'fake-agent-progress-text', `printf %s ${shellQuoted(standardOutput)}`);
 }
 
+/**
+ * Keeps a concurrency limit in `limitPath`: `concurrency <n>` appends its arguments and working directory to `callLogPath`,
+ * refuses a limit outside 1 to 10 at exit 1 as the CLI does, and stores it; `status --json --full` prints the document
+ * with the concurrency block's limit replaced by the stored one.
+ */
+export function fakeExecutableKeepingAConcurrencyLimit(directory: string, documentPath: string, limitPath: string, callLogPath: string): string {
+  return writeScript(directory, 'fake-agent-progress-concurrency', [
+    'if [ "$1" = concurrency ]; then',
+    `  echo "$* in $(pwd -P)" >> ${shellQuoted(callLogPath)}`,
+    '  case "$2" in',
+    '    [1-9]|10) ;;',
+    '    *) echo "\\"$2\\" is not a concurrency limit. Write a whole number of agents from 1 to 10." >&2; exit 1;;',
+    '  esac',
+    `  printf %s "$2" > ${shellQuoted(limitPath)}`,
+    '  exit 0',
+    'fi',
+    'if [ "$1 $2 $3" != "status --json --full" ]; then echo "unexpected arguments: $*" >&2; exit 64; fi',
+    `limit=$(cat ${shellQuoted(limitPath)} 2>/dev/null || echo 2)`,
+    `sed "s/\\"limit\\": 2,/\\"limit\\": $limit,/" ${shellQuoted(documentPath)}`,
+  ].join('\n'));
+}
+
 /** Prints the document only once `releasePath` exists, so a spec decides when the first status read ends. */
 export function fakeExecutablePrintingOnceReleased(directory: string, documentPath: string, releasePath: string): string {
   return writeScript(directory, 'fake-agent-progress-released', [

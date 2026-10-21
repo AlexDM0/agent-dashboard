@@ -38,6 +38,10 @@ export interface ProjectMonitor {
   snapshot(): DashboardSnapshot;
   /** The folder a project's page is served from, or null for a tracker the registry does not hold. */
   pageFolderOf(trackerId: string): string | null;
+  /** The project's root, or null for a tracker the registry does not hold. */
+  rootOf(trackerId: string): string | null;
+  /** Reads the project's board at once instead of waiting for its folder watch, and notifies subscribers. */
+  refreshProjectNow(trackerId: string): Promise<void>;
   /** Returns the unsubscribe. */
   subscribe(listener: SnapshotListener): () => void;
   /** Open file-system watches, so a spec can prove `stop` leaves none. */
@@ -292,6 +296,14 @@ export function createProjectMonitor(options: ProjectMonitorOptions): ProjectMon
     pageFolderOf(trackerId) {
       const project = projects.get(trackerId);
       return project === undefined ? null : pageFolderOfEntry(project.entry);
+    },
+
+    rootOf(trackerId) {
+      return projects.get(trackerId)?.entry.root ?? null;
+    },
+
+    async refreshProjectNow(trackerId) {
+      await projects.get(trackerId)?.runner.runNow();
     },
 
     subscribe(listener) {

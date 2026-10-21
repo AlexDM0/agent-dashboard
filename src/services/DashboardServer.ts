@@ -1,6 +1,7 @@
 /**
  * The dashboard's HTTP server, bound to 127.0.0.1 only: the React app, the server identity, the snapshot and its event
- * stream, each project's page folder, and a shutdown the CLI's `stop` asks for. Every route but the app shell refuses a
+ * stream, each project's page folder, a project's concurrency limit set through its agent-progress CLI, and a shutdown
+ * the CLI's `stop` asks for. Every route but the app shell refuses a
  * request whose Host is not this server's own, against DNS rebinding; Bun answers the shell before `fetch`, and it holds
  * no data.
  */
@@ -9,6 +10,7 @@ import { normalize } from 'node:path';
 import dashboardApplication from '../../web/index.html';
 
 import { readBoardStatus }                             from '../adapters/BoardStatusReader.ts';
+import { writeConcurrencyLimit }                       from '../adapters/ConcurrencyLimitWriter.ts';
 import { resolveContainedPath }                        from '../lib/contained-path/ContainedPath.ts';
 import { type DashboardSnapshot, type ServerIdentity } from '../shared/DashboardContract.ts';
 import { UnknownValueUtil }                            from '../shared/UnknownValueUtil.ts';
@@ -65,10 +67,16 @@ const SANDBOXED_FILE_POLICY = 'sandbox';
 
 const PAGE_ROUTE_PATTERN = /^\/projects\/([^/]+)\/page\/(.+)$/;
 
+const CONCURRENCY_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.CONCURRENCY_PATH_SUFFIX}$`);
+
 const HTTP_STATUS = {
+  NO_CONTENT:         204,
+  BAD_REQUEST:        400,
   FORBIDDEN:          403,
   NOT_FOUND:          404,
   METHOD_NOT_ALLOWED: 405,
+  CONFLICT:           409,
+  BAD_GATEWAY:        502,
 } as const;
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' } as const;
@@ -99,6 +107,23 @@ function decodedOrNull(text: string): string | null {
   } catch {
     return null;
   }
+}
+
+const CONCURRENCY_BODY_REFUSAL = 'The body must be { "limit": <n> }, a whole number '
+  + `from ${DASHBOARD_LIMITS.MINIMUM_CONCURRENCY_LIMIT} to ${DASHBOARD_LIMITS.MAXIMUM_CONCURRENCY_LIMIT}`;
+
+/** The limit a `{ "limit": <n> }` body asks for, or null when it is not JSON or not a whole number within the CLI's bounds. */
+function requestedConcurrencyLimitOf(bodyText: string): number | null {
+  let body: unknown;
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    return null;
+  }
+  if (typeof body !== 'object' || body === null || !Object.hasOwn(body, 'limit')) return null;
+  const { limit } = body as Record<string, unknown>;
+  if (typeof limit !== 'number' || !Number.isInteger(limit)) return null;
+  return limit >= DASHBOARD_LIMITS.MINIMUM_CONCURRENCY_LIMIT && limit <= DASHBOARD_LIMITS.MAXIMUM_CONCURRENCY_LIMIT ? limit : null;
 }
 
 function snapshotEvent(snapshot: DashboardSnapshot): string {
@@ -211,6 +236,32 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return plainResponse(DASHBOARD_PROTOCOL.SHUTDOWN_ACCEPTED_STATUS, 'Stopping');
   }
 
+  function isForeignOrigin(request: Request): boolean {
+    const origin = request.headers.get('Origin');
+    return origin !== null && !ownOrigins.has(origin);
+  }
+
+  async function concurrencyLimitResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const limit = requestedConcurrencyLimitOf(await request.text().catch(() => ''));
+    if (limit === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, CONCURRENCY_BODY_REFUSAL);
+    const verdict = await writeConcurrencyLimit({
+      executable:          options.agentProgressExecutable,
+      runtimeExecutable:   options.runtimeExecutablePath,
+      root,
+      limit,
+      timeoutMilliseconds: DASHBOARD_LIMITS.CONCURRENCY_WRITE_TIMEOUT_MILLISECONDS,
+    });
+    if (verdict.kind === 'refused') return plainResponse(HTTP_STATUS.CONFLICT, verdict.reason);
+    if (verdict.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, verdict.reason);
+    await monitor.refreshProjectNow(trackerId);
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+  }
+
   async function pageFileResponse(pathname: string): Promise<Response> {
     const notFound = plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const match = PAGE_ROUTE_PATTERN.exec(pathname);
@@ -244,6 +295,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
 
     if (pathname === DASHBOARD_PROTOCOL.SHUTDOWN_PATH) return request.method === 'POST' ? shutdownResponse(request) : methodNotAllowed('POST');
     if (pathname === DASHBOARD_PROTOCOL.IDENTITY_PATH) return isRead ? identityResponse() : methodNotAllowed('GET, HEAD');
+    const concurrencyRouteMatch = CONCURRENCY_ROUTE_PATTERN.exec(pathname);
+    if (concurrencyRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? concurrencyLimitResponse(request, concurrencyRouteMatch[1]) : methodNotAllowed('POST');
+    }
     if (pathname === '/api/snapshot' || pathname === '/api/events' || pathname.startsWith('/projects/')) {
       if (!isRead) return methodNotAllowed('GET, HEAD');
       await monitorStarted;

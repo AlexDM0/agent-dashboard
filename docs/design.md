@@ -3,7 +3,8 @@
 A governing dashboard over every repository the agent-progress CLI tracks on this machine. `agent-dashboard` starts
 (or reuses) a local Bun server and opens it in the browser: an overview of every project's agentic work in flight,
 and each project's own `progress.html` opened inside the dashboard in an iframe. It reads the files on disk live and
-never writes to a tracked repository.
+never writes to a tracked repository itself: the one change it makes there is running `agent-progress concurrency <n>`
+in the project's root when the user clicks for it, so the CLI takes its lock and writes its own tracker.
 
 ## Sources of truth
 
@@ -38,7 +39,8 @@ src/lib/             caller-agnostic building blocks: atomic file writing, debou
 src/shared/          DashboardContract.ts (types the server and the web share), constants (the CLI-server protocol
                      among them), Environment.ts, UnknownValueUtil.ts
 src/adapters/        RegistryReader (projects.json → verdict), BoardStatusReader (spawn status → verdict),
-                     BoardSummaryMapper (status JSON → BoardSummary)
+                     BoardSummaryMapper (status JSON → BoardSummary), ConcurrencyLimitWriter (spawn concurrency
+                     → verdict), AgentProgressRun (one agent-progress run → how it ended, for both spawns)
 src/services/        ProjectMonitor (watch, refresh, hold snapshots, notify), DashboardServer (Bun.serve routes)
 web/                 the React frontend, its own DOM-only TypeScript project; imports only src/shared types
 ```
@@ -82,6 +84,7 @@ holding no data. Routes:
 | `GET /api/snapshot` | the current `DashboardSnapshot` |
 | `GET /api/events` | Server-Sent Events: `event: snapshot` with the whole snapshot on connect and on every change; a `: heartbeat` comment every 25 s |
 | `GET /projects/<trackerId>/page/<path>` | a file from that project's page folder: 404 for an unknown tracker, a missing file, or any path that resolves (after `realpath`) outside the folder; `Cache-Control: no-store`. `progress.html` and `progress.stamp.js` carry a CSP limiting them to this origin (inline script and style allowed, `frame-ancestors 'self'`); every other file carries `Content-Security-Policy: sandbox`, so a script in a ticket's linked SVG or HTML runs in an opaque origin |
+| `POST /api/projects/<trackerId>/concurrency` | body `{ "limit": <n> }`, an absolute whole number from 1 to 10: runs `agent-progress concurrency <n>` in that project's root (the one change the dashboard makes to a tracked repository, on the user's click), re-reads the board at once so the next snapshot carries the new limit, and answers 204. Same Host guard; 403 for an `Origin` that is present and not this server's own, 404 for an unknown tracker, 400 for any other body (no CLI run), 409 with the CLI's message on its exit 1, 502 for any other failure |
 | `POST /api/shutdown` | stops the server (used by `agent-dashboard stop`; same Host guard) |
 
 ### The command line

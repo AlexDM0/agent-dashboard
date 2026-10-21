@@ -1,5 +1,5 @@
 /**
- * The reader is the one place the dashboard runs another program, so every way that run can go wrong is planted with a
+ * The reader's run, through `src/adapters/AgentProgressRun.ts`, is the dashboard's every read, so every way it can go wrong is planted with a
  * fake executable: missing, failing with a stderr, printing non-JSON, overrunning its timeout, a wrapper's child holding
  * the output open past it. A good run proves the arguments, the working directory, that the dashboard's own
  * `AGENT_PROGRESS_ROOT` does not leak into the child, and that a Bun script never loads the root's bunfig or .env.

@@ -7,10 +7,21 @@
  * on disconnect, a shutdown only the CLI can ask for, a held port reported, not thrown, a second dashboard never
  * sharing the port, and a start that answers its
  * identity before the first board read ends, since the CLI writes the server record as soon as the start resolves.
+ * The concurrency route, the one write, is proven against a fake CLI that keeps a limit and logs its calls: a foreign
+ * Origin, an unknown tracker and an out-of-range limit never reach the CLI, a CLI refusal and failure map to 409 and
+ * 502, and a 204 is followed by a snapshot carrying the new limit without any change in the watched folder.
  */
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
-import { createServer }                          from 'node:net';
-import { join }                                  from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs';
+import { createServer } from 'node:net';
+import { join }         from 'node:path';
 import {
   afterAll,
   afterEach,
@@ -19,9 +30,14 @@ import {
   test
 } from 'bun:test';
 
-import { type DashboardSnapshot, type ServerIdentity }                             from '../shared/DashboardContract.ts';
-import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry }    from '../testing/ExampleBoards.ts';
-import { fakeExecutablePrinting, fakeExecutablePrintingOnceReleased }              from '../testing/FakeAgentProgressExecutable.ts';
+import { type DashboardSnapshot, type ServerIdentity }                          from '../shared/DashboardContract.ts';
+import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../testing/ExampleBoards.ts';
+import {
+  fakeExecutableFailing,
+  fakeExecutableKeepingAConcurrencyLimit,
+  fakeExecutablePrinting,
+  fakeExecutablePrintingOnceReleased
+} from '../testing/FakeAgentProgressExecutable.ts';
 import { sendRawHttpRequest }                                                      from '../testing/RawHttpRequest.ts';
 import { createScratchDirectory, removeScratchDirectory, requireScratchDirectory } from '../testing/ScratchDirectory.ts';
 import {
@@ -108,7 +124,7 @@ test('the snapshot holds the registered project with its board read through agen
 });
 
 test('a Host that is not this server\'s own is refused on every data route, and each loopback name is let in', async () => {
-  for (const target of ['/api/identity', '/api/snapshot', '/api/events', pageTarget('progress.html'), '/api/shutdown']) {
+  for (const target of ['/api/identity', '/api/snapshot', '/api/events', pageTarget('progress.html'), '/api/shutdown', `/api/projects/${TRACKER_ID}/concurrency`]) {
     for (const host of ['evil.example', `evil.example:${server.port}`, '127.0.0.1:1', '127.0.0.1']) {
       const answer = await sendRawHttpRequest({ port: server.port, target, headers: { Host: host } });
       expect(answer.status, `${host} ${target}`).toBe(403);
@@ -329,4 +345,145 @@ test('the start resolves while the first board read still runs, and the snapshot
   writeFileSync(releasePath, '');
   const snapshot = await pendingSnapshot;
   expect(snapshot.projects.map((project) => [project.trackerId, project.health.kind])).toEqual([[TRACKER_ID, 'ready']]);
+});
+
+interface ConcurrencyServer {
+  server:      RunningDashboardServer;
+  callLogPath: string;
+}
+
+async function startConcurrencyServer(name: string): Promise<ConcurrencyServer> {
+  const limitPath = join(scratchDirectory, `${name}-limit`);
+  const callLogPath = join(scratchDirectory, `${name}-calls`);
+  rmSync(limitPath, { force: true });
+  rmSync(callLogPath, { force: true });
+  const concurrencyServer = startedOrThrow(await startDashboardServer({
+    ...serverOptions,
+    agentProgressExecutable: fakeExecutableKeepingAConcurrencyLimit(scratchDirectory, statusDocumentPath(), limitPath, callLogPath),
+  }));
+  extraServers.push(concurrencyServer);
+  return { server: concurrencyServer, callLogPath };
+}
+
+function callsLogged(callLogPath: string): string[] {
+  return existsSync(callLogPath) ? readFileSync(callLogPath, 'utf8').split('\n').filter((line) => line.length > 0) : [];
+}
+
+function concurrencyRequest(runningServer: RunningDashboardServer, body: string, headers: Record<string, string> = {}, trackerId = TRACKER_ID): Promise<Response> {
+  return fetch(`${runningServer.url}/api/projects/${trackerId}/concurrency`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body,
+  });
+}
+
+function concurrencyLimitOf(snapshot: DashboardSnapshot): number | null {
+  const health = snapshot.projects[0]?.health;
+  return health?.kind === 'ready' ? health.board.concurrencyLimit : null;
+}
+
+/** Yields each snapshot event of an open stream, in order. */
+async function* snapshotEventsOf(response: Response): AsyncGenerator<DashboardSnapshot> {
+  const reader = response.body?.getReader();
+  if (reader === undefined) throw new Error('the event stream has no body');
+  const decoder = new TextDecoder();
+  let received = '';
+  for (;;) {
+    let separator = received.indexOf('\n\n');
+    while (separator !== -1) {
+      const event = received.slice(0, separator);
+      received = received.slice(separator + 2);
+      const dataLine = event.split('\n').find((line) => line.startsWith('data: '));
+      if (dataLine !== undefined) yield JSON.parse(dataLine.slice('data: '.length)) as DashboardSnapshot;
+      separator = received.indexOf('\n\n');
+    }
+    const { value, done } = await reader.read();
+    if (done) return;
+    received += decoder.decode(value, { stream: true });
+  }
+}
+
+test('a concurrency POST runs agent-progress concurrency in the project root, answers 204, and the next snapshot carries the new limit', async () => {
+  const { server: concurrencyServer, callLogPath } = await startConcurrencyServer('concurrency-set');
+  const abort = new AbortController();
+  const events = snapshotEventsOf(await fetch(`${concurrencyServer.url}/api/events`, { signal: abort.signal }));
+  try {
+    const first = await events.next();
+    expect(first.done).toBe(false);
+    expect(first.value === undefined ? null : concurrencyLimitOf(first.value)).toBe(2);
+
+    const answer = await concurrencyRequest(concurrencyServer, JSON.stringify({ limit: 5 }), { Origin: concurrencyServer.url });
+    expect(answer.status).toBe(204);
+    expect(callsLogged(callLogPath)).toEqual([`concurrency 5 in ${realpathSync(projectRoot)}`]);
+
+    const next = await events.next();
+    expect(next.value === undefined ? null : concurrencyLimitOf(next.value)).toBe(5);
+    expect(concurrencyLimitOf(await (await fetch(`${concurrencyServer.url}/api/snapshot`)).json() as DashboardSnapshot)).toBe(5);
+  } finally {
+    abort.abort();
+  }
+});
+
+test('a concurrency POST with a foreign Origin is refused 403 and never runs the CLI', async () => {
+  const { server: concurrencyServer, callLogPath } = await startConcurrencyServer('concurrency-origin');
+  for (const origin of ['http://evil.example', `http://localhost:${concurrencyServer.port + 1}`, 'null']) {
+    expect((await concurrencyRequest(concurrencyServer, JSON.stringify({ limit: 3 }), { Origin: origin })).status, origin).toBe(403);
+  }
+  expect(callsLogged(callLogPath)).toEqual([]);
+  expect((await concurrencyRequest(concurrencyServer, JSON.stringify({ limit: 3 }))).status).toBe(204);
+});
+
+test('a limit that is not a whole number from 1 to 10 is refused 400 and never runs the CLI', async () => {
+  const { server: concurrencyServer, callLogPath } = await startConcurrencyServer('concurrency-bounds');
+  const badBodies = [
+    JSON.stringify({ limit: 0 }),
+    JSON.stringify({ limit: 11 }),
+    JSON.stringify({ limit: -1 }),
+    JSON.stringify({ limit: 2.5 }),
+    JSON.stringify({ limit: '3' }),
+    JSON.stringify({ delta: 1 }),
+    JSON.stringify([3]),
+    'null',
+    'not json',
+    '',
+  ];
+  for (const body of badBodies) expect((await concurrencyRequest(concurrencyServer, body)).status, body).toBe(400);
+  expect(callsLogged(callLogPath)).toEqual([]);
+});
+
+test('an unknown tracker is 404 and a method other than POST is 405, neither running the CLI', async () => {
+  const { server: concurrencyServer, callLogPath } = await startConcurrencyServer('concurrency-unknown');
+  expect((await concurrencyRequest(concurrencyServer, JSON.stringify({ limit: 3 }), {}, 'tracker-unknown')).status).toBe(404);
+  expect((await concurrencyRequest(concurrencyServer, JSON.stringify({ limit: 3 }), {}, '%')).status).toBe(404);
+  const getAnswer = await fetch(`${concurrencyServer.url}/api/projects/${TRACKER_ID}/concurrency`);
+  expect(getAnswer.status).toBe(405);
+  expect(getAnswer.headers.get('allow')).toBe('POST');
+  expect(callsLogged(callLogPath)).toEqual([]);
+});
+
+test('a CLI exit 1 answers 409 with the CLI\'s message, and any other failure answers 502', async () => {
+  const refusingServer = startedOrThrow(await startDashboardServer({
+    ...serverOptions,
+    agentProgressExecutable: fakeExecutableFailing(scratchDirectory, 'Example refusal from the CLI.\n  Usage: example\n', 1),
+  }));
+  extraServers.push(refusingServer);
+  const refused = await concurrencyRequest(refusingServer, JSON.stringify({ limit: 4 }));
+  expect(refused.status).toBe(409);
+  expect(await refused.text()).toBe('Example refusal from the CLI.');
+
+  const failingServer = startedOrThrow(await startDashboardServer({
+    ...serverOptions,
+    agentProgressExecutable: fakeExecutableFailing(scratchDirectory, 'Example crash', 3),
+  }));
+  extraServers.push(failingServer);
+  const failed = await concurrencyRequest(failingServer, JSON.stringify({ limit: 4 }));
+  expect(failed.status).toBe(502);
+  expect(await failed.text()).toContain('exited with code 3');
+
+  const missingServer = startedOrThrow(await startDashboardServer({ ...serverOptions, agentProgressExecutable: null }));
+  extraServers.push(missingServer);
+  const missing = await concurrencyRequest(missingServer, JSON.stringify({ limit: 4 }));
+  expect(missing.status).toBe(502);
+  expect(await missing.text()).toBe('agent-progress is not on PATH');
+  expect((await fetch(`${missingServer.url}/api/identity`)).status).toBe(200);
 });

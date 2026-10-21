@@ -45,8 +45,9 @@ src/lib/  →  src/shared/  →  src/adapters/  →  src/services/  →  cli/
 - All command-line text (confirmations, usage, argument errors, help) lives in `cli/`, beside the command that prints
   it; command verbs are literals, so they grep.
 - `src/adapters/` holds only translations: a stored or printed format to a verdict, a document to a summary.
-- The dashboard never writes a tracked repository or the registry (`~/.agent-progress-monitor/projects.json`); its
-  own files live in `~/.agent-progress-monitor/agent-dashboard/`.
+- The dashboard never writes a tracked repository or the registry (`~/.agent-progress-monitor/projects.json`); it
+  changes a tracked repository only by running `agent-progress concurrency <n>` there on the user's click, so the CLI
+  writes its own tracker. Its own files live in `~/.agent-progress-monitor/agent-dashboard/`.
 - A count the agent-progress CLI already computes is taken from its `status --json --full`, never recomputed.
 
 ### Errors and exit codes
