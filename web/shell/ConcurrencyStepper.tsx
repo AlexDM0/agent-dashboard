@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef }                   from 'react';
 import { WEB_LIMITS }                                      from '../constants/WebLimits.ts';
 import { requestConcurrencyLimit }                         from './ConcurrencyRequest.ts';
 import { steppedConcurrencyLimitOf, type ConcurrencyStep } from './ConcurrencyStep.ts';
-import { ConcurrencyStepperStateUtil }                     from './ConcurrencyStepperState.ts';
+import { ConcurrencyStepperStateUtil }                     from './ConcurrencyStepperStateUtil.ts';
 
 interface ConcurrencyStepperProperties {
   trackerId:   string;

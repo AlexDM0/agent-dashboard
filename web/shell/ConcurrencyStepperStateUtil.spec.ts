@@ -4,7 +4,7 @@
  */
 import { expect, test }                                                                     from 'bun:test';
 import { WEB_LIMITS }                                                                       from '../constants/WebLimits.ts';
-import { ConcurrencyStepperStateUtil, SNAPSHOT_OVERDUE_NOTE, type ConcurrencyStepperState } from './ConcurrencyStepperState.ts';
+import { ConcurrencyStepperStateUtil, SNAPSHOT_OVERDUE_NOTE, type ConcurrencyStepperState } from './ConcurrencyStepperStateUtil.ts';
 
 const {
   nextStateOf, isBusy, noteOf, initialState
