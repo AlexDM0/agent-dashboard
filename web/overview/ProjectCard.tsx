@@ -1,4 +1,5 @@
 import type { BoardSummary, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
+import { ConcurrencyStepper }                 from '../shell/ConcurrencyStepper.tsx';
 import { SlotMeter }                          from '../shell/SlotMeter.tsx';
 import { TimeUtil }                           from '../time/TimeUtil.ts';
 import { ActiveRowList }                      from './ActiveRowList.tsx';
@@ -27,6 +28,7 @@ export function ProjectCard({
         <div className="ap-meter-row">
           <span className="ap-queue-label ap-meter-label">Slots</span>
           <SlotMeter slotCount={board.concurrencyLimit} busyCount={board.agentsInFlight} />
+          <ConcurrencyStepper trackerId={project.trackerId} projectName={project.project} shownLimit={board.concurrencyLimit} />
           {staleSince === null ? null : <span className="mono muted ap-meter-as-of">as of {TimeUtil.clockOfInstant(staleSince)}</span>}
         </div>
         <div className="ap-meter-row">

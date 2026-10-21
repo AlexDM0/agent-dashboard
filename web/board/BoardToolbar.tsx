@@ -1,4 +1,5 @@
 import type { ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
+import { ConcurrencyStepper }   from '../shell/ConcurrencyStepper.tsx';
 import { DispatcherPill }       from '../shell/DispatcherPill.tsx';
 import { OVERVIEW_HASH }        from '../shell/HashRoute.ts';
 import { SlotMeter }            from '../shell/SlotMeter.tsx';
@@ -22,6 +23,7 @@ export function BoardToolbar({ project, onReload }: BoardToolbarProperties) {
           <>
             <DispatcherPill dispatcherState={project.health.board.dispatcherState} />
             <SlotMeter slotCount={project.health.board.concurrencyLimit} busyCount={project.health.board.agentsInFlight} compact />
+            <ConcurrencyStepper trackerId={project.trackerId} projectName={project.project} shownLimit={project.health.board.concurrencyLimit} />
           </>
         )
         : <span className="ap-pill is-error">{project.health.kind}</span>}
