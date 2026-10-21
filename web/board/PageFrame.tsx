@@ -1,7 +1,9 @@
-import { type RefObject, useEffect, useState } from 'react';
-import { EMBEDDED_BOARD_ATTRIBUTE }            from '../preferences/EmbeddedBoardTheme.ts';
-import { OVERVIEW_HASH }                       from '../shell/HashRoute.ts';
-import { followEscapeInEmbeddedBoard }         from './EmbeddedBoardEscape.ts';
+import { type RefObject, useLayoutEffect, useState } from 'react';
+import { flushSync }                                 from 'react-dom';
+import { EMBEDDED_BOARD_ATTRIBUTE }                  from '../preferences/EmbeddedBoardTheme.ts';
+import { OVERVIEW_HASH }                             from '../shell/HashRoute.ts';
+import { followBoardFrameLoads }                     from './BoardFrameLoad.ts';
+import { followEscapeInEmbeddedBoard }               from './EmbeddedBoardEscape.ts';
 
 interface PageFrameProperties {
   pageUrl:        string;
@@ -18,7 +20,7 @@ export function PageFrame({ pageUrl, projectName, frameReference }: PageFramePro
   const [isBoardLoaded, setIsBoardLoaded] = useState(false);
 
   // A key pressed inside the frame never reaches this window, so each page the frame loads is followed itself.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const frame = frameReference.current;
     if (frame === null) {
       return undefined;
@@ -31,7 +33,8 @@ export function PageFrame({ pageUrl, projectName, frameReference }: PageFramePro
       try {
         const boardWindow = frame.contentWindow;
         if (boardWindow !== null) {
-          const hideWhileReloading = (): void => setIsBoardLoaded(false);
+          // Committed synchronously, so the next document's first paint already lands in a hidden frame.
+          const hideWhileReloading = (): void => flushSync(() => setIsBoardLoaded(false));
           const stopFollowingEscape = followEscapeInEmbeddedBoard(boardWindow, leaveTheBoard);
           boardWindow.addEventListener('pagehide', hideWhileReloading);
           stopFollowing = () => {
@@ -43,9 +46,9 @@ export function PageFrame({ pageUrl, projectName, frameReference }: PageFramePro
         // A frame from another origin cannot be reached; Esc then works only outside it.
       }
     };
-    frame.addEventListener('load', followLoadedBoard);
+    const stopFollowingLoads = followBoardFrameLoads(frame, followLoadedBoard);
     return () => {
-      frame.removeEventListener('load', followLoadedBoard);
+      stopFollowingLoads();
       try {
         stopFollowing();
       } catch {
