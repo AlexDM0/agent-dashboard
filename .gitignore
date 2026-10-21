@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 *.log
 .claude/worktrees/
+.agent-progress/
+.claude/skills/agent-progress/
+.claude/skills/agent-progress-orchestrate/
