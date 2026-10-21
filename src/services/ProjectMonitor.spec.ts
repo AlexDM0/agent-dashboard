@@ -1,11 +1,17 @@
 /**
  * The monitor is held against a scratch home folder with a fake status reader and short intervals, so every case runs
- * on real watches but fast: the registry appearing, changing, turning unreadable and losing a project; a project folder
+ * on real watches but fast: the registry appearing, changing, turning unreadable and losing a project; a change a new
+ * watch never reports, which the sweep after every new watch still finds; a project folder
  * changing (one debounced read per burst), and its metadata changing with no read; a read failing or throwing; missing
  * folders; the read cap; the sweep; and `stop` leaving no watch and no further read, not even one queued behind the cap.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join }                             from 'node:path';
+import {
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs';
+import { join } from 'node:path';
 import {
   afterEach,
   beforeEach,
@@ -105,6 +111,41 @@ test('with no registry the snapshot is missing and empty, and a registry that ap
     health:        { kind: 'ready', board: exampleBoardSummary() },
   });
   expect(running.pageFolderOf('tracker-storefront')).toBe(join(root, '.agent-progress'));
+});
+
+// A change behind a symbolic link raises no event in the watched folder, so it stands in for one the new watch missed.
+test('a registry folder that appears unreported by the home folder watch is still read after one quiet period', async () => {
+  const elsewhereDirectory = join(scratchDirectory, 'elsewhere');
+  mkdirSync(elsewhereDirectory);
+  symlinkSync(join(elsewhereDirectory, '.agent-progress-monitor'), join(homeDirectory, '.agent-progress-monitor'));
+  // macOS may still report the link made just before the watch began, which would hide the case; it is let go stale first.
+  await Bun.sleep(SETTLE_MILLISECONDS);
+  const running = await startedMonitor();
+  expect(running.snapshot().registry).toEqual({ kind: 'missing' });
+
+  const root = createExampleProjectRoot(scratchDirectory, 'example-storefront');
+  writeExampleRegistry(elsewhereDirectory, { 'tracker-storefront': exampleRegistryEntry(root, 'example-storefront') });
+  await waitUntil(() => running.snapshot().projects.length === 1, 'the unreported registry is read');
+});
+
+test('a registry change unreported by the registry folder watch is still read after one quiet period', async () => {
+  const elsewhereDirectory = join(scratchDirectory, 'elsewhere');
+  const storefront = createExampleProjectRoot(scratchDirectory, 'example-storefront');
+  const agency = createExampleProjectRoot(scratchDirectory, 'example-agency');
+  mkdirSync(elsewhereDirectory);
+  writeExampleRegistry(elsewhereDirectory, { 'tracker-storefront': exampleRegistryEntry(storefront, 'example-storefront') });
+  mkdirSync(join(homeDirectory, '.agent-progress-monitor'));
+  symlinkSync(join(elsewhereDirectory, '.agent-progress-monitor', 'projects.json'), join(homeDirectory, '.agent-progress-monitor', 'projects.json'));
+  // macOS may still report the link made just before the watch began, which would hide the case; it is let go stale first.
+  await Bun.sleep(SETTLE_MILLISECONDS);
+  const running = await startedMonitor();
+  expect(running.snapshot().projects).toHaveLength(1);
+
+  writeExampleRegistry(elsewhereDirectory, {
+    'tracker-storefront': exampleRegistryEntry(storefront, 'example-storefront'),
+    'tracker-agency':     exampleRegistryEntry(agency, 'Example Agency'),
+  });
+  await waitUntil(() => running.snapshot().projects.length === 2, 'the unreported change is read');
 });
 
 test('start resolves with every registered project read once, in registry order', async () => {

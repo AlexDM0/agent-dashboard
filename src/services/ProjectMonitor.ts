@@ -159,19 +159,26 @@ export function createProjectMonitor(options: ProjectMonitorOptions): ProjectMon
     }
   }
 
-  /** Watches the folder unless it is already watched as the same folder; a watch that cannot be set up leaves the sweep. */
-  function folderWatchFor(folder: string, existing: FolderWatch | null, onChange: (fileName: string | null) => void): FolderWatch | null {
+  /**
+   * Watches the folder unless it is already watched as the same folder; a watch that cannot be set up leaves the sweep.
+   * On macOS a new watch is not live at once, and setting it up briefly blinds every watch already open, so each new
+   * watch sweeps: every folder is read once more a quiet period later, catching a change no watch reported.
+   */
+  function folderWatchFor(folder: string, existing: FolderWatch | null, runner: CoalescingRunner, reportsChange: (fileName: string | null) => boolean): FolderWatch | null {
     const folderIdentity = folderIdentityOf(folder);
     if (existing !== null && !existing.failed && existing.folderIdentity === folderIdentity) return existing;
     closeFolderWatch(existing);
     if (folderIdentity === null) return null;
     try {
-      const watcher = watch(folder, (_eventType, fileName) => onChange(fileName));
+      const watcher = watch(folder, (_eventType, fileName) => {
+        if (reportsChange(fileName)) runner.trigger();
+      });
       const folderWatch: FolderWatch = { watcher, folderIdentity, failed: false };
       watcher.on('error', () => {
         folderWatch.failed = true;
         closeFolderWatch(folderWatch);
       });
+      sweep();
       return folderWatch;
     } catch {
       return null;
@@ -180,23 +187,19 @@ export function createProjectMonitor(options: ProjectMonitorOptions): ProjectMon
 
   function syncRegistryWatches(): void {
     if (stopped) return;
-    registryWatch = folderWatchFor(registryFolder, registryWatch, (fileName) => {
-      if (fileName === null || fileName === DASHBOARD_FILES.REGISTRY_FILE_NAME) registryRunner.trigger();
-    });
+    registryWatch = folderWatchFor(registryFolder, registryWatch, registryRunner, (fileName) => fileName === null || fileName === DASHBOARD_FILES.REGISTRY_FILE_NAME);
     if (registryWatch !== null) {
       closeFolderWatch(homeWatch);
       homeWatch = null;
       return;
     }
     // Until the registry folder exists, its creation is watched for in the home folder.
-    homeWatch = folderWatchFor(options.homeDirectory, homeWatch, (fileName) => {
-      if (fileName === null || fileName === DASHBOARD_FILES.REGISTRY_DIRECTORY_NAME) registryRunner.trigger();
-    });
+    homeWatch = folderWatchFor(options.homeDirectory, homeWatch, registryRunner, (fileName) => fileName === null || fileName === DASHBOARD_FILES.REGISTRY_DIRECTORY_NAME);
   }
 
   function syncProjectWatch(project: MonitoredProject): void {
     if (stopped) return;
-    project.folderWatch = folderWatchFor(pageFolderOfEntry(project.entry), project.folderWatch, () => project.runner.trigger());
+    project.folderWatch = folderWatchFor(pageFolderOfEntry(project.entry), project.folderWatch, project.runner, () => true);
   }
 
   function isStillMonitored(project: MonitoredProject): boolean {
