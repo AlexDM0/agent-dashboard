@@ -56,10 +56,12 @@ export type RegistryHealth =
   | { kind: 'unreadable'; reason: string };
 
 export interface DashboardSnapshot {
-  registry:     RegistryHealth;
-  registryPath: string;
-  projects:     ProjectSnapshot[];  // registry order; the web sorts
-  generatedAt:  string;
+  registry:                  RegistryHealth;
+  registryPath:              string;
+  projects:                  ProjectSnapshot[];  // registry order; the web sorts
+  generatedAt:               string;
+  /** The serving machine's available parallelism: the most agents it runs at once, one per logical core. */
+  machineParallelAgentLimit: number;
 }
 
 export interface ServerIdentity { application: 'agent-dashboard'; version: string; pid: number }

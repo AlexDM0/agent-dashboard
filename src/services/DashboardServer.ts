@@ -20,13 +20,15 @@ import { DASHBOARD_PROTOCOL }                          from '../shared/constants
 import { type ProjectMonitor, createProjectMonitor }   from './ProjectMonitor.ts';
 
 export interface DashboardServerOptions {
-  port:                    number;
-  homeDirectory:           string;
-  agentProgressExecutable: string | null;
+  port:                      number;
+  homeDirectory:             string;
+  agentProgressExecutable:   string | null;
   /** The Bun running the server, which runs a Bun-script agent-progress itself. */
-  runtimeExecutablePath:   string;
-  version:                 string;
-  clock:                   () => Date;
+  runtimeExecutablePath:     string;
+  version:                   string;
+  clock:                     () => Date;
+  /** Read by the CLI, since only `cli/CommandContext.ts` reads the machine. */
+  machineParallelAgentLimit: number;
 }
 
 export interface RunningDashboardServer {
@@ -333,6 +335,7 @@ export function startDashboardServer(options: DashboardServerOptions): Promise<D
     maximumWaitMilliseconds:      DASHBOARD_LIMITS.REFRESH_MAXIMUM_WAIT_MILLISECONDS,
     sweepIntervalMilliseconds:    DASHBOARD_LIMITS.SAFETY_SWEEP_INTERVAL_MILLISECONDS,
     maximumConcurrentStatusReads: DASHBOARD_LIMITS.MAXIMUM_CONCURRENT_STATUS_READS,
+    machineParallelAgentLimit:    options.machineParallelAgentLimit,
   });
   return serveDashboard(options, { monitor, heartbeatIntervalMilliseconds: DASHBOARD_LIMITS.HEARTBEAT_INTERVAL_MILLISECONDS });
 }

@@ -2,33 +2,35 @@
  * Everything a command may know about its process, so the parsing specs run in the test process against a scratch home.
  * It reads no environment itself: `src/shared/Environment.ts` is the one module that does.
  */
-import { readFileSync }  from 'node:fs';
-import { homedir }       from 'node:os';
-import { join, resolve } from 'node:path';
+import { readFileSync }                  from 'node:fs';
+import { availableParallelism, homedir } from 'node:os';
+import { join, resolve }                 from 'node:path';
 
 import { agentProgressExecutableOverride, browserOpeningIsDisabled } from '../src/shared/Environment.ts';
 
 export type InterruptionSignal = 'SIGINT' | 'SIGTERM';
 
 export interface CommandContext {
-  currentDirectory:         string;
-  now:                      () => Date;
-  standardOutput:           (text: string) => void;
-  standardError:            (text: string) => void;
+  currentDirectory:          string;
+  now:                       () => Date;
+  standardOutput:            (text: string) => void;
+  standardError:             (text: string) => void;
   /** `process.platform`, carried so a spec can choose the operating system whose browser opener a command picks. */
-  platform:                 string;
-  homeDirectory:            string;
-  processId:                number;
+  platform:                  string;
+  homeDirectory:             string;
+  processId:                 number;
   /** The Bun executable running this process, which a detached `serve` is started with. */
-  runtimeExecutablePath:    string;
+  runtimeExecutablePath:     string;
   /** The absolute path of `agent-dashboard.ts`, which a detached `serve` runs. */
-  dashboardEntryPointPath:  string;
+  dashboardEntryPointPath:   string;
   /** `package.json`'s version, which the server reports as its identity. */
-  version:                  string;
-  agentProgressExecutable:  string | null;
-  browserOpeningIsDisabled: boolean;
+  version:                   string;
+  agentProgressExecutable:   string | null;
+  browserOpeningIsDisabled:  boolean;
+  /** `availableParallelism()`: the most agents this machine runs at once, which the header counts against. */
+  machineParallelAgentLimit: number;
   /** Calls the listener once on the first SIGINT or SIGTERM; the returned function removes it. */
-  onInterruption:           (listener: (signal: InterruptionSignal) => void) => () => void;
+  onInterruption:            (listener: (signal: InterruptionSignal) => void) => () => void;
 }
 
 const INTERRUPTION_SIGNALS: readonly InterruptionSignal[] = ['SIGINT', 'SIGTERM'];
@@ -61,17 +63,18 @@ export function createProcessContext(): CommandContext {
   const currentDirectory = process.cwd();
   return {
     currentDirectory,
-    now:                      () => new Date(),
-    standardOutput:           (text: string) => console.log(text),
-    standardError:            (text: string) => console.error(text),
-    platform:                 process.platform,
-    homeDirectory:            homedir(),
-    processId:                process.pid,
-    runtimeExecutablePath:    process.execPath,
-    dashboardEntryPointPath:  join(import.meta.dir, '..', 'agent-dashboard.ts'),
-    version:                  packageVersion(),
-    agentProgressExecutable:  agentProgressExecutableFrom(currentDirectory),
-    browserOpeningIsDisabled: browserOpeningIsDisabled(),
-    onInterruption:           listenForInterruption,
+    now:                       () => new Date(),
+    standardOutput:            (text: string) => console.log(text),
+    standardError:             (text: string) => console.error(text),
+    platform:                  process.platform,
+    homeDirectory:             homedir(),
+    processId:                 process.pid,
+    runtimeExecutablePath:     process.execPath,
+    dashboardEntryPointPath:   join(import.meta.dir, '..', 'agent-dashboard.ts'),
+    version:                   packageVersion(),
+    agentProgressExecutable:   agentProgressExecutableFrom(currentDirectory),
+    browserOpeningIsDisabled:  browserOpeningIsDisabled(),
+    machineParallelAgentLimit: availableParallelism(),
+    onInterruption:            listenForInterruption,
   };
 }

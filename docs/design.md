@@ -192,7 +192,9 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 ### Overview (`#/`)
 
 - **Header** (one line, wraps on a phone): the name `agent-dashboard`, the live status, then header stats in the
-  template's `.ap-head-stats` manner: Projects, Agents (in flight / total slots), Ready, Awaiting review, Held; the
+  template's `.ap-head-stats` manner: Projects, Agents (in flight across every board / the machine's parallel
+  maximum, `availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
+  the projects' concurrency limits are not summed here), Ready, Awaiting review, Held; the
   theme toggle at the end.
 - **Filter bar**: a search field (project name or path) and a segmented toggle `All | Active`.
 - **Two groups**: "Active" (agents in flight, or the dispatcher `running`) and "Idle", each a responsive grid of

@@ -27,7 +27,7 @@ export function ProjectCard({
       <div className="ap-card-section ap-card-meters">
         <div className="ap-meter-row">
           <span className="ap-queue-label ap-meter-label">Slots</span>
-          <SlotMeter slotCount={board.concurrencyLimit} busyCount={board.agentsInFlight} />
+          <SlotMeter concurrencyLimit={board.concurrencyLimit} busyCount={board.agentsInFlight} />
           <ConcurrencyStepper trackerId={project.trackerId} projectName={project.project} shownLimit={board.concurrencyLimit} />
           {staleSince === null ? null : <span className="mono muted ap-meter-as-of">as of {TimeUtil.clockOfInstant(staleSince)}</span>}
         </div>

@@ -22,7 +22,7 @@ export function Header({
         <h1 className="ap-header-name"><a href={OVERVIEW_HASH}>agent-dashboard</a></h1>
         <LiveStatus connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
       </div>
-      <HeaderStatistics totals={totals} />
+      <HeaderStatistics totals={totals} machineParallelAgentLimit={stream.snapshot?.machineParallelAgentLimit ?? null} />
       <ThemeToggle choice={theme.choice} resolvedTheme={theme.resolvedTheme} onChoose={theme.chooseTheme} />
     </header>
   );

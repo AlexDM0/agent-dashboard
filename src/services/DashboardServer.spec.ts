@@ -52,6 +52,7 @@ import { type ProjectMonitor, createProjectMonitor } from './ProjectMonitor.ts';
 const TRACKER_ID = 'tracker-storefront';
 const EXAMPLE_INSTANT = new Date('2026-10-21T12:00:00.000Z');
 const EXAMPLE_VERSION = '0.0.0-example';
+const EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT = 12;
 const SHORT_HEARTBEAT_MILLISECONDS = 30;
 
 let scratchDirectory = '';
@@ -82,12 +83,13 @@ beforeAll(async () => {
   writeExampleRegistry(homeDirectory, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, 'example-storefront') });
 
   serverOptions = {
-    port:                    0,
+    port:                      0,
     homeDirectory,
-    agentProgressExecutable: fakeExecutablePrinting(scratchDirectory, statusDocumentPath()),
-    runtimeExecutablePath:   process.execPath,
-    version:                 EXAMPLE_VERSION,
-    clock:                   () => EXAMPLE_INSTANT,
+    agentProgressExecutable:   fakeExecutablePrinting(scratchDirectory, statusDocumentPath()),
+    runtimeExecutablePath:     process.execPath,
+    version:                   EXAMPLE_VERSION,
+    clock:                     () => EXAMPLE_INSTANT,
+    machineParallelAgentLimit: EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
   };
   server = startedOrThrow(await startDashboardServer(serverOptions));
 });
@@ -121,6 +123,11 @@ test('the snapshot holds the registered project with its board read through agen
   expect(snapshot.registry).toEqual({ kind: 'ready' });
   expect(snapshot.projects.map((project) => [project.trackerId, project.pageAvailable, project.health.kind])).toEqual([[TRACKER_ID, true, 'ready']]);
   expect(snapshot.projects[0]?.pageUrl).toBe(pageTarget('progress.html'));
+});
+
+test('the snapshot carries the machine parallel agent limit the server was started with', async () => {
+  const snapshot = await (await fetch(`${server.url}/api/snapshot`)).json() as DashboardSnapshot;
+  expect(snapshot.machineParallelAgentLimit).toBe(EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT);
 });
 
 test('a Host that is not this server\'s own is refused on every data route, and each loopback name is let in', async () => {
@@ -224,6 +231,7 @@ test('the event stream opens with a snapshot event', async () => {
   expect(eventLine).toBe('event: snapshot');
   const snapshot = JSON.parse(dataLine.replace(/^data: /, '')) as DashboardSnapshot;
   expect(snapshot.projects.map((project) => project.trackerId)).toEqual([TRACKER_ID]);
+  expect(snapshot.machineParallelAgentLimit).toBe(EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT);
 });
 
 test('an event stream sends heartbeats and releases its subscription when the client goes', async () => {
@@ -235,6 +243,7 @@ test('an event stream sends heartbeats and releases its subscription when the cl
     maximumWaitMilliseconds:      60_000,
     sweepIntervalMilliseconds:    60_000,
     maximumConcurrentStatusReads: 1,
+    machineParallelAgentLimit:    EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
   });
   let subscriberCount = 0;
   const countingMonitor: ProjectMonitor = {
@@ -322,6 +331,7 @@ test('a second dashboard in another process on the first one\'s port is in use, 
     'const start = await startDashboardServer({',
     `  port: ${server.port}, homeDirectory: ${JSON.stringify(serverOptions.homeDirectory)}, agentProgressExecutable: null,`,
     `  runtimeExecutablePath: process.execPath, version: 'example', clock: () => new Date(${EXAMPLE_INSTANT.getTime()}),`,
+    `  machineParallelAgentLimit: ${EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT},`,
     '});',
     'if (start.kind === \'started\') await start.server.stop();',
     'process.stdout.write(start.kind);',

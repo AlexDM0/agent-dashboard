@@ -25,12 +25,13 @@ afterEach(async () => {
 /** A real dashboard in this process, recorded as the one the home's record names, as a detached `serve` would leave it. */
 async function recordedRunningServer(home: string): Promise<RunningDashboardServer> {
   const start = await startDashboardServer({
-    port:                    freeLocalPort(),
-    homeDirectory:           home,
-    agentProgressExecutable: null,
-    runtimeExecutablePath:   process.execPath,
-    version:                 '0.0.0-spec',
-    clock:                   () => new Date('2026-09-18T20:11:03Z'),
+    port:                      freeLocalPort(),
+    homeDirectory:             home,
+    agentProgressExecutable:   null,
+    runtimeExecutablePath:     process.execPath,
+    version:                   '0.0.0-spec',
+    clock:                     () => new Date('2026-09-18T20:11:03Z'),
+    machineParallelAgentLimit: 12,
   });
   if (start.kind !== 'started') throw new Error(`the spec server did not start: port ${start.port} in use`);
   runningServers.push(start.server);

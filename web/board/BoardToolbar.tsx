@@ -22,7 +22,7 @@ export function BoardToolbar({ project, onReload }: BoardToolbarProperties) {
         ? (
           <>
             <DispatcherPill dispatcherState={project.health.board.dispatcherState} />
-            <SlotMeter slotCount={project.health.board.concurrencyLimit} busyCount={project.health.board.agentsInFlight} compact />
+            <SlotMeter concurrencyLimit={project.health.board.concurrencyLimit} busyCount={project.health.board.agentsInFlight} compact />
             <ConcurrencyStepper trackerId={project.trackerId} projectName={project.project} shownLimit={project.health.board.concurrencyLimit} />
           </>
         )

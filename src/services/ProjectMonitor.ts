@@ -28,6 +28,7 @@ export interface ProjectMonitorOptions {
   maximumWaitMilliseconds:      number;
   sweepIntervalMilliseconds:    number;
   maximumConcurrentStatusReads: number;
+  machineParallelAgentLimit:    number;
 }
 
 export type SnapshotListener = (snapshot: DashboardSnapshot) => void;
@@ -143,7 +144,11 @@ export function createProjectMonitor(options: ProjectMonitorOptions): ProjectMon
       });
     }
     return {
-      registry: registryHealth, registryPath, projects: projectSnapshots, generatedAt: options.clock().toISOString()
+      registry:                  registryHealth,
+      registryPath,
+      projects:                  projectSnapshots,
+      generatedAt:               options.clock().toISOString(),
+      machineParallelAgentLimit: options.machineParallelAgentLimit,
     };
   }
 

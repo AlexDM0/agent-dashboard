@@ -1,10 +1,12 @@
 import type { HeaderTotals } from './HeaderTotals.ts';
 
 interface HeaderStatisticsProperties {
-  totals: HeaderTotals;
+  totals:                    HeaderTotals;
+  /** Null until the first snapshot arrives. */
+  machineParallelAgentLimit: number | null;
 }
 
-export function HeaderStatistics({ totals }: HeaderStatisticsProperties) {
+export function HeaderStatistics({ totals, machineParallelAgentLimit }: HeaderStatisticsProperties) {
   return (
     <dl className="ap-head-stats">
       <div className="ap-stat">
@@ -13,7 +15,10 @@ export function HeaderStatistics({ totals }: HeaderStatisticsProperties) {
       </div>
       <div className="ap-stat">
         <dt className="ap-stat-label">Agents</dt>
-        <dd className="ap-stat-n">{totals.agentsInFlight}<small>/{totals.slotCount}</small></dd>
+        <dd className="ap-stat-n">
+          {totals.agentsInFlight}
+          {machineParallelAgentLimit === null ? null : <small>/{machineParallelAgentLimit}</small>}
+        </dd>
       </div>
       <div className="ap-stat">
         <dt className="ap-stat-label">Ready</dt>

@@ -38,6 +38,7 @@ const SETTLE_MILLISECONDS = 200;
 const SLOW_READ_MILLISECONDS = 300;
 const BURST_QUIET_MILLISECONDS = 120;
 const EXAMPLE_INSTANT = new Date('2026-10-21T12:00:00.000Z');
+const EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT = 12;
 
 let scratchDirectory = '';
 let homeDirectory = '';
@@ -72,6 +73,7 @@ function startedMonitor(overrides: Partial<ProjectMonitorOptions> = {}): Promise
     maximumWaitMilliseconds:      LONG_SWEEP_MILLISECONDS,
     sweepIntervalMilliseconds:    LONG_SWEEP_MILLISECONDS,
     maximumConcurrentStatusReads: 4,
+    machineParallelAgentLimit:    EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
     ...overrides,
   });
   monitor = created;
@@ -85,10 +87,11 @@ function readsOf(root: string): number {
 test('with no registry the snapshot is missing and empty, and a registry that appears later is picked up', async () => {
   const running = await startedMonitor();
   expect(running.snapshot()).toEqual({
-    registry:     { kind: 'missing' },
-    registryPath: join(homeDirectory, '.agent-progress-monitor', 'projects.json'),
-    projects:     [],
-    generatedAt:  EXAMPLE_INSTANT.toISOString(),
+    registry:                  { kind: 'missing' },
+    registryPath:              join(homeDirectory, '.agent-progress-monitor', 'projects.json'),
+    projects:                  [],
+    generatedAt:               EXAMPLE_INSTANT.toISOString(),
+    machineParallelAgentLimit: EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
   });
 
   const root = createExampleProjectRoot(scratchDirectory, 'example-storefront');
@@ -349,6 +352,7 @@ test('stop leaves the reads still queued behind the cap unstarted', async () => 
     maximumWaitMilliseconds:      LONG_SWEEP_MILLISECONDS,
     sweepIntervalMilliseconds:    LONG_SWEEP_MILLISECONDS,
     maximumConcurrentStatusReads: 1,
+    machineParallelAgentLimit:    EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
   });
   monitor = created;
   const starting = created.start();

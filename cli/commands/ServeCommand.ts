@@ -12,12 +12,13 @@ export async function serveCommand(options: CommandOptions, context: CommandCont
   const running = await runningDashboardServerOf(context.homeDirectory);
   if (running.kind === 'running' && running.identity.pid !== context.processId) throw runningElsewhereRefusalFor(running.url, options.port);
   const start = await startDashboardServer({
-    port:                    options.port,
-    homeDirectory:           context.homeDirectory,
-    agentProgressExecutable: context.agentProgressExecutable,
-    runtimeExecutablePath:   context.runtimeExecutablePath,
-    version:                 context.version,
-    clock:                   context.now,
+    port:                      options.port,
+    homeDirectory:             context.homeDirectory,
+    agentProgressExecutable:   context.agentProgressExecutable,
+    runtimeExecutablePath:     context.runtimeExecutablePath,
+    version:                   context.version,
+    clock:                     context.now,
+    machineParallelAgentLimit: context.machineParallelAgentLimit,
   });
   if (start.kind === 'port-in-use') throw portHeldRefusalFor(start.port);
   const { server } = start;

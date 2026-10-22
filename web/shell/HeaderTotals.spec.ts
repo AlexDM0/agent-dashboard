@@ -1,6 +1,7 @@
 /**
- * The header adds up the boards' own counts and never recomputes them: queue lengths come from the id lists, slots
- * from each concurrency limit, and a project without a readable board still counts as a project.
+ * The header adds up the boards' own counts and never recomputes them: queue lengths come from the id lists, agents
+ * from each board's in-flight count, and a project without a readable board still counts as a project. No sum of the
+ * concurrency limits is made: the header counts agents against the machine's own parallel limit instead.
  */
 import { expect, test }                          from 'bun:test';
 import { boardSummaryWith, projectSnapshotWith } from '../testing/SnapshotFixtures.ts';
@@ -27,12 +28,12 @@ test('the totals sum every readable board and count every project', () => {
     projectSnapshotWith('research-wiki', { health: { kind: 'missing', reason: 'the root no longer exists' } }),
   ];
   expect(headerTotalsOf(projects)).toEqual({
-    projectCount: 3, agentsInFlight: 3, slotCount: 5, readyCount: 3, reviewWaitingCount: 1, heldCount: 1
+    projectCount: 3, agentsInFlight: 3, readyCount: 3, reviewWaitingCount: 1, heldCount: 1
   });
 });
 
 test('no projects is all zeroes', () => {
   expect(headerTotalsOf([])).toEqual({
-    projectCount: 0, agentsInFlight: 0, slotCount: 0, readyCount: 0, reviewWaitingCount: 0, heldCount: 0
+    projectCount: 0, agentsInFlight: 0, readyCount: 0, reviewWaitingCount: 0, heldCount: 0
   });
 });
