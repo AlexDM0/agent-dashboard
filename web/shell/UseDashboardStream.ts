@@ -6,12 +6,16 @@ import { WEB_LIMITS }             from '../constants/WebLimits.ts';
 export type StreamConnection = 'connecting' | 'live' | 'reconnecting';
 
 export interface DashboardStream {
-  snapshot:     DashboardSnapshot | null;
-  connection:   StreamConnection;
-  lastUpdateAt: number | null;
+  snapshot:                 DashboardSnapshot | null;
+  connection:               StreamConnection;
+  lastUpdateAt:             number | null;
+  /** Which connection delivered the snapshot: 0 the first-paint fetch, then one more each time the stream opens. */
+  snapshotConnectionNumber: number;
 }
 
-const INITIAL_STREAM: DashboardStream = { snapshot: null, connection: 'connecting', lastUpdateAt: null };
+const INITIAL_STREAM: DashboardStream = {
+  snapshot: null, connection: 'connecting', lastUpdateAt: null, snapshotConnectionNumber: 0
+};
 
 /**
  * The live snapshot: one fetch for a quick first paint, then the event stream. The browser retries a dropped stream
@@ -24,14 +28,21 @@ export function useDashboardStream(): DashboardStream {
     let eventSource: EventSource | null = null;
     let retryTimeout: number | undefined;
     let unmounted = false;
+    let openedConnectionCount = 0;
 
     const receive = (snapshot: DashboardSnapshot): void => {
-      setStream({ snapshot, connection: 'live', lastUpdateAt: Date.now() });
+      setStream({
+        snapshot, connection: 'live', lastUpdateAt: Date.now(), snapshotConnectionNumber: openedConnectionCount
+      });
     };
 
     const connect = (): void => {
       const source = new EventSource(DASHBOARD_ENDPOINTS.EVENTS_PATH);
       eventSource = source;
+      // The browser's own retry of a dropped stream opens it again too, and its first snapshot is a fresh baseline.
+      source.addEventListener('open', () => {
+        openedConnectionCount += 1;
+      });
       source.addEventListener(DASHBOARD_ENDPOINTS.SNAPSHOT_EVENT_NAME, (event) => {
         receive(JSON.parse(String(event.data)) as DashboardSnapshot);
       });
@@ -48,7 +59,9 @@ export function useDashboardStream(): DashboardStream {
       .then(async (response) => (response.ok ? (await response.json()) as DashboardSnapshot : null))
       .then((snapshot) => {
         if (snapshot !== null && !unmounted) {
-          setStream((previous) => (previous.snapshot === null ? { snapshot, connection: previous.connection, lastUpdateAt: Date.now() } : previous));
+          setStream((previous) => (previous.snapshot === null ? {
+            snapshot, connection: previous.connection, lastUpdateAt: Date.now(), snapshotConnectionNumber: 0
+          } : previous));
         }
       })
       .catch(() => undefined);

@@ -95,7 +95,9 @@ the server record carries it too. Every request to a data route (on the dashboar
 every route) whose `Host` header is not `127.0.0.1:<its port>`, `localhost:<its port>` or `[::1]:<its port>` (on port
 80 also the bare names, as browsers send them there) is refused 403 (DNS-rebinding guard). The app shell at `/` and the
 chunks Bun bundles for it are exempt: Bun answers its HTML-import route before `fetch`, and they are the public build,
-holding no data. Dashboard-origin routes:
+holding no data. So is the install manifest `web/AppManifest.webmanifest`, which `web/index.html` links and Bun
+serves under a hashed name, and its two icons, `/AppIcon192.png` and `/AppIcon512.png`, which Bun does not bundle
+from the manifest, so the server routes them by fixed path before `fetch` as well. Dashboard-origin routes:
 
 | Route | Answer |
 | --- | --- |
@@ -449,6 +451,15 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   question card the board's orchestrator panel shows (`web/questions/PendingQuestionForm.tsx`), answered in place
   through the answers route; a card leaves when a snapshot no longer holds the request, wherever it was answered.
   Esc closes the panel before it can leave a board. While a question waits, the tab title starts with `(<n>) `.
+- **Notifications** (`web/notifications/`): a header control, "Notify me", asks for the browser's permission on the
+  user's click and never on load; once granted it toggles between "Notifying" and "Muted" (`aria-pressed`), both
+  choices kept through `web/preferences/PreferenceStore.ts`. A notification is raised only from a transition between
+  two consecutive snapshots of one connection (`NotificationTransitionUtil.notificationsDueOf`): a question asked, a
+  dispatcher run gone from `running` to `finished` or `stopped`, a dashboard-owned orchestrator that ended, a session's
+  context crossing `CONTEXT_CRITICAL_SHARE`. The first snapshot after the stream (re)opens is a baseline that raises
+  nothing; no timer raises one, and none is raised while the tab has focus. Each is titled with its project, and
+  clicking it focuses the tab on that project's board. Where `navigator.setAppBadge` exists (the dashboard installed
+  as a web app in Chrome or Edge) the icon carries the inbox count, cleared at zero.
 - **Filter bar**: a search field (project name or path) and a segmented toggle `All | Active`.
 - **Two groups**: "Active" (agents in flight, or the dispatcher `running`) and "Idle", each a responsive grid of
   project cards (`repeat(auto-fill, minmax(360px, 1fr))`); within a group, A–Z by project name,

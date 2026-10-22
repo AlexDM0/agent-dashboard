@@ -1,0 +1,14 @@
+{
+  "name": "agent-dashboard",
+  "short_name": "agent-dashboard",
+  "description": "The agentic work in flight across every repository agent-progress tracks on this machine.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/AppIcon192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/AppIcon512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

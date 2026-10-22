@@ -205,6 +205,24 @@ test('the app shell answers a foreign Host, as Bun serves it before the guard, a
   expect(answer.body).not.toContain(projectRoot);
 });
 
+test('the app shell links a web app manifest whose name, start URL and icons are served beside it, before the Host guard as the shell is', async () => {
+  const shell = await sendRawHttpRequest({ port: server.port, target: '/' });
+  const manifestPath = /<link rel="manifest" href="([^"]+)"/.exec(shell.body)?.[1] ?? '';
+  for (const host of ['evil.example', `127.0.0.1:${server.port}`]) {
+    const manifestAnswer = await sendRawHttpRequest({ port: server.port, target: manifestPath, headers: { Host: host } });
+    expect(manifestAnswer.status, `${host} ${manifestPath}`).toBe(200);
+    const manifest = JSON.parse(manifestAnswer.body) as { name: string; start_url: string; icons: { src: string; sizes: string }[] };
+    expect(manifest.name).toBe('agent-dashboard');
+    expect(manifest.start_url).toBe('/');
+    expect(manifest.icons.map((icon) => icon.sizes)).toEqual(['192x192', '512x512']);
+    for (const icon of manifest.icons) {
+      const iconAnswer = await sendRawHttpRequest({ port: server.port, target: icon.src, headers: { Host: host } });
+      expect(iconAnswer.status, `${host} ${icon.src}`).toBe(200);
+      expect(iconAnswer.headers.get('content-type')).toBe('image/png');
+    }
+  }
+});
+
 test('on the default HTTP port the bare loopback names are let in too, since a browser sends no port there', () => {
   expect([...allowedHostHeadersOf(80)].sort()).toEqual(['127.0.0.1', '127.0.0.1:80', '[::1]', '[::1]:80', 'localhost', 'localhost:80']);
   expect([...allowedHostHeadersOf(4710)].sort()).toEqual(['127.0.0.1:4710', '[::1]:4710', 'localhost:4710']);

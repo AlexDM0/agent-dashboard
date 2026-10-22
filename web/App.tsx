@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react';
-import { BoardView }           from './board/BoardView.tsx';
-import { InboxUtil }           from './inbox/InboxUtil.ts';
-import { OverviewView }        from './overview/OverviewView.tsx';
-import type { ProjectFilter }  from './overview/ProjectOrdering.ts';
-import { useThemePreference }  from './preferences/UseThemePreference.ts';
-import { ConnectionBanner }    from './shell/ConnectionBanner.tsx';
-import { Header }              from './shell/Header.tsx';
-import { headerTotalsOf }      from './shell/HeaderTotals.ts';
-import { useDashboardStream }  from './shell/UseDashboardStream.ts';
-import { useHashRoute }        from './shell/UseHashRoute.ts';
-import { useNow }              from './shell/UseNow.ts';
+import { useEffect, useState }     from 'react';
+import { BoardView }               from './board/BoardView.tsx';
+import { InboxUtil }               from './inbox/InboxUtil.ts';
+import { useAppBadge }             from './notifications/UseAppBadge.ts';
+import { useDesktopNotifications } from './notifications/UseDesktopNotifications.ts';
+import { OverviewView }            from './overview/OverviewView.tsx';
+import type { ProjectFilter }      from './overview/ProjectOrdering.ts';
+import { useThemePreference }      from './preferences/UseThemePreference.ts';
+import { ConnectionBanner }        from './shell/ConnectionBanner.tsx';
+import { Header }                  from './shell/Header.tsx';
+import { headerTotalsOf }          from './shell/HeaderTotals.ts';
+import { useDashboardStream }      from './shell/UseDashboardStream.ts';
+import { useHashRoute }            from './shell/UseHashRoute.ts';
+import { useNow }                  from './shell/UseNow.ts';
 
 const APPLICATION_NAME = 'agent-dashboard';
 
@@ -29,6 +31,8 @@ export function App() {
 
   const inboxEntries = InboxUtil.entriesOf(projects);
   const pendingQuestionCount = inboxEntries.length;
+  const notifications = useDesktopNotifications(stream);
+  useAppBadge(pendingQuestionCount);
 
   useEffect(() => {
     const pageTitle = boardProjectName === undefined ? APPLICATION_NAME : `${boardProjectName} · ${APPLICATION_NAME}`;
@@ -38,7 +42,7 @@ export function App() {
   return (
     <div className="ap-app" data-route={route.kind}>
       <div className="ap-page">
-        <Header stream={stream} totals={headerTotalsOf(projects)} inboxEntries={inboxEntries} theme={theme} now={now} />
+        <Header stream={stream} totals={headerTotalsOf(projects)} inboxEntries={inboxEntries} notifications={notifications} theme={theme} now={now} />
         <ConnectionBanner connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
         {route.kind === 'board'
           ? <BoardView snapshot={stream.snapshot} trackerId={route.trackerId} />

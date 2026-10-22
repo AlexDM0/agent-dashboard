@@ -112,6 +112,13 @@ const SANDBOXED_FILE_POLICY = 'sandbox';
 
 const BRIDGE_ENTRY_POINT = join(import.meta.dir, '..', '..', 'web', 'bridge', 'BoardBridgeMain.ts');
 
+/** Bun bundles the manifest from `web/index.html` under a hashed name, but not the icons it names, so they get fixed paths. */
+const INSTALL_ICON_FILE_NAMES = ['AppIcon192.png', 'AppIcon512.png'];
+
+function installIconRoutes(): Record<string, Bun.BunFile> {
+  return Object.fromEntries(INSTALL_ICON_FILE_NAMES.map((fileName) => [`/${fileName}`, Bun.file(join(import.meta.dir, '..', '..', 'web', fileName))]));
+}
+
 /** The bridge script is its own small bundle, built on its first request rather than at load. */
 async function builtBridgeScript(): Promise<string> {
   const build = await Bun.build({ entrypoints: [BRIDGE_ENTRY_POINT], target: 'browser', minify: true });
@@ -404,7 +411,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       development: false,
       // Bun turns SO_REUSEPORT on without development mode, which would let a second dashboard share the port.
       reusePort:   false,
-      routes:      { '/': dashboardApplication },
+      routes:      { '/': dashboardApplication, ...installIconRoutes() },
       fetch:       (request, servingServer) => answer(request, servingServer),
     });
   } catch (error) {
