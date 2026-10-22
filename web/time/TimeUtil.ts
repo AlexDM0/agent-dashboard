@@ -3,6 +3,7 @@
  * stamp is sliced, never re-parsed, so it keeps the wall clock of the machine that wrote it; only an age parses.
  */
 import { MONTH_NAMES, STAMP_SLICES, TIME_UNITS } from '../constants/TimeUnits.ts';
+import { WEB_LIMITS }                            from '../constants/WebLimits.ts';
 
 function padToTwoDigits(value: number): string {
   return String(value).padStart(2, '0');
@@ -38,6 +39,24 @@ function relativeAgeOfStamp(stamp: string, nowEpochMilliseconds: number): string
   return relativeAgeOfInstant(stampEpochMilliseconds, nowEpochMilliseconds);
 }
 
+/** "just now" under the threshold or for an instant after now, else "<age> ago". */
+function agoPhraseOfInstant(epochMilliseconds: number, nowEpochMilliseconds: number): string {
+  const elapsedSeconds = (nowEpochMilliseconds - epochMilliseconds) / TIME_UNITS.MILLISECONDS_PER_SECOND;
+  if (elapsedSeconds < WEB_LIMITS.JUST_NOW_THRESHOLD_SECONDS) {
+    return 'just now';
+  }
+  return `${relativeAgeOfInstant(epochMilliseconds, nowEpochMilliseconds)} ago`;
+}
+
+/** An empty text for a stamp that does not parse, as `relativeAgeOfStamp` gives. */
+function agoPhraseOfStamp(stamp: string, nowEpochMilliseconds: number): string {
+  const stampEpochMilliseconds = Date.parse(stamp);
+  if (Number.isNaN(stampEpochMilliseconds)) {
+    return '';
+  }
+  return agoPhraseOfInstant(stampEpochMilliseconds, nowEpochMilliseconds);
+}
+
 /** The viewer's local wall clock of an instant, `HH:MM`. */
 function clockOfInstant(epochMilliseconds: number): string {
   const moment = new Date(epochMilliseconds);
@@ -64,5 +83,5 @@ function logStampText(stamp: string, nowEpochMilliseconds: number): string {
 }
 
 export const TimeUtil = Object.freeze({
-  relativeAgeOfInstant, relativeAgeOfStamp, clockOfInstant, clockOfStamp, logStampText
+  relativeAgeOfInstant, relativeAgeOfStamp, agoPhraseOfInstant, agoPhraseOfStamp, clockOfInstant, clockOfStamp, logStampText
 });

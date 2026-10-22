@@ -7,4 +7,6 @@ export const WEB_LIMITS = {
   MAXIMUM_CONCURRENCY_LIMIT:              10,
   /** How long a stepper stays busy after an accepted limit waiting for a snapshot that carries it. */
   CONCURRENCY_SNAPSHOT_WAIT_MILLISECONDS: 4_000,
+  /** The age below which an update reads "just now" rather than its seconds. */
+  JUST_NOW_THRESHOLD_SECONDS:             30,
 } as const;

@@ -186,7 +186,8 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   the embedded page's own toggle, is applied to the open iframe's document (same origin). The toggle is a radio group
   as the template's is: one tab stop, the arrow keys move the choice.
 - **Live status**: the template's `.ap-status-dot` idiom: a `--status-live` dot that pulses while the event stream
-  is connected, grey with "reconnecting" when it is not, and "updated 12 s ago" from the last snapshot. Only the
+  is connected, grey with "reconnecting" when it is not, and "updated 45s ago" from the last snapshot ("updated just now" under 30 seconds, as is the
+  reconnecting banner's "last update just now"). Only the
   connection word is a live region; the age is not announced.
 
 ### Overview (`#/`)
@@ -212,7 +213,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
      `Task` pending grey), `#042` in mono, the title truncated with an ellipsis, owner, elapsed ("12m"); "+2 more".
   6. Queue line: `Ready #003 #005` chips, `Awaiting review #011`, `Held #007` (only those present).
   7. Latest log line: time (mono, `--ink-muted`) and text, one line.
-  8. Footer: "Changed 3m ago · ticket claim" and an "Open board" button (primary, `--link`).
+  8. Footer: "Changed 3m ago · ticket claim" ("Changed just now" under 30 seconds) and an "Open board" button (primary, `--link`).
   The whole card opens the board; the button is the keyboard target.
 - **Unreadable / missing card**: `--err-tint` ground, `--err-edge` border, the reason in mono, the path; still opens
   the board when the page exists.

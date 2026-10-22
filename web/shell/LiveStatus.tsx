@@ -14,7 +14,7 @@ export function LiveStatus({ connection, lastUpdateAt, now }: LiveStatusProperti
       <span className="ap-status-dot" aria-hidden="true" />
       {/* Only the connection is announced: the age below changes on every tick. */}
       <span className="ap-status-label" role="status">{connection}</span>
-      {isLive && lastUpdateAt !== null ? <span>· updated {TimeUtil.relativeAgeOfInstant(lastUpdateAt, now)} ago</span> : null}
+      {isLive && lastUpdateAt !== null ? <span>· updated {TimeUtil.agoPhraseOfInstant(lastUpdateAt, now)}</span> : null}
     </div>
   );
 }

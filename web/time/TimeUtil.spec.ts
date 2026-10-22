@@ -34,6 +34,31 @@ describe('relativeAgeOfInstant', () => {
   });
 });
 
+describe('agoPhraseOfInstant', () => {
+  test('an age under thirty seconds reads just now', () => {
+    expect(TimeUtil.agoPhraseOfInstant(NOW, NOW)).toBe('just now');
+    expect(TimeUtil.agoPhraseOfInstant(NOW - 12_000, NOW)).toBe('just now');
+    expect(TimeUtil.agoPhraseOfInstant(NOW - 29_900, NOW)).toBe('just now');
+  });
+  test('from thirty seconds on the age is followed by ago', () => {
+    expect(TimeUtil.agoPhraseOfInstant(NOW - 30_000, NOW)).toBe('30s ago');
+    expect(TimeUtil.agoPhraseOfInstant(NOW - 60_000, NOW)).toBe('1m ago');
+  });
+  test('an instant after now reads just now', () => {
+    expect(TimeUtil.agoPhraseOfInstant(NOW + 5_000, NOW)).toBe('just now');
+  });
+});
+
+describe('agoPhraseOfStamp', () => {
+  test('a stamp with an offset is phrased against the same instant', () => {
+    expect(TimeUtil.agoPhraseOfStamp('2026-10-21T15:56:00+02:00', NOW)).toBe('4m ago');
+  });
+  test('an unparsable stamp gives the same empty text as relativeAgeOfStamp', () => {
+    expect(TimeUtil.agoPhraseOfStamp('not a stamp', NOW)).toBe(TimeUtil.relativeAgeOfStamp('not a stamp', NOW));
+    expect(TimeUtil.agoPhraseOfStamp('not a stamp', NOW)).toBe('');
+  });
+});
+
 describe('clockOfInstant', () => {
   test('an instant reads as the viewer\'s local hours and minutes, padded', () => {
     const instant = new Date(2026, 9, 21, 9, 5, 42).getTime();

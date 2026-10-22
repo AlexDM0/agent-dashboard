@@ -18,7 +18,7 @@ export function ConnectionBanner({ connection, lastUpdateAt, now }: ConnectionBa
         <path d="M21 4v5h-5" />
       </svg>
       <span className="ap-banner-title" role="status">Reconnecting to the dashboard server…</span>
-      {lastUpdateAt === null ? null : <span className="mono ap-banner-end">last update {TimeUtil.relativeAgeOfInstant(lastUpdateAt, now)} ago</span>}
+      {lastUpdateAt === null ? null : <span className="mono ap-banner-end">last update {TimeUtil.agoPhraseOfInstant(lastUpdateAt, now)}</span>}
     </div>
   );
 }
