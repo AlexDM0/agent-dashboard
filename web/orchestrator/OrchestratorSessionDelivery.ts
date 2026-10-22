@@ -21,7 +21,7 @@ async function refusalOf(response: Response): Promise<OrchestratorRequestVerdict
 }
 
 /**
- * Every start, stop, chat and answer carries the server's launch token, asked for afresh each time so a restarted
+ * Every start, stop, chat, answer and handoff carries the server's launch token, asked for afresh each time so a restarted
  * server's new token is never missed; any refusal, a 403 included, comes back with the server's own text.
  */
 async function deliverWithLaunchToken(sendRequest: RequestSender, path: string, method: 'POST' | 'DELETE', body: unknown): Promise<OrchestratorRequestVerdict> {
@@ -59,6 +59,11 @@ export function sendOrchestratorChat(trackerId: string, chatRequest: Orchestrato
 
 export function sendOrchestratorAnswer(trackerId: string, answerRequest: OrchestratorAnswerRequest, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
   return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_ANSWERS_PATH_SUFFIX), 'POST', answerRequest);
+}
+
+/** Answers only once the fresh session runs or the handoff failed, so it may take as long as the session's note does. */
+export function handOffOrchestrator(trackerId: string, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
+  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_HANDOFF_PATH_SUFFIX), 'POST', undefined);
 }
 
 export function orchestratorEventsPathOf(trackerId: string): string {

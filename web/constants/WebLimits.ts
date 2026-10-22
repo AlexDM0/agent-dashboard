@@ -11,7 +11,10 @@ export const WEB_LIMITS = {
   ORCHESTRATOR_SENT_NOTE_MILLISECONDS:    4_000,
   /** The age below which an update reads "just now" rather than its seconds. */
   JUST_NOW_THRESHOLD_SECONDS:             30,
-  /** The context shares, of the model's window, from which the meter turns amber and then the error colour. */
+  /**
+   * The context shares, of the model's window, from which the meter turns amber and then the error colour; from the
+   * second a dashboard-owned session's panel warns and offers Hand off loudly. It never acts by itself.
+   */
   CONTEXT_WARNING_SHARE:                  0.5,
   CONTEXT_CRITICAL_SHARE:                 0.8,
   /** The most conversation messages a session panel holds; the server sends at most 200 on connect. */

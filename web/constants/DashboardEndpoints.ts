@@ -15,6 +15,8 @@ export const DASHBOARD_ENDPOINTS = {
   ORCHESTRATOR_ANSWERS_PATH_SUFFIX:  '/orchestrator/answers',
   /** Server-Sent Events: `history` (every `ChatMessage` so far), then `session` and `message` as they change. */
   ORCHESTRATOR_EVENTS_PATH_SUFFIX:   '/orchestrator/events',
+  /** `POST`, no body, carrying the launch token: hands the board to a fresh dashboard-owned session. */
+  ORCHESTRATOR_HANDOFF_PATH_SUFFIX:  '/orchestrator/handoff',
   ORCHESTRATOR_HISTORY_EVENT_NAME:   'history',
   ORCHESTRATOR_MESSAGE_EVENT_NAME:   'message',
   /** Answers the `LaunchToken` every orchestrator start, stop, chat and answer carries in `LAUNCH_TOKEN_HEADER_NAME`. */

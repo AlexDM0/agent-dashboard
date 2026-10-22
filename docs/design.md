@@ -336,9 +336,9 @@ event (at most the safety sweep's 60 s old while its board is quiet).
 ### Routes
 
 Every route below takes the server's Host guard, 403 for a present foreign `Origin`, and 404 for an unknown tracker.
-Start, stop, messages and answers are stricter: the server issues a random launch token when it starts, held in memory
+Start, stop, messages, answers and handoff are stricter: the server issues a random launch token when it starts, held in memory
 only (never in the app shell at `/`, which Bun answers before the Host guard, nor the log, the server record or a
-tracked repository), and a start, stop, message or answer whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
+tracked repository), and a start, stop, message, answer or handoff whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
 this server's own, is refused 403 before anything is read, spawned or written to a session. The event stream takes no
 token (an `EventSource` sends no header), refuses a present foreign `Origin` and sends no CORS headers. The token is the answer of a Host-guarded
 `GET /api/launch-token` (`LaunchToken`, 403 for a foreign `Origin`), which a page elsewhere cannot read (no CORS grant)
@@ -350,7 +350,25 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204. 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }` or `{ "text": <string>, "sessionId": <string> }`, the text 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. The text is sent trimmed. With `sessionId` it goes to that session alone: the project's dashboard-owned one, or one of its watched sessions; without it, to the live dashboard-owned session, else the one the finder names. 400 for any other body, 409 for a `sessionId` that names neither a live dashboard-owned session nor a live watched one of the project (a session that is gone), or, without one, when no dashboard-owned session lives and the finder refuses (no or several sessions), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<answer>" } }`, one non-empty answer for every question of that pending request (a label it offered, labels joined for a multi-select, or free text for an "Other" choice): sent as `answer`, 204; the request is no longer pending from then on, so a second answer is 409 and the supervisor ignores an answer to a request it no longer holds. 400 for any other body, 404 when no dashboard-owned orchestrator ran since this server started, 409 for one that has ended, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
+| `POST /api/projects/<trackerId>/orchestrator/handoff` | no body; the launch token and this server's own `Origin` as for a start. Hands the board to a fresh session (see "Handing off") and answers 201 with `OrchestratorHandoffResult` `{ session, notePath }`. 404 when no dashboard-owned orchestrator ran since this server started; 409, changing nothing and saying which, for an ended session, a pending question, a session not `idle`, a dispatcher `running` or a board that cannot be read, or a handoff of the project already under way; 502 when the session ends, asks a question or gives no reply in time (the old session left running, nothing started), or when the stop or the fresh start fails after the note was kept (the text names the note's path) |
 | `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the project's dashboard-owned conversation (the last 200 `ChatMessage`s, from the session's start) on connect, then `event: session` with the `OrchestratorSession` (null for none), then `event: message` per new message and `event: session` on every change of it; a `: heartbeat` comment every 25 s. A project with no dashboard-owned session streams an empty history and waits for one. A watched session's messages are to be tailed from its transcript (not built yet) |
+
+### Handing off
+
+A handoff (`src/services/OrchestratorHandoff.ts`) replaces a dashboard-owned orchestrator whose context fills up with a
+fresh one, instead of letting it compact and forget what it was weighing. In order: the running session gets one fixed
+chat (`HANDOFF_NOTE_REQUEST`), and the assistant text of the turn it opens, once the session is idle again, is the note;
+the note is written atomically to `~/.agent-progress-monitor/agent-dashboard/handoffs/<trackerId>-<stamp>.md` (the
+tracker id with every character but letters, digits, `_` and `-` made a dash; the stamp the ISO instant with `:` as
+`-`), never into the tracked repository; the session is stopped and awaited until it shows `ended` (at most
+`HANDOFF_END_TIMEOUT_MILLISECONDS`, 15 s); and a fresh supervisor starts in the same root whose first message says it
+continues the previous orchestrator's work, names the previous session and the note's path, and carries the note. The
+fresh session's `previousSessionId` names the old one, held by the server, so a server restart forgets it.
+Until the note is kept nothing is stopped: a session that ends, asks a question, or gives no complete reply within
+`HANDOFF_REPLY_TIMEOUT_MILLISECONDS` (180 s, `src/shared/constants/DashboardLimits.ts`) is left as it is, and nothing
+starts. The wait bounds one request; no clock schedules a handoff.
+A handoff is refused while the board's dispatcher is `running` (read afresh for the request; an unreadable board is
+refused too), since a fresh session is not proven to resume a Workflow run another session launched.
 
 The snapshot carries each project's dashboard-owned `orchestrator` (live, or `ended` since this server started; null
 for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
@@ -382,6 +400,7 @@ export interface OrchestratorSession {
   startedAt: string | null;
   context: ContextUsage | null;
   pendingQuestions: PendingQuestion[];  // always empty for a watched session
+  previousSessionId: string | null;     // the session a handoff took the board from, while this server runs
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
@@ -391,6 +410,7 @@ export interface OrchestratorStartRequest { startBuilding: boolean }
 export interface OrchestratorChatRequest { text: string; sessionId?: string }
 export interface OrchestratorAnswerRequest { requestId: string; answers: Record<string, string> }
 export interface LaunchToken { token: string }
+export interface OrchestratorHandoffResult { session: OrchestratorSession; notePath: string }
 
 // ProjectSnapshot gains: orchestrator: OrchestratorSession | null;
 // DashboardSnapshot gains: watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
@@ -479,8 +499,11 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   `watched` pill), the context meter, and a chat box (Enter sends, Shift+Enter a newline, disabled for an ended session).
   A dashboard-owned session adds its pending questions as forms (a radio group, or checkboxes for a multi-select, each
   with a free-text "Other"; typing into "Other" chooses it; one Answer for the whole request), its conversation (user
-  and assistant turns as plain text, a tool call as one collapsed `<details>` line, scrolled to the newest) and Stop. A
-  watched session offers neither Stop nor answers. Every request carries the launch token; a refusal shows the server's
+  and assistant turns as plain text, a tool call as one collapsed `<details>` line, scrolled to the newest), Stop and a
+  quiet "Hand off…" (`web/orchestrator/HandoffControl.tsx`). From 80% of a known window (`CONTEXT_CRITICAL_SHARE`,
+  `web/constants/WebLimits.ts`) the panel warns in `--err-ink` and the button turns loud; it never acts by itself. A
+  click asks to confirm inline: "Hand off asks for a note, stops this session, starts a fresh one with the note." A
+  watched session offers neither Stop, Hand off nor answers. Every request carries the launch token; a refusal shows the server's
   text inline as `--err-ink`.
 - The **context meter**: an 8 px bar (6 px compact) and "62% of 200k", green (`reviewed`) under 50%, amber
   (`in-progress`) from 50%, the bar `--err-ink` from 80%; a window not known reads "48k tokens" over an empty bar.

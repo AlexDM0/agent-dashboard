@@ -25,15 +25,18 @@ import {
   type LaunchToken,
   type OrchestratorAnswerRequest,
   type OrchestratorChatRequest,
+  type OrchestratorHandoffResult,
   type OrchestratorSession,
   type PendingQuestion,
   type ServerIdentity
 } from '../shared/DashboardContract.ts';
+import { environmentCopy }                                                                     from '../shared/Environment.ts';
 import { orchestratorDirectoryOf }                                                             from '../shared/OrchestratorFilePaths.ts';
 import { UnknownValueUtil }                                                                    from '../shared/UnknownValueUtil.ts';
 import { DASHBOARD_FILES }                                                                     from '../shared/constants/DashboardFiles.ts';
 import { DASHBOARD_LIMITS }                                                                    from '../shared/constants/DashboardLimits.ts';
 import { DASHBOARD_PROTOCOL }                                                                  from '../shared/constants/DashboardProtocol.ts';
+import { handOffOrchestrator, handoffDirectoryOf }                                             from './OrchestratorHandoff.ts';
 import { ORCHESTRATOR_REQUEST_BODY_REFUSAL, orchestratorMessageTextOf, orchestratorRequestOf } from './OrchestratorRequestMessage.ts';
 import { type OrchestratorSessions, createOrchestratorSessions }                               from './OrchestratorSessions.ts';
 import { type MonitoredSnapshot, type ProjectMonitor, createProjectMonitor }                   from './ProjectMonitor.ts';
@@ -148,6 +151,8 @@ const ORCHESTRATOR_MESSAGES_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PR
 const ORCHESTRATOR_ANSWERS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_ANSWERS_PATH_SUFFIX}$`);
 
 const ORCHESTRATOR_EVENTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_EVENTS_PATH_SUFFIX}$`);
+
+const ORCHESTRATOR_HANDOFF_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_HANDOFF_PATH_SUFFIX}$`);
 
 const HTTP_STATUS = {
   CREATED:               201,
@@ -305,14 +310,15 @@ function watchedOrchestratorOf(homeDirectory: string, session: LiveSession, cont
   const reading = readTranscriptUsage({ homeDirectory, cwd: session.cwd, sessionId: session.sessionId }, DASHBOARD_LIMITS.TRANSCRIPT_TAIL_BYTES);
   const context = reading.kind === 'measured' ? { ...reading.usage, contextWindowTokens: contextWindowByModel.get(reading.usage.model) ?? null } : null;
   return {
-    ownership:        'watched',
-    sessionId:        session.sessionId,
-    pid:              session.pid,
-    name:             session.name,
-    state:            session.status === 'busy' ? 'busy' : 'idle',
-    startedAt:        session.startedAt,
+    ownership:         'watched',
+    sessionId:         session.sessionId,
+    pid:               session.pid,
+    name:              session.name,
+    state:             session.status === 'busy' ? 'busy' : 'idle',
+    startedAt:         session.startedAt,
     context,
-    pendingQuestions: [],
+    pendingQuestions:  [],
+    previousSessionId: null,
   };
 }
 
@@ -359,18 +365,21 @@ function snapshotEvent(snapshot: DashboardSnapshot): string {
 }
 
 interface ServingDependencies {
-  monitor:                       ProjectMonitor;
-  orchestratorSessions:          OrchestratorSessions;
-  heartbeatIntervalMilliseconds: number;
+  monitor:                         ProjectMonitor;
+  orchestratorSessions:            OrchestratorSessions;
+  heartbeatIntervalMilliseconds:   number;
+  /** How long a handoff waits for the running session's note; a spec passes a short one. */
+  handoffReplyTimeoutMilliseconds: number;
 }
 
-export function createDashboardOrchestratorSessions(options: DashboardServerOptions): OrchestratorSessions {
+export function createDashboardOrchestratorSessions(options: DashboardServerOptions, supervisorEnvironment = environmentCopy()): OrchestratorSessions {
   return createOrchestratorSessions({
     orchestratorDirectory:    orchestratorDirectoryOf(options.homeDirectory),
     runtimeExecutablePath:    options.runtimeExecutablePath,
     dashboardEntryPointPath:  options.dashboardEntryPointPath,
     startTimeoutMilliseconds: DASHBOARD_LIMITS.SUPERVISOR_START_TIMEOUT_MILLISECONDS,
     reconnectMilliseconds:    DASHBOARD_LIMITS.SUPERVISOR_RECONNECT_MILLISECONDS,
+    supervisorEnvironment,
   });
 }
 
@@ -380,6 +389,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   // Held in memory only: never in the app shell, the log, the server record or a tracked repository.
   const launchToken = randomUUID();
   const closeOpenStreams = new Set<() => void>();
+  const trackersBeingHandedOff = new Set<string>();
   let stopping: Promise<void> | null = null;
   let resolveStopped = (): void => {};
   const stopped = new Promise<void>((resolve) => {
@@ -742,6 +752,56 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
+  /** Why a handoff may not start now, or null; each refusal changes nothing. */
+  function handoffRefusalOf(trackerId: string, session: OrchestratorSession): string | null {
+    if (session.state === 'ended') return 'The dashboard-owned orchestrator of this project has ended';
+    if (session.pendingQuestions.length > 0 || session.state === 'waiting-for-answer') {
+      return 'A question of the orchestrator is pending; answer it before handing off';
+    }
+    if (session.state !== 'idle') return `The orchestrator is ${session.state}; hand off once it is idle`;
+    const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
+    if (project?.health.kind !== 'ready') return 'The board cannot be read, so whether its dispatcher runs is unknown';
+    // A fresh session is not proven to resume a Workflow run another session launched.
+    if (project.health.board.dispatcherState === 'running') return 'The board\'s dispatcher is running; hand off once it has stopped or finished';
+    return null;
+  }
+
+  /** Asks the running session for its note, keeps it, stops the session and starts a fresh one carrying it. */
+  async function orchestratorHandoffResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    if (orchestratorSessions.sessionOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
+    if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
+    if (trackersBeingHandedOff.has(trackerId)) return plainResponse(HTTP_STATUS.CONFLICT, 'A handoff of this project\'s orchestrator is already under way');
+    trackersBeingHandedOff.add(trackerId);
+    try {
+      // The dispatcher state is read afresh, so a run launched since the last snapshot still refuses.
+      await monitor.refreshProjectNow(trackerId);
+      const session = orchestratorSessions.sessionOf(trackerId);
+      if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
+      const refusal = handoffRefusalOf(trackerId, session);
+      if (refusal !== null) return plainResponse(HTTP_STATUS.CONFLICT, refusal);
+      const handoff = await handOffOrchestrator({
+        orchestratorSessions,
+        handoffDirectory:         handoffDirectoryOf(options.homeDirectory),
+        trackerId,
+        root,
+        previousSession:          session,
+        now:                      options.clock(),
+        replyTimeoutMilliseconds: dependencies.handoffReplyTimeoutMilliseconds,
+        endTimeoutMilliseconds:   DASHBOARD_LIMITS.HANDOFF_END_TIMEOUT_MILLISECONDS,
+      });
+      if (handoff.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, handoff.reason);
+      const result: OrchestratorHandoffResult = { session: handoff.session, notePath: handoff.notePath };
+      return Response.json(result, { status: HTTP_STATUS.CREATED, headers: NO_STORE_HEADERS });
+    } finally {
+      trackersBeingHandedOff.delete(trackerId);
+    }
+  }
+
   async function pageFileResponse(pathname: string): Promise<Response> {
     const notFound = plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const match = PAGE_ROUTE_PATTERN.exec(pathname);
@@ -838,6 +898,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (orchestratorEventsRouteMatch?.[1] !== undefined) {
       return request.method === 'GET' ? orchestratorEventsResponse(request, servingServer, orchestratorEventsRouteMatch[1]) : methodNotAllowed('GET');
     }
+    const orchestratorHandoffRouteMatch = ORCHESTRATOR_HANDOFF_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorHandoffRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? orchestratorHandoffResponse(request, orchestratorHandoffRouteMatch[1]) : methodNotAllowed('POST');
+    }
     if (pathname === DASHBOARD_PROTOCOL.LAUNCH_TOKEN_PATH) return request.method === 'GET' ? launchTokenResponse(request) : methodNotAllowed('GET');
     if (pathname === '/api/snapshot' || pathname === '/api/events') {
       if (!isRead) return methodNotAllowed('GET, HEAD');
@@ -876,7 +940,8 @@ export function startDashboardServer(options: DashboardServerOptions): Promise<D
   });
   return serveDashboard(options, {
     monitor,
-    orchestratorSessions:          createDashboardOrchestratorSessions(options),
-    heartbeatIntervalMilliseconds: DASHBOARD_LIMITS.HEARTBEAT_INTERVAL_MILLISECONDS,
+    orchestratorSessions:            createDashboardOrchestratorSessions(options),
+    heartbeatIntervalMilliseconds:   DASHBOARD_LIMITS.HEARTBEAT_INTERVAL_MILLISECONDS,
+    handoffReplyTimeoutMilliseconds: DASHBOARD_LIMITS.HANDOFF_REPLY_TIMEOUT_MILLISECONDS,
   });
 }

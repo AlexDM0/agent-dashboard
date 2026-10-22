@@ -8,14 +8,15 @@ import type {
 
 export function orchestratorSessionWith(overrides: Partial<OrchestratorSession> = {}): OrchestratorSession {
   return {
-    ownership:        'dashboard',
-    sessionId:        'session-example',
-    pid:              4242,
-    name:             null,
-    state:            'idle',
-    startedAt:        '2026-10-21T09:30:00+02:00',
-    context:          null,
-    pendingQuestions: [],
+    ownership:         'dashboard',
+    sessionId:         'session-example',
+    pid:               4242,
+    name:              null,
+    state:             'idle',
+    startedAt:         '2026-10-21T09:30:00+02:00',
+    context:           null,
+    pendingQuestions:  [],
+    previousSessionId: null,
     ...overrides,
   };
 }

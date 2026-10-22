@@ -60,15 +60,17 @@ export interface Question { question: string; header: string; multiSelect: boole
 export interface PendingQuestion { requestId: string; askedAt: string; questions: Question[] }
 
 export interface OrchestratorSession {
-  ownership:        OrchestratorOwnership;
-  sessionId:        string;
-  pid:              number;
+  ownership:         OrchestratorOwnership;
+  sessionId:         string;
+  pid:               number;
   /** The name a watched session's record carries; null for a dashboard-owned session or a record without one. */
-  name:             string | null;
-  state:            OrchestratorState;
-  startedAt:        string | null;
-  context:          ContextUsage | null;
-  pendingQuestions: PendingQuestion[];  // always empty for a watched session
+  name:              string | null;
+  state:             OrchestratorState;
+  startedAt:         string | null;
+  context:           ContextUsage | null;
+  pendingQuestions:  PendingQuestion[];  // always empty for a watched session
+  /** The dashboard-owned session this one took the board over from by a handoff, while this server runs; else null. */
+  previousSessionId: string | null;
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
@@ -86,7 +88,10 @@ export interface OrchestratorChatRequest { text: string; sessionId?: string }
 /** The body of `POST /api/projects/<trackerId>/orchestrator/answers`: one answer per question of the pending request. */
 export interface OrchestratorAnswerRequest { requestId: string; answers: Record<string, string> }
 
-/** The answer of `GET /api/launch-token`, the header value an orchestrator start, stop, chat or answer must carry. */
+/** The answer of `POST /api/projects/<trackerId>/orchestrator/handoff`: the fresh session, and where the note was kept. */
+export interface OrchestratorHandoffResult { session: OrchestratorSession; notePath: string }
+
+/** The answer of `GET /api/launch-token`, the header value an orchestrator start, stop, chat, answer or handoff must carry. */
 export interface LaunchToken { token: string }
 
 export interface ProjectSnapshot {

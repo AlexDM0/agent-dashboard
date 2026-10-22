@@ -371,6 +371,9 @@ ul { padding: 0; list-style: none; }
 .ap-session-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .ap-session-started { font-size: var(--fs-micro); }
 .ap-session-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ap-handoff-warning { flex-basis: 100%; margin: 0; font-size: var(--fs-small); color: var(--err-ink); overflow-wrap: anywhere; }
+.ap-handoff-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-basis: 100%; font-size: var(--fs-small); }
+.ap-control[data-suggested="true"] { border-color: var(--err-ink); color: var(--err-ink); }
 
 .ap-conversation {
   display: flex; flex-direction: column; gap: 8px; max-height: 360px; margin: 0; padding: 8px;

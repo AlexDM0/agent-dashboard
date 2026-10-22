@@ -352,9 +352,10 @@ test('an event stream sends heartbeats and releases its subscription when the cl
     },
   };
   const extraServer = startedOrThrow(await serveDashboard(serverOptions, {
-    monitor:                       countingMonitor,
-    orchestratorSessions:          createDashboardOrchestratorSessions(serverOptions),
-    heartbeatIntervalMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
+    monitor:                         countingMonitor,
+    orchestratorSessions:            createDashboardOrchestratorSessions(serverOptions),
+    heartbeatIntervalMilliseconds:   SHORT_HEARTBEAT_MILLISECONDS,
+    handoffReplyTimeoutMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
   }));
   extraServers.push(extraServer);
 
@@ -912,10 +913,19 @@ test('the snapshot lists every live session in the root as watched, with name, s
         context:   {
           usedTokens: 55, contextWindowTokens: null, model: 'claude-example-1', measuredAt: '2026-10-22T10:01:00.000Z'
         },
-        pendingQuestions: [],
+        pendingQuestions:  [],
+        previousSessionId: null,
       },
       {
-        ownership: 'watched', sessionId: 'i', pid: process.ppid, name: null, state: 'idle', startedAt: EXAMPLE_SESSION_STARTED_AT, context: null, pendingQuestions: []
+        ownership:         'watched',
+        sessionId:         'i',
+        pid:               process.ppid,
+        name:              null,
+        state:             'idle',
+        startedAt:         EXAMPLE_SESSION_STARTED_AT,
+        context:           null,
+        pendingQuestions:  [],
+        previousSessionId: null,
       },
     ],
   });

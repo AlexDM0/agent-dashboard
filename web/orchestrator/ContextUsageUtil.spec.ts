@@ -32,6 +32,13 @@ test('the share is clamped to the whole bar', () => {
   expect(ContextUsageUtil.shareOf(contextWith(0, 200_000))).toBe(0);
 });
 
+test('a handoff is suggested at and past 80% of a known window, never below it or for an unknown one', () => {
+  expect(ContextUsageUtil.suggestsHandoff(contextWith(159_999, 200_000))).toBe(false);
+  expect(ContextUsageUtil.suggestsHandoff(contextWith(160_000, 200_000))).toBe(true);
+  expect(ContextUsageUtil.suggestsHandoff(contextWith(900_000, null))).toBe(false);
+  expect(ContextUsageUtil.suggestsHandoff(null)).toBe(false);
+});
+
 test('a zero window is unknown rather than a division by zero', () => {
   expect(ContextUsageUtil.shareOf(contextWith(10, 0))).toBeNull();
 });

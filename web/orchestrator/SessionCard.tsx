@@ -4,6 +4,7 @@ import { TimeUtil }                    from '../time/TimeUtil.ts';
 import { ChatBox }                     from './ChatBox.tsx';
 import { ContextMeter }                from './ContextMeter.tsx';
 import { ConversationLog }             from './ConversationLog.tsx';
+import { HandoffControl }              from './HandoffControl.tsx';
 import { stopOrchestrator }            from './OrchestratorSessionDelivery.ts';
 import { OrchestratorSessionUtil }     from './OrchestratorSessionUtil.ts';
 import { SessionStateBadge }           from './SessionStateBadge.tsx';
@@ -40,6 +41,7 @@ function DashboardSessionDetails({ trackerId, session }: { trackerId: string; se
               {stopRequest.isSending ? 'Stopping…' : 'Stop'}
             </button>
             {stopRequest.refusal === null ? null : <span className="ap-stepper-refusal" role="alert">{stopRequest.refusal}</span>}
+            <HandoffControl trackerId={trackerId} session={session} />
           </div>
         )}
     </>

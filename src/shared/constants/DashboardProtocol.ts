@@ -21,6 +21,8 @@ export const DASHBOARD_PROTOCOL = {
   ORCHESTRATOR_ANSWERS_PATH_SUFFIX:  '/orchestrator/answers',
   /** `GET`: Server-Sent Events of the project's orchestrator conversation and session. */
   ORCHESTRATOR_EVENTS_PATH_SUFFIX:   '/orchestrator/events',
+  /** `POST`, no body, carrying the launch token: hands the board to a fresh dashboard-owned session. */
+  ORCHESTRATOR_HANDOFF_PATH_SUFFIX:  '/orchestrator/handoff',
   /** Answers the `LaunchToken` an orchestrator start, stop, chat or answer carries in `LAUNCH_TOKEN_HEADER_NAME`. */
   LAUNCH_TOKEN_PATH:                 '/api/launch-token',
   LAUNCH_TOKEN_HEADER_NAME:          'X-Agent-Dashboard-Launch-Token',

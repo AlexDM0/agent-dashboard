@@ -21,6 +21,10 @@ export const DASHBOARD_LIMITS = {
   SUPERVISOR_START_TIMEOUT_MILLISECONDS:  10_000,
   /** How long a supervisor waits, after closing its session's stdin on Stop, before it sends SIGTERM. */
   SESSION_STOP_GRACE_MILLISECONDS:        10_000,
+  /** How long a handoff waits for the running session's note, its one complete reply, before it refuses and starts nothing. */
+  HANDOFF_REPLY_TIMEOUT_MILLISECONDS:     180_000,
+  /** How long a handoff waits, once it has the note, for the stopped session to end: past the stop grace, by a margin. */
+  HANDOFF_END_TIMEOUT_MILLISECONDS:       15_000,
   /** How often a dropped supervisor connection is retried while its record lives. */
   SUPERVISOR_RECONNECT_MILLISECONDS:      5_000,
   /** macOS keeps 104 bytes for a Unix socket path, its terminating zero among them. */
