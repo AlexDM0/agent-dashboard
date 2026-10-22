@@ -10,15 +10,27 @@ import { type Server, type Socket, createServer } from 'node:net';
 import { dirname }                                from 'node:path';
 import { createInterface }                        from 'node:readline';
 
-import type { OrchestratorRecord }                                           from '../adapters/OrchestratorRecordReader.ts';
-import { sessionMessageLineOf }                                              from '../adapters/SessionMessageWriter.ts';
-import { sessionStreamEventOf }                                              from '../adapters/SessionStreamEventMapper.ts';
-import { type SupervisorRequest, type SupervisorState, supervisorRequestOf } from '../adapters/SupervisorLineReader.ts';
-import { writeFileAtomically }                                               from '../lib/atomic-file/AtomicFile.ts';
-import type { ContextUsage, OrchestratorState, PendingQuestion }             from '../shared/DashboardContract.ts';
-import { orchestratorFilePathsOf }                                           from '../shared/OrchestratorFilePaths.ts';
-import { UnknownValueUtil }                                                  from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_LIMITS }                                                  from '../shared/constants/DashboardLimits.ts';
+import type { OrchestratorRecord }   from '../adapters/OrchestratorRecordReader.ts';
+import { chatMessagesOfSessionLine } from '../adapters/SessionChatMessageMapper.ts';
+import { sessionMessageLineOf }      from '../adapters/SessionMessageWriter.ts';
+import { sessionStreamEventOf }      from '../adapters/SessionStreamEventMapper.ts';
+import {
+  type ConversationEntry,
+  type SupervisorConversation,
+  type SupervisorRequest,
+  type SupervisorState,
+  supervisorRequestOf
+} from '../adapters/SupervisorLineReader.ts';
+import { writeFileAtomically } from '../lib/atomic-file/AtomicFile.ts';
+import type {
+  ChatMessage,
+  ContextUsage,
+  OrchestratorState,
+  PendingQuestion
+} from '../shared/DashboardContract.ts';
+import { orchestratorFilePathsOf } from '../shared/OrchestratorFilePaths.ts';
+import { UnknownValueUtil }        from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_LIMITS }        from '../shared/constants/DashboardLimits.ts';
 
 export interface OrchestratorSupervisorOptions {
   trackerId:             string;
@@ -100,6 +112,8 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
   };
   const clients = new Set<Socket>();
   const heldQuestions = new Map<string, HeldQuestion>();
+  const conversation: ConversationEntry[] = [];
+  let latestSequence = 0;
   const contextWindowTokensByModel: Record<string, number> = {};
   let context: ContextUsage | null = null;
   let turnRunning = false;
@@ -126,6 +140,18 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
   function broadcast(line: string): void {
     // A net socket queues whatever the kernel does not take at once, so a long line is never cut short.
     for (const client of clients) client.write(line);
+  }
+
+  function conversationLine(conversationLineContent: SupervisorConversation): string {
+    return `${JSON.stringify(conversationLineContent)}\n`;
+  }
+
+  function addToConversation(message: ChatMessage): void {
+    latestSequence += 1;
+    const entry: ConversationEntry = { sequence: latestSequence, message };
+    conversation.push(entry);
+    if (conversation.length > DASHBOARD_LIMITS.CONVERSATION_HISTORY_MESSAGE_COUNT) conversation.shift();
+    broadcast(conversationLine({ kind: 'message', entry }));
   }
 
   function appendHistory(origin: 'session' | 'client', line: string): void {
@@ -156,6 +182,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
     switch (request.kind) {
       case 'chat':
         writeToSession(sessionMessageLineOf(request.text));
+        addToConversation({ at: options.clock().toISOString(), role: 'user', text: request.text });
         turnRunning = true;
         break;
       case 'answer': {
@@ -174,7 +201,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
 
   function handleSessionLine(line: string): void {
     appendHistory('session', line);
-    broadcast(`${JSON.stringify({ kind: 'session', line })}\n`);
+    for (const message of chatMessagesOfSessionLine(line, options.clock().toISOString())) addToConversation(message);
     const event = sessionStreamEventOf(line);
     switch (event.kind) {
       case 'init':
@@ -219,6 +246,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
     });
     client.on('error', () => clients.delete(client));
     client.on('close', () => clients.delete(client));
+    client.write(conversationLine({ kind: 'history', entries: conversation }));
     client.write(stateLine());
   }
 

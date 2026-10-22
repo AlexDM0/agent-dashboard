@@ -1,7 +1,8 @@
 /**
  * The dashboard's HTTP servers, bound to 127.0.0.1 only. The dashboard origin: the React app, the server identity, the
  * snapshot and its event stream, a project's concurrency limit set and its dispatcher stopped through its agent-progress
- * CLI, a message to a board's orchestrator Claude Code session, and a shutdown the CLI's `stop` asks for. The board
+ * CLI, a message to a board's orchestrator Claude Code session, a dashboard-owned orchestrator's start, stop, chat,
+ * answers and conversation stream, and a shutdown the CLI's `stop` asks for. The board
  * origin, a port of its own: each project's page folder and the bridge page, so no board page is same-origin with the
  * dashboard. Every route but the app shell refuses a request whose Host is not its server's own, against DNS rebinding;
  * Bun answers the shell before `fetch`, and it holds no data.
@@ -18,9 +19,12 @@ import { findOrchestratorSession }                   from '../adapters/Orchestra
 import { sessionSocketAccepts, writeSessionMessage } from '../adapters/SessionMessageWriter.ts';
 import { resolveContainedPath }                      from '../lib/contained-path/ContainedPath.ts';
 import {
+  type BoardSummary,
   type DashboardSnapshot,
   type LaunchToken,
+  type OrchestratorAnswerRequest,
   type OrchestratorSession,
+  type PendingQuestion,
   type ServerIdentity
 } from '../shared/DashboardContract.ts';
 import { orchestratorDirectoryOf }                                                             from '../shared/OrchestratorFilePaths.ts';
@@ -137,6 +141,12 @@ const ORCHESTRATOR_REQUESTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PR
 
 const ORCHESTRATOR_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX}$`);
 
+const ORCHESTRATOR_MESSAGES_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_MESSAGES_PATH_SUFFIX}$`);
+
+const ORCHESTRATOR_ANSWERS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_ANSWERS_PATH_SUFFIX}$`);
+
+const ORCHESTRATOR_EVENTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_EVENTS_PATH_SUFFIX}$`);
+
 const HTTP_STATUS = {
   CREATED:               201,
   NO_CONTENT:            204,
@@ -227,6 +237,50 @@ function requestedStartBuildingOf(bodyText: string): boolean | null {
   return keys.length === 1 && keys[0] === 'startBuilding' && typeof startBuilding === 'boolean' ? startBuilding : null;
 }
 
+const ORCHESTRATOR_CHAT_BODY_REFUSAL = `The body must be { "text": <string> }, 1 to ${DASHBOARD_LIMITS.MAXIMUM_CHAT_TEXT_CHARACTERS} characters after trimming`;
+
+function parsedJsonObjectOrNull(bodyText: string): Record<string, unknown> | null {
+  try {
+    const body: unknown = JSON.parse(bodyText);
+    return UnknownValueUtil.isJsonObject(body) ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The trimmed text of a `{ "text": <string> }` body, or null for any other body. */
+function requestedChatTextOf(bodyText: string): string | null {
+  const body = parsedJsonObjectOrNull(bodyText);
+  if (body === null || Object.keys(body).join() !== 'text' || typeof body['text'] !== 'string') return null;
+  const text = body['text'].trim();
+  return text.length > 0 && text.length <= DASHBOARD_LIMITS.MAXIMUM_CHAT_TEXT_CHARACTERS ? text : null;
+}
+
+const ORCHESTRATOR_ANSWER_BODY_REFUSAL = 'The body must be { "requestId": <string>, "answers": { "<question>": "<answer>" } }, every answer non-empty';
+
+function requestedAnswerOf(bodyText: string): OrchestratorAnswerRequest | null {
+  const body = parsedJsonObjectOrNull(bodyText);
+  if (body === null || Object.keys(body).sort().join() !== 'answers,requestId') return null;
+  const { requestId, answers } = body;
+  if (typeof requestId !== 'string' || requestId.length === 0 || !UnknownValueUtil.isJsonObject(answers)) return null;
+  const answerEntries = Object.entries(answers);
+  const everyAnswerIsText = answerEntries.every((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim().length > 0);
+  return everyAnswerIsText && answerEntries.length > 0 ? { requestId, answers: Object.fromEntries(answerEntries) } : null;
+}
+
+/** Null when the answers name exactly the questions of the pending request, else why not. */
+function answerMismatchOf(pending: PendingQuestion, answers: Record<string, string>): string | null {
+  const askedQuestions = new Set(pending.questions.map((question) => question.question));
+  const notAsked = Object.keys(answers).filter((question) => !askedQuestions.has(question));
+  if (notAsked.length > 0) return `Not asked by this request: ${notAsked.join(', ')}`;
+  const unanswered = [...askedQuestions].filter((question) => !Object.hasOwn(answers, question));
+  return unanswered.length > 0 ? `Left unanswered: ${unanswered.join(', ')}` : null;
+}
+
+function serverSentEventOf(eventName: string, data: unknown): string {
+  return `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
 /** The monitor's snapshot with every page addressed on the board origin and each project's dashboard-owned orchestrator. */
 function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orchestratorOf: (trackerId: string) => OrchestratorSession | null): DashboardSnapshot {
   return {
@@ -238,7 +292,7 @@ function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orc
 }
 
 function snapshotEvent(snapshot: DashboardSnapshot): string {
-  return `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`;
+  return serverSentEventOf('snapshot', snapshot);
 }
 
 interface ServingDependencies {
@@ -337,7 +391,8 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return Response.json(identity, { headers: NO_STORE_HEADERS });
   }
 
-  function eventStreamResponse(request: Request, servingServer: Bun.Server<undefined>): Response {
+  /** `startEvents` subscribes, sends what a new client sees first, and returns the unsubscribe. */
+  function serverSentEventsResponse(request: Request, servingServer: Bun.Server<undefined>, startEvents: (send: (text: string) => void) => () => void): Response {
     servingServer.timeout(request, 0);
     const encoder = new TextEncoder();
     let releaseStream = (): void => {};
@@ -350,8 +405,6 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
             releaseStream();
           }
         }
-        const unsubscribeFromMonitor = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSessions.sessionOf))));
-        const unsubscribeFromOrchestrators = orchestratorSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
         const heartbeat = setInterval(() => send(': heartbeat\n\n'), dependencies.heartbeatIntervalMilliseconds);
 
         function closeStream(): void {
@@ -363,23 +416,60 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
           }
         }
         let released = false;
+        let unsubscribe = (): void => {};
         releaseStream = () => {
           if (released) return;
           released = true;
-          unsubscribeFromMonitor();
-          unsubscribeFromOrchestrators();
+          unsubscribe();
           clearInterval(heartbeat);
           closeOpenStreams.delete(closeStream);
         };
         closeOpenStreams.add(closeStream);
         request.signal.addEventListener('abort', () => releaseStream());
-        send(snapshotEvent(servedSnapshot()));
+        unsubscribe = startEvents(send);
+        if (released) unsubscribe();
       },
       cancel() {
         releaseStream();
       },
     });
     return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Connection': 'keep-alive', ...NO_STORE_HEADERS }, });
+  }
+
+  function snapshotEventsResponse(request: Request, servingServer: Bun.Server<undefined>): Response {
+    return serverSentEventsResponse(request, servingServer, (send) => {
+      const unsubscribeFromMonitor = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSessions.sessionOf))));
+      const unsubscribeFromOrchestrators = orchestratorSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
+      send(snapshotEvent(servedSnapshot()));
+      return () => {
+        unsubscribeFromMonitor();
+        unsubscribeFromOrchestrators();
+      };
+    });
+  }
+
+  /** The conversation from the session's start, then each new message, and the session on every change of it. */
+  async function orchestratorEventsResponse(request: Request, servingServer: Bun.Server<undefined>, encodedTrackerId: string): Promise<Response> {
+    if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    if (trackerId === null || monitor.rootOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    return serverSentEventsResponse(request, servingServer, (send) => {
+      let lastSentSessionText = JSON.stringify(orchestratorSessions.sessionOf(trackerId));
+      const unsubscribeFromConversation = orchestratorSessions.subscribeToConversation(trackerId, (message) => send(serverSentEventOf('message', message)));
+      const unsubscribeFromSessions = orchestratorSessions.subscribe(() => {
+        const sessionText = JSON.stringify(orchestratorSessions.sessionOf(trackerId));
+        if (sessionText === lastSentSessionText) return;
+        lastSentSessionText = sessionText;
+        send(`event: session\ndata: ${sessionText}\n\n`);
+      });
+      send(serverSentEventOf('history', orchestratorSessions.conversationOf(trackerId)));
+      send(`event: session\ndata: ${lastSentSessionText}\n\n`);
+      return () => {
+        unsubscribeFromConversation();
+        unsubscribeFromSessions();
+      };
+    });
   }
 
   function shutdownResponse(request: Request): Response {
@@ -459,7 +549,11 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       }
     }
 
-    const messageText = orchestratorMessageTextOf(orchestratorRequest, project?.project ?? trackerId);
+    return deliveredToOrchestratorResponse(trackerId, root, board, orchestratorMessageTextOf(orchestratorRequest, project?.project ?? trackerId));
+  }
+
+  /** A live dashboard-owned session takes the text as its user's turn; else the one watched session the finder names, as a peer's. */
+  async function deliveredToOrchestratorResponse(trackerId: string, root: string, board: BoardSummary | null, messageText: string): Promise<Response> {
     if (orchestratorSessions.isLive(trackerId)) {
       const delivery = await orchestratorSessions.chat(trackerId, messageText);
       if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
@@ -474,6 +568,39 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     });
     if (search.kind === 'refused') return plainResponse(HTTP_STATUS.CONFLICT, search.reason);
     const delivery = await writeSessionMessage(search.session.messagingSocketPath, messageText, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS);
+    if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+  }
+
+  async function orchestratorChatResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const text = requestedChatTextOf(await request.text().catch(() => ''));
+    if (text === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
+    const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
+    return deliveredToOrchestratorResponse(trackerId, root, project?.health.kind === 'ready' ? project.health.board : null, text);
+  }
+
+  /** Only a dashboard-owned session's questions are answered here; a watched one answers in its own app. */
+  async function orchestratorAnswerResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    if (trackerId === null || monitor.rootOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const requestedAnswer = requestedAnswerOf(await request.text().catch(() => ''));
+    if (requestedAnswer === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_ANSWER_BODY_REFUSAL);
+    const session = orchestratorSessions.sessionOf(trackerId);
+    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
+    if (session.state === 'ended') return plainResponse(HTTP_STATUS.CONFLICT, 'The dashboard-owned orchestrator of this project has ended');
+    const pending = session.pendingQuestions.find((pendingQuestion) => pendingQuestion.requestId === requestedAnswer.requestId);
+    if (pending === undefined) return plainResponse(HTTP_STATUS.CONFLICT, `No question ${requestedAnswer.requestId} is pending`);
+    const mismatch = answerMismatchOf(pending, requestedAnswer.answers);
+    if (mismatch !== null) return plainResponse(HTTP_STATUS.CONFLICT, mismatch);
+    const delivery = await orchestratorSessions.answer(trackerId, requestedAnswer.requestId, requestedAnswer.answers);
+    if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, 'The dashboard-owned orchestrator of this project has ended');
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
@@ -614,12 +741,24 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       if (request.method === 'POST') return orchestratorStartResponse(request, orchestratorRouteMatch[1]);
       return request.method === 'DELETE' ? orchestratorStopResponse(request, orchestratorRouteMatch[1]) : methodNotAllowed('POST, DELETE');
     }
+    const orchestratorMessagesRouteMatch = ORCHESTRATOR_MESSAGES_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorMessagesRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? orchestratorChatResponse(request, orchestratorMessagesRouteMatch[1]) : methodNotAllowed('POST');
+    }
+    const orchestratorAnswersRouteMatch = ORCHESTRATOR_ANSWERS_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorAnswersRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? orchestratorAnswerResponse(request, orchestratorAnswersRouteMatch[1]) : methodNotAllowed('POST');
+    }
+    const orchestratorEventsRouteMatch = ORCHESTRATOR_EVENTS_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorEventsRouteMatch?.[1] !== undefined) {
+      return request.method === 'GET' ? orchestratorEventsResponse(request, servingServer, orchestratorEventsRouteMatch[1]) : methodNotAllowed('GET');
+    }
     if (pathname === DASHBOARD_PROTOCOL.LAUNCH_TOKEN_PATH) return request.method === 'GET' ? launchTokenResponse(request) : methodNotAllowed('GET');
     if (pathname === '/api/snapshot' || pathname === '/api/events') {
       if (!isRead) return methodNotAllowed('GET, HEAD');
       await monitorStarted;
       if (pathname === '/api/snapshot') return Response.json(servedSnapshot(), { headers: NO_STORE_HEADERS });
-      return eventStreamResponse(request, servingServer);
+      return snapshotEventsResponse(request, servingServer);
     }
     return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
   }

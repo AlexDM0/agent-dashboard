@@ -75,7 +75,13 @@ export interface ChatMessage { at: string; role: ChatRole; text: string }
 /** The body of `POST /api/projects/<trackerId>/orchestrator`. */
 export interface OrchestratorStartRequest { startBuilding: boolean }
 
-/** The answer of `GET /api/launch-token`, the header value an orchestrator start or stop must carry. */
+/** The body of `POST /api/projects/<trackerId>/orchestrator/messages`: 1 to 20000 characters after trimming. */
+export interface OrchestratorChatRequest { text: string }
+
+/** The body of `POST /api/projects/<trackerId>/orchestrator/answers`: one answer per question of the pending request. */
+export interface OrchestratorAnswerRequest { requestId: string; answers: Record<string, string> }
+
+/** The answer of `GET /api/launch-token`, the header value an orchestrator start, stop, chat or answer must carry. */
 export interface LaunchToken { token: string }
 
 export interface ProjectSnapshot {

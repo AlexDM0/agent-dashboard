@@ -25,4 +25,8 @@ export const DASHBOARD_LIMITS = {
   SUPERVISOR_RECONNECT_MILLISECONDS:      5_000,
   /** macOS keeps 104 bytes for a Unix socket path, its terminating zero among them. */
   MAXIMUM_SOCKET_PATH_BYTES:              103,
+  /** The chat messages a supervisor holds and a conversation stream replays on connect. */
+  CONVERSATION_HISTORY_MESSAGE_COUNT:     200,
+  /** The longest chat message, in characters after trimming. */
+  MAXIMUM_CHAT_TEXT_CHARACTERS:           20_000,
 } as const;

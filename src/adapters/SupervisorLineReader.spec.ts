@@ -1,10 +1,27 @@
 /**
  * A supervisor acts on whatever a connected client writes, so only the three request shapes may read as requests; and a
  * server takes a session's state from the state line alone, so a session line or a damaged record must read as null.
+ * The conversation reads entry by entry with its sequence, and a history holding one damaged entry reads as null.
  */
 import { expect, test } from 'bun:test';
 
-import { supervisorRequestOf, supervisorStateOf } from './SupervisorLineReader.ts';
+import {
+  type ConversationEntry,
+  supervisorConversationOf,
+  supervisorRequestOf,
+  supervisorStateOf
+} from './SupervisorLineReader.ts';
+
+const EXAMPLE_ENTRY: ConversationEntry = { sequence: 1, message: { at: '2026-10-22T10:00:00.000Z', role: 'user', text: 'Hello from Alex Example' } };
+
+test('a history and a message line read with their sequences, and a damaged entry reads as null', () => {
+  expect(supervisorConversationOf(JSON.stringify({ kind: 'history', entries: [EXAMPLE_ENTRY] }))).toEqual({ kind: 'history', entries: [EXAMPLE_ENTRY] });
+  expect(supervisorConversationOf(JSON.stringify({ kind: 'message', entry: EXAMPLE_ENTRY }))).toEqual({ kind: 'message', entry: EXAMPLE_ENTRY });
+  const damagedEntry = { ...EXAMPLE_ENTRY, message: { ...EXAMPLE_ENTRY.message, role: 'narrator' } };
+  expect(supervisorConversationOf(JSON.stringify({ kind: 'history', entries: [EXAMPLE_ENTRY, damagedEntry] }))).toBeNull();
+  expect(supervisorConversationOf(JSON.stringify({ kind: 'message', entry: { message: EXAMPLE_ENTRY.message } }))).toBeNull();
+  expect(supervisorConversationOf(JSON.stringify({ kind: 'state' }))).toBeNull();
+});
 
 const EXAMPLE_RECORD = {
   trackerId:         'example-tracker',

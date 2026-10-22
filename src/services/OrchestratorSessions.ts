@@ -12,14 +12,19 @@ import {
 } from 'node:fs';
 import { type Socket, createConnection } from 'node:net';
 
-import { readOrchestratorRecord, readOrchestratorRecords } from '../adapters/OrchestratorRecordReader.ts';
-import { type SupervisorRequest, supervisorStateOf }       from '../adapters/SupervisorLineReader.ts';
-import { processIsAlive }                                  from '../lib/process-liveness/ProcessIsAlive.ts';
-import type { OrchestratorSession }                        from '../shared/DashboardContract.ts';
-import { orchestratorFilePathsOf }                         from '../shared/OrchestratorFilePaths.ts';
-import { UnknownValueUtil }                                from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_LIMITS }                                from '../shared/constants/DashboardLimits.ts';
-import { DASHBOARD_PROTOCOL }                              from '../shared/constants/DashboardProtocol.ts';
+import { type OrchestratorRecord, readOrchestratorRecord, readOrchestratorRecords } from '../adapters/OrchestratorRecordReader.ts';
+import {
+  type ConversationEntry,
+  type SupervisorRequest,
+  supervisorConversationOf,
+  supervisorStateOf
+} from '../adapters/SupervisorLineReader.ts';
+import { processIsAlive }                        from '../lib/process-liveness/ProcessIsAlive.ts';
+import type { ChatMessage, OrchestratorSession } from '../shared/DashboardContract.ts';
+import { orchestratorFilePathsOf }               from '../shared/OrchestratorFilePaths.ts';
+import { UnknownValueUtil }                      from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_LIMITS }                      from '../shared/constants/DashboardLimits.ts';
+import { DASHBOARD_PROTOCOL }                    from '../shared/constants/DashboardProtocol.ts';
 
 export interface OrchestratorSessionsOptions {
   orchestratorDirectory:    string;
@@ -47,18 +52,37 @@ export interface OrchestratorSessions {
   launch(trackerId: string, root: string, firstMessage: string | null): Promise<OrchestratorLaunch>;
   stop(trackerId: string): Promise<SupervisorDelivery>;
   chat(trackerId: string, text: string): Promise<SupervisorDelivery>;
+  /** Sends the answers to a pending question; once delivered the question is no longer pending here either. */
+  answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<SupervisorDelivery>;
+  /** The project's conversation so far, oldest first, at most the supervisor's held history; empty for none. */
+  conversationOf(trackerId: string): ChatMessage[];
   /** Called on every change of a session's state; returns the unsubscribe. */
   subscribe(listener: () => void): () => void;
+  /** Called with each new chat message of the project's session, in order; returns the unsubscribe. */
+  subscribeToConversation(trackerId: string, listener: (message: ChatMessage) => void): () => void;
   close(): void;
 }
 
 interface Supervised {
+  trackerId:      string;
   recordPath:     string;
   socketPath:     string;
   supervisorPid:  number;
   session:        OrchestratorSession;
   connection:     Socket | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+}
+
+function supervisedOf(recordPath: string, record: OrchestratorRecord): Supervised {
+  return {
+    trackerId:      record.trackerId,
+    recordPath,
+    socketPath:     record.socketPath,
+    supervisorPid:  record.supervisorPid,
+    session:        sessionFromRecord(record.sessionId, record.sessionPid, record.startedAt),
+    connection:     null,
+    reconnectTimer: null,
+  };
 }
 
 const START_POLL_MILLISECONDS = 50;
@@ -72,11 +96,29 @@ function sessionFromRecord(sessionId: string, sessionPid: number, startedAt: str
 export function createOrchestratorSessions(options: OrchestratorSessionsOptions): OrchestratorSessions {
   const supervisedByTracker = new Map<string, Supervised>();
   const listeners = new Set<() => void>();
+  // Kept by tracker rather than by supervisor, so a project's conversation outlives its session until the next one starts.
+  const conversationByTracker = new Map<string, { sessionId: string; entries: ConversationEntry[] }>();
+  const conversationListenersByTracker = new Map<string, Set<(message: ChatMessage) => void>>();
   const trackersBeingLaunched = new Set<string>();
   let closed = false;
 
   function notify(): void {
     for (const listener of [...listeners]) listener();
+  }
+
+  /** A supervisor replays its history on every connect, so an entry already held is skipped by its sequence. */
+  function takeConversationEntries(trackerId: string, sessionId: string, entries: ConversationEntry[]): void {
+    const held = conversationByTracker.get(trackerId);
+    const conversation = held?.sessionId === sessionId ? held.entries : [];
+    conversationByTracker.set(trackerId, { sessionId, entries: conversation });
+    let latestHeldSequence = conversation.at(-1)?.sequence ?? 0;
+    for (const entry of entries) {
+      if (entry.sequence <= latestHeldSequence) continue;
+      latestHeldSequence = entry.sequence;
+      conversation.push(entry);
+      if (conversation.length > DASHBOARD_LIMITS.CONVERSATION_HISTORY_MESSAGE_COUNT) conversation.shift();
+      for (const listener of [...(conversationListenersByTracker.get(trackerId) ?? [])]) listener(entry.message);
+    }
   }
 
   function supervisorIsGone(supervised: Supervised): boolean {
@@ -95,6 +137,12 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
         const lines = `${unfinishedLine}${chunk}`.split('\n');
         unfinishedLine = lines.pop() ?? '';
         for (const line of lines) {
+          const conversation = supervisorConversationOf(line);
+          if (conversation !== null) {
+            const entries = conversation.kind === 'history' ? conversation.entries : [conversation.entry];
+            takeConversationEntries(supervised.trackerId, supervised.session.sessionId, entries);
+            continue;
+          }
           const state = supervisorStateOf(line);
           if (state === null) continue;
           supervised.session = {
@@ -135,14 +183,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
         rmSync(record.socketPath, { force: true });
         continue;
       }
-      const supervised: Supervised = {
-        recordPath:     reading.recordPath,
-        socketPath:     record.socketPath,
-        supervisorPid:  record.supervisorPid,
-        session:        sessionFromRecord(record.sessionId, record.sessionPid, record.startedAt),
-        connection:     null,
-        reconnectTimer: null,
-      };
+      const supervised = supervisedOf(reading.recordPath, record);
       supervisedByTracker.set(record.trackerId, supervised);
       void connect(supervised);
     }
@@ -198,15 +239,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     while (performance.now() < deadline && exitReason === null) {
       const reading = readOrchestratorRecord(paths.recordPath);
       if (reading.kind === 'present' && reading.record.supervisorPid === supervisor.pid) {
-        const { record } = reading;
-        const supervised: Supervised = {
-          recordPath:     paths.recordPath,
-          socketPath:     record.socketPath,
-          supervisorPid:  record.supervisorPid,
-          session:        sessionFromRecord(record.sessionId, record.sessionPid, record.startedAt),
-          connection:     null,
-          reconnectTimer: null,
-        };
+        const supervised = supervisedOf(paths.recordPath, reading.record);
         if (await connect(supervised)) {
           supervisedByTracker.set(trackerId, supervised);
           if (firstMessage !== null) await chat(trackerId, firstMessage);
@@ -238,23 +271,46 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
       supervised.connection?.destroy();
     }
     listeners.clear();
+    conversationListenersByTracker.clear();
   }
 
   function chat(trackerId: string, text: string): Promise<SupervisorDelivery> {
     return send(trackerId, { kind: 'chat', text });
   }
 
+  async function answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<SupervisorDelivery> {
+    const delivery = await send(trackerId, { kind: 'answer', requestId, answers });
+    const supervised = supervisedByTracker.get(trackerId);
+    // The supervisor's next state line says so too; until it arrives a second answer must already find nothing pending.
+    if (delivery.kind === 'delivered' && supervised !== undefined) {
+      const pendingQuestions = supervised.session.pendingQuestions.filter((pending) => pending.requestId !== requestId);
+      supervised.session = { ...supervised.session, pendingQuestions };
+      notify();
+    }
+    return delivery;
+  }
+
+  function subscribeToConversation(trackerId: string, listener: (message: ChatMessage) => void): () => void {
+    const trackerListeners = conversationListenersByTracker.get(trackerId) ?? new Set();
+    conversationListenersByTracker.set(trackerId, trackerListeners);
+    trackerListeners.add(listener);
+    return () => trackerListeners.delete(listener);
+  }
+
   return {
     start,
-    sessionOf: (trackerId) => supervisedByTracker.get(trackerId)?.session ?? null,
+    sessionOf:      (trackerId) => supervisedByTracker.get(trackerId)?.session ?? null,
     isLive,
     launch,
-    stop:      (trackerId) => send(trackerId, { kind: 'stop' }),
+    stop:           (trackerId) => send(trackerId, { kind: 'stop' }),
     chat,
+    answer,
+    conversationOf: (trackerId) => (conversationByTracker.get(trackerId)?.entries ?? []).map((entry) => entry.message),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    subscribeToConversation,
     close,
   };
 }

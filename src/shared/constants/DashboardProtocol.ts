@@ -15,7 +15,13 @@ export const DASHBOARD_PROTOCOL = {
   ORCHESTRATOR_REQUESTS_PATH_SUFFIX: '/orchestrator-requests',
   /** `POST` (an `OrchestratorStartRequest`) or `DELETE <PROJECTS_API_PATH>/<trackerId><ORCHESTRATOR_PATH_SUFFIX>`. */
   ORCHESTRATOR_PATH_SUFFIX:          '/orchestrator',
-  /** Answers the `LaunchToken` an orchestrator start or stop carries in `LAUNCH_TOKEN_HEADER_NAME`. */
+  /** `POST` an `OrchestratorChatRequest`, carrying the launch token. */
+  ORCHESTRATOR_MESSAGES_PATH_SUFFIX: '/orchestrator/messages',
+  /** `POST` an `OrchestratorAnswerRequest`, carrying the launch token. */
+  ORCHESTRATOR_ANSWERS_PATH_SUFFIX:  '/orchestrator/answers',
+  /** `GET`: Server-Sent Events of the project's orchestrator conversation and session. */
+  ORCHESTRATOR_EVENTS_PATH_SUFFIX:   '/orchestrator/events',
+  /** Answers the `LaunchToken` an orchestrator start, stop, chat or answer carries in `LAUNCH_TOKEN_HEADER_NAME`. */
   LAUNCH_TOKEN_PATH:                 '/api/launch-token',
   LAUNCH_TOKEN_HEADER_NAME:          'X-Agent-Dashboard-Launch-Token',
   /** The command word the server runs a supervisor with; not in `help`. */

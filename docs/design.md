@@ -265,8 +265,13 @@ and removes its record and socket then.
 - **Socket protocol** (NDJSON both ways). Client to supervisor: `{"kind":"chat","text":…}`, `{"kind":"answer",
   "requestId":…,"answers":{…}}`, `{"kind":"stop"}`. Supervisor to client: a `{"kind":"state",…}` line (the record, the
   `OrchestratorState`, pending questions, latest context usage) on connect and on every change, the last one `ended`;
-  and each session stdout line as `{"kind":"session","line":…}`. A server takes the session's state from state lines
-  alone. The state is `busy` from a `chat` until the next `result`, `waiting-for-answer` while a question is held, else
+  and the conversation: on connect, before the state line, `{"kind":"history","entries":[…]}` with the last 200
+  entries it holds, then `{"kind":"message","entry":…}` per new one, each entry `{ sequence, message: ChatMessage }`
+  numbered from 1, so a reconnecting server takes only the entries past the last sequence it holds. A chat is a `user`
+  message; an `assistant` line's text blocks are `assistant` messages and its `tool_use` blocks `tool` messages (the tool
+  name and its input as JSON, cut at 2000 characters), in block order
+  (`src/adapters/SessionChatMessageMapper.ts`); tool results and other lines show nothing. A server takes the session's
+  state from state lines alone. The state is `busy` from a `chat` until the next `result`, `waiting-for-answer` while a question is held, else
   `idle`; `starting` is the server's own, from reading a record until its first state line.
   Writes to a client are buffered per client and drained (`drain`), since one `write` of a 20 kB `init` line was cut
   short in the probe.
@@ -314,10 +319,11 @@ model, else the token count alone.
 ### Routes
 
 Every route below takes the server's Host guard, 403 for a present foreign `Origin`, and 404 for an unknown tracker.
-Start and stop are stricter: the server issues a random launch token when it starts, held in memory only (never in the
-app shell at `/`, which Bun answers before the Host guard, nor the log, the server record or a tracked repository), and
-a start or stop whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
-this server's own, is refused 403 before anything is read or spawned. The token is the answer of a Host-guarded
+Start, stop, messages and answers are stricter: the server issues a random launch token when it starts, held in memory
+only (never in the app shell at `/`, which Bun answers before the Host guard, nor the log, the server record or a
+tracked repository), and a start, stop, message or answer whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
+this server's own, is refused 403 before anything is read, spawned or written to a session. The event stream takes no
+token (an `EventSource` sends no header), refuses a present foreign `Origin` and sends no CORS headers. The token is the answer of a Host-guarded
 `GET /api/launch-token` (`LaunchToken`, 403 for a foreign `Origin`), which a page elsewhere cannot read (no CORS grant)
 and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 
@@ -325,9 +331,9 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | --- | --- |
 | `POST /api/projects/<trackerId>/orchestrator` | body `{ "startBuilding": <boolean> }`: starts the supervisor in the project's root and answers 201 with the `OrchestratorSession` once its socket accepts (at most 10 s). With `startBuilding` true its first message is the `start-building` text of `orchestrator-requests`, carrying the user's go that `Workflow` needs. 400 for any other body, 409 while a dashboard-owned orchestrator of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
 | `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204. 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
-| `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }`, 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. 400 for any other body, 409 when the finder refuses (no or several sessions), 502 when the socket fails |
-| `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<label>" } }`, one answer for every question of that pending request, each a label it offered (or free text for an "Other" choice): sent as `answer`, 204. 400 for any other body, 404 when no dashboard-owned orchestrator lives, 409 for a watched session, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
-| `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the last 200 `ChatMessage`s on connect, then `event: message` per new one and `event: session` with the `OrchestratorSession` on every change; a `: heartbeat` comment every 25 s. A watched session's messages are tailed from its transcript |
+| `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }`, 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. The text is sent trimmed. 400 for any other body, 409 when no dashboard-owned session lives and the finder refuses (no or several sessions), 502 when the socket fails |
+| `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<answer>" } }`, one non-empty answer for every question of that pending request (a label it offered, labels joined for a multi-select, or free text for an "Other" choice): sent as `answer`, 204; the request is no longer pending from then on, so a second answer is 409 and the supervisor ignores an answer to a request it no longer holds. 400 for any other body, 404 when no dashboard-owned orchestrator ran since this server started, 409 for one that has ended, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
+| `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the project's dashboard-owned conversation (the last 200 `ChatMessage`s, from the session's start) on connect, then `event: session` with the `OrchestratorSession` (null for none), then `event: message` per new message and `event: session` on every change of it; a `: heartbeat` comment every 25 s. A project with no dashboard-owned session streams an empty history and waits for one. A watched session's messages are to be tailed from its transcript (not built yet) |
 
 The snapshot carries each project's dashboard-owned `orchestrator` (live, or `ended` since this server started; null
 for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
@@ -364,6 +370,8 @@ export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 export interface ChatMessage { at: string; role: ChatRole; text: string }
 
 export interface OrchestratorStartRequest { startBuilding: boolean }
+export interface OrchestratorChatRequest { text: string }
+export interface OrchestratorAnswerRequest { requestId: string; answers: Record<string, string> }
 export interface LaunchToken { token: string }
 
 // ProjectSnapshot gains: orchestrator: OrchestratorSession | null;
