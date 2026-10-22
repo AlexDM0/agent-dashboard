@@ -3,7 +3,7 @@
  * a start lacking the launch token or this server's own `Origin` spawns nothing, that the token never leaves through the
  * app shell, the log or the server record, that a started session runs in the project root in auto mode and is still
  * listed and reachable after the server process is killed and started again, and that a session ending, by Stop or by
- * itself, shows `ended` in the next snapshot.
+ * itself, shows `ended` in the next snapshot, and that two simultaneous starts spawn one supervisor.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join }                                  from 'node:path';
@@ -193,9 +193,10 @@ test('a started session runs in the project root in auto mode and is still reach
   expect((await fetch(orchestratorPath, { method: 'DELETE', headers: launchHeaders() })).status).toBe(404);
 }, END_TO_END_TIMEOUT_MILLISECONDS);
 
-test('a session that exits by itself shows ended in the next snapshot, and the project may start another', async () => {
-  const start = await fetch(orchestratorPath, { method: 'POST', headers: launchHeaders(), body: '{"startBuilding":true}' });
-  expect(start.status).toBe(201);
+test('a session that exits by itself shows ended in the next snapshot, and the project may start another, once', async () => {
+  const startOf = (): Promise<Response> => fetch(orchestratorPath, { method: 'POST', headers: launchHeaders(), body: '{"startBuilding":true}' });
+  const simultaneousStarts = await Promise.all([startOf(), startOf()]);
+  expect(simultaneousStarts.map((start) => start.status).sort()).toEqual([201, 409]);
   const sessionStarts = (): FakeClaudeTranscriptEntry[] => readFakeClaudeTranscript(home).filter((entry) => entry.event === 'started');
   await waitUntil(() => sessionStarts().length === 2, 'the second fake claude started', SESSION_WAIT_MILLISECONDS);
   const latestStart = sessionStarts().at(-1);

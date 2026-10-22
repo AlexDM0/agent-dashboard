@@ -72,6 +72,7 @@ function sessionFromRecord(sessionId: string, sessionPid: number, startedAt: str
 export function createOrchestratorSessions(options: OrchestratorSessionsOptions): OrchestratorSessions {
   const supervisedByTracker = new Map<string, Supervised>();
   const listeners = new Set<() => void>();
+  const trackersBeingLaunched = new Set<string>();
   let closed = false;
 
   function notify(): void {
@@ -175,7 +176,18 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
   async function launch(trackerId: string, root: string, firstMessage: string | null): Promise<OrchestratorLaunch> {
     const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId);
     const onDisk = readOrchestratorRecord(paths.recordPath);
-    if (isLive(trackerId) || (onDisk.kind === 'present' && processIsAlive(onDisk.record.supervisorPid))) return { kind: 'running' };
+    const supervisorRuns = isLive(trackerId) || (onDisk.kind === 'present' && processIsAlive(onDisk.record.supervisorPid));
+    if (supervisorRuns || trackersBeingLaunched.has(trackerId)) return { kind: 'running' };
+    trackersBeingLaunched.add(trackerId);
+    try {
+      return await launchSupervisor(trackerId, root, firstMessage);
+    } finally {
+      trackersBeingLaunched.delete(trackerId);
+    }
+  }
+
+  async function launchSupervisor(trackerId: string, root: string, firstMessage: string | null): Promise<OrchestratorLaunch> {
+    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId);
     if (Buffer.byteLength(paths.socketPath) > DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES) {
       return { kind: 'refused', reason: `The socket path ${paths.socketPath} is longer than ${DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES} bytes` };
     }
