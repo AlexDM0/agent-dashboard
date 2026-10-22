@@ -1,21 +1,27 @@
-import type { ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
-import { ProjectOrdering }      from '../overview/ProjectOrdering.ts';
-import { boardHashOf }          from '../shell/HashRoute.ts';
-import { projectActivityOf }    from '../shell/ProjectActivity.ts';
-import { ProjectDot }           from '../shell/ProjectDot.tsx';
+import type { OrchestratorSession, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
+import { OrchestratorSessionUtil }                   from '../orchestrator/OrchestratorSessionUtil.ts';
+import { OrchestratorSummary }                       from '../orchestrator/OrchestratorSummary.tsx';
+import { ProjectOrdering }                           from '../overview/ProjectOrdering.ts';
+import { boardHashOf }                               from '../shell/HashRoute.ts';
+import { projectActivityOf }                         from '../shell/ProjectActivity.ts';
+import { ProjectDot }                                from '../shell/ProjectDot.tsx';
 
 interface ProjectRailProperties {
-  projects:          ProjectSnapshot[];
-  selectedTrackerId: string;
+  projects:                      ProjectSnapshot[];
+  watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
+  selectedTrackerId:             string;
 }
 
 interface RailGroupProperties {
-  title:             string;
-  projects:          ProjectSnapshot[];
-  selectedTrackerId: string;
+  title:                         string;
+  projects:                      ProjectSnapshot[];
+  watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
+  selectedTrackerId:             string;
 }
 
-function RailGroup({ title, projects, selectedTrackerId }: RailGroupProperties) {
+function RailGroup({
+  title, projects, watchedOrchestratorsByTracker, selectedTrackerId
+}: RailGroupProperties) {
   if (projects.length === 0) {
     return null;
   }
@@ -31,11 +37,12 @@ function RailGroup({ title, projects, selectedTrackerId }: RailGroupProperties) 
             className={isSelected ? 'ap-rail-row is-selected' : 'ap-rail-row'}
             {...(isSelected ? { 'aria-current': 'page' as const } : {})}
           >
-            <ProjectDot activity={projectActivityOf(project)} />
+            <ProjectDot activity={projectActivityOf(project)} isQuestionWaiting={OrchestratorSessionUtil.isQuestionWaiting(project)} />
             <span className="ap-rail-name">{project.project}</span>
             {project.health.kind === 'ready'
               ? <span className="ap-rail-agents">{project.health.board.agentsInFlight}/{project.health.board.concurrencyLimit}</span>
               : null}
+            <OrchestratorSummary project={project} watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(watchedOrchestratorsByTracker, project.trackerId)} />
           </a>
         );
       })}
@@ -43,12 +50,12 @@ function RailGroup({ title, projects, selectedTrackerId }: RailGroupProperties) 
   );
 }
 
-export function ProjectRail({ projects, selectedTrackerId }: ProjectRailProperties) {
+export function ProjectRail({ projects, watchedOrchestratorsByTracker, selectedTrackerId }: ProjectRailProperties) {
   const groups = ProjectOrdering.grouped(projects, 'all', '');
   return (
     <nav className="ap-rail" aria-label="Projects">
-      <RailGroup title="Active" projects={groups.active} selectedTrackerId={selectedTrackerId} />
-      <RailGroup title="Idle" projects={groups.idle} selectedTrackerId={selectedTrackerId} />
+      <RailGroup title="Active" projects={groups.active} watchedOrchestratorsByTracker={watchedOrchestratorsByTracker} selectedTrackerId={selectedTrackerId} />
+      <RailGroup title="Idle" projects={groups.idle} watchedOrchestratorsByTracker={watchedOrchestratorsByTracker} selectedTrackerId={selectedTrackerId} />
     </nav>
   );
 }

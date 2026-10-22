@@ -40,8 +40,15 @@ export function OverviewView({
         onSearchChange={onSearchChange}
         onFilterChange={onFilterChange}
       />
-      <ProjectGroup title="Active" projects={groups.active} now={now} staleSince={staleSince} />
-      <ProjectGroup title="Idle" projects={groups.idle} now={now} staleSince={staleSince} collapsesOnPhone />
+      <ProjectGroup title="Active" projects={groups.active} watchedOrchestratorsByTracker={snapshot.watchedOrchestratorsByTracker} now={now} staleSince={staleSince} />
+      <ProjectGroup
+        title="Idle"
+        projects={groups.idle}
+        watchedOrchestratorsByTracker={snapshot.watchedOrchestratorsByTracker}
+        now={now}
+        staleSince={staleSince}
+        collapsesOnPhone
+      />
       {groups.shownCount === 0 ? <NoMatchPanel searchText={searchText} /> : null}
     </>
   );

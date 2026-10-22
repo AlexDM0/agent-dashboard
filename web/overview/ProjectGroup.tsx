@@ -1,19 +1,21 @@
-import { useState }             from 'react';
-import type { ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
-import { ProblemCard }          from './ProblemCard.tsx';
-import { ProjectCard }          from './ProjectCard.tsx';
+import { useState }                                  from 'react';
+import type { OrchestratorSession, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
+import { OrchestratorSessionUtil }                   from '../orchestrator/OrchestratorSessionUtil.ts';
+import { ProblemCard }                               from './ProblemCard.tsx';
+import { ProjectCard }                               from './ProjectCard.tsx';
 
 interface ProjectGroupProperties {
-  title:             string;
-  projects:          ProjectSnapshot[];
-  now:               number;
-  staleSince:        number | null;
-  collapsesOnPhone?: boolean;
+  title:                         string;
+  projects:                      ProjectSnapshot[];
+  watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
+  now:                           number;
+  staleSince:                    number | null;
+  collapsesOnPhone?:             boolean;
 }
 
 /** On a phone a collapsing group shows its first card and a disclosure naming the rest (the stylesheet hides them). */
 export function ProjectGroup({
-  title, projects, now, staleSince, collapsesOnPhone = false
+  title, projects, watchedOrchestratorsByTracker, now, staleSince, collapsesOnPhone = false
 }: ProjectGroupProperties) {
   const [expanded, setExpanded] = useState(false);
   if (projects.length === 0) {
@@ -29,7 +31,16 @@ export function ProjectGroup({
       </div>
       <div className="ap-card-grid" data-collapsed={isCollapsed}>
         {projects.map((project) => (project.health.kind === 'ready'
-          ? <ProjectCard key={project.trackerId} project={project} board={project.health.board} now={now} staleSince={staleSince} />
+          ? (
+            <ProjectCard
+              key={project.trackerId}
+              project={project}
+              board={project.health.board}
+              watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(watchedOrchestratorsByTracker, project.trackerId)}
+              now={now}
+              staleSince={staleSince}
+            />
+          )
           : <ProblemCard key={project.trackerId} project={project} reason={project.health.reason} now={now} />))}
       </div>
       {isCollapsed

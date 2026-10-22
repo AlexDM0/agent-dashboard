@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { DashboardSnapshot }         from '../../src/shared/DashboardContract.ts';
+import { OrchestratorPanel }              from '../orchestrator/OrchestratorPanel.tsx';
+import { OrchestratorSessionUtil }        from '../orchestrator/OrchestratorSessionUtil.ts';
 import { ConnectingPanel }                from '../shell/ConnectingPanel.tsx';
 import { OVERVIEW_HASH }                  from '../shell/HashRoute.ts';
 import { BoardToolbar }                   from './BoardToolbar.tsx';
@@ -18,7 +20,9 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
 
   useEffect(() => {
     const backOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
+      // Esc in a chat box or an answer field keeps what is typed there rather than leaving the board.
+      const isTypingField = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+      if (event.key === 'Escape' && !isTypingField) {
         window.location.hash = OVERVIEW_HASH;
       }
     };
@@ -38,7 +42,7 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
   const project = snapshot.projects.find((candidate) => candidate.trackerId === trackerId);
   return (
     <div className="ap-board">
-      <ProjectRail projects={snapshot.projects} selectedTrackerId={trackerId} />
+      <ProjectRail projects={snapshot.projects} watchedOrchestratorsByTracker={snapshot.watchedOrchestratorsByTracker} selectedTrackerId={trackerId} />
       <main className="ap-board-main">
         {project === undefined
           ? <UnknownProjectPanel trackerId={trackerId} />
@@ -60,6 +64,9 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
             </>
           )}
       </main>
+      {project === undefined
+        ? null
+        : <OrchestratorPanel project={project} watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(snapshot.watchedOrchestratorsByTracker, project.trackerId)} />}
     </div>
   );
 }
