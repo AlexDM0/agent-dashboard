@@ -8,7 +8,9 @@ in the project's root when the user clicks for it, so the CLI takes its lock and
 effect a click can have writes nothing at all: a message to the board's live orchestrator Claude Code session, asking
 it to start building or telling it which low-priority tickets the user cleared to run. The server finds that session
 by reading `~/.claude/sessions/` (one record per live session) and `~/.claude/projects/` (each session's workflow
-transcripts), and the orchestrator decides what to do with the message.
+transcripts), and the orchestrator decides what to do with the message. On the user's click the dashboard also starts
+a headless orchestrator session in a project's root and holds it through a detached supervisor (see "Orchestrator
+sessions"); that session, not the dashboard, writes the tracker.
 
 ## Sources of truth
 
@@ -178,6 +180,123 @@ export interface DashboardSnapshot {
 }
 
 export interface ServerIdentity { application: 'agent-dashboard'; version: string; pid: number }
+```
+
+## Orchestrator sessions
+
+The dashboard starts at most one orchestrator per project on the user's click and keeps it running past
+`agent-dashboard stop` and a server restart; it also watches orchestrators it did not start (desktop-app sessions).
+Settled: the dashboard owns the process (headless, never a terminal); the session runs in `auto` permission mode, so
+permission prompts never reach the dashboard and only `AskUserQuestion` questions do; a watched session shows its
+context usage and takes chat, but its questions are answered in its own app.
+
+### The interface
+
+Raw `claude -p --input-format stream-json --output-format stream-json --verbose --permission-mode auto
+--permission-prompt-tool stdio`, no SDK dependency, against the installed Claude Code (2.1.308 when specified; its
+`init` line reports `claude_code_version` and is recorded). Proven by the ticket #016 probe in a scratch repository:
+
+- `init` lists `Workflow` and `AskUserQuestion` among `tools` with `permissionMode: "auto"`; a `Workflow` call is
+  approved by the classifier (`permission_decision`, `reason_type: "classifier"`), returns `status: "async_launched"`,
+  and its `task-notification` opens the next turn by itself, so the dispatcher runs headless.
+- A pending `AskUserQuestion` arrives on stdout as `{"type":"control_request","request_id":…,"request":{"subtype":
+  "can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{question,header,options:[{label,description}],
+  multiSelect}]},"requires_user_interaction":true}}` and is answered on stdin with `{"type":"control_response",
+  "response":{"subtype":"success","request_id":…,"response":{"behavior":"allow","updatedInput":{…input,"answers":
+  {"<question>":"<label>"}}}}}`; the session then continues with the answer as the tool result.
+- Each `assistant` line carries `message.usage` (`input_tokens`, `cache_read_input_tokens`,
+  `cache_creation_input_tokens`, `output_tokens`); each `result` carries `modelUsage.<model>.contextWindow`.
+- A user message is the stdin line `{"type":"user","message":{"role":"user","content":<text>}}`.
+
+### The supervisor
+
+`agent-dashboard supervise <trackerId>`, a command the server alone runs (not in `help`), spawned detached
+(`detached: true`, its own process group, stdio to its log, `unref()`), as `open` starts the server. It spawns the
+session with the project root as working directory, then listens on a Unix socket. It outlives its starter (the probe's
+supervisor was reparented to pid 1 and served two later clients); it ends when the session exits, by itself or on Stop,
+and removes its record and socket then.
+
+- **Socket protocol** (NDJSON both ways). Client to supervisor: `{"kind":"chat","text":…}`, `{"kind":"answer",
+  "requestId":…,"answers":{…}}`, `{"kind":"stop"}`. Supervisor to client: on connect one `{"kind":"state",…}` line
+  (the record, pending questions, latest context usage), then each session stdout line as `{"kind":"session","line":…}`.
+  Writes to a client are buffered per client and drained (`drain`), since one `write` of a 20 kB `init` line was cut
+  short in the probe.
+- **Questions**: an `AskUserQuestion` `control_request` is held as pending until answered, whether or not a server is
+  connected. Any other `can_use_tool` request is denied at once with `behavior: "deny"`: permission prompts are not
+  surfaced.
+- **Stop**: the supervisor closes the session's stdin and sends `SIGTERM` to the session's process group after 10 s
+  if it still runs; it records the exit code (143 for the signal, as in the probe) in its log before it removes its record and socket.
+- **Reconnecting**: the server reads every record at start and connects to each socket that accepts; a record whose
+  supervisor pid is gone is stale and removed. A connection that drops is retried every 5 s while the record lives.
+- **The finder**: the session writes its own `~/.claude/sessions/<pid>.json` (`kind: "interactive"`, `entrypoint`
+  inherited from the environment, a `messagingSocketPath`), so `src/adapters/OrchestratorSessionFinder.ts` sees it.
+  A project with a live dashboard-owned orchestrator takes it as its orchestrator, matched by the record's
+  `sessionPid`, and `orchestrator-requests` reaches it through the supervisor's `chat`.
+
+Files under `~/.agent-progress-monitor/agent-dashboard/orchestrators/`, each named for the tracker id's first 16
+hex digits of SHA-256 (a Unix socket path is limited to 104 bytes on macOS; a longer path is a refusal):
+
+| File | Holds |
+| --- | --- |
+| `<key>.json` | the record, written atomically: `{ trackerId, root, supervisorPid, sessionPid, sessionId, socketPath, claudeCodeVersion, startedAt }` |
+| `<key>.sock` | the supervisor's Unix socket |
+| `<key>.ndjson` | every session stdout line and every client line, stamped, so chat history survives a server restart |
+| `<key>.log` | the supervisor's own stdout and stderr |
+
+### Context usage
+
+Used tokens are the last assistant turn's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`;
+the share divides them by the context window. A dashboard-owned session takes the window from its latest `result`'s
+`modelUsage`. A watched session's usage comes from the last `assistant` line of `~/.claude/projects/<slug of its
+cwd>/<sessionId>.jsonl` (the same `message.usage` fields and `message.model`); that transcript carries no context
+window, so a watched session's share is shown only when a dashboard-owned session has reported the window for the same
+model, else the token count alone.
+
+### Routes
+
+Every route below takes the server's Host guard, 403 for a present foreign `Origin`, and 404 for an unknown tracker.
+
+| Route | Answer |
+| --- | --- |
+| `POST /api/projects/<trackerId>/orchestrator` | body `{ "startBuilding": <boolean> }`: starts the supervisor in the project's root and answers 201 with the `OrchestratorSession` once its socket accepts (at most 10 s). With `startBuilding` true its first message is the `start-building` text of `orchestrator-requests`, carrying the user's go that `Workflow` needs. 400 for any other body, 409 while a dashboard-owned orchestrator of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
+| `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204. 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
+| `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }`, 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`; 204. 400 for any other body, 409 when the finder refuses (no or several sessions), 502 when the socket fails |
+| `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<label>" } }`, one answer for every question of that pending request, each a label it offered (or free text for an "Other" choice): sent as `answer`, 204. 400 for any other body, 404 when no dashboard-owned orchestrator lives, 409 for a watched session, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
+| `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the last 200 `ChatMessage`s on connect, then `event: message` per new one and `event: session` with the `OrchestratorSession` on every change; a `: heartbeat` comment every 25 s. A watched session's messages are tailed from its transcript |
+
+The snapshot carries each project's `orchestrator` so the overview needs no second stream.
+
+### Contract additions (`src/shared/DashboardContract.ts`)
+
+```ts
+export type OrchestratorOwnership = 'dashboard' | 'watched';
+export type OrchestratorState = 'starting' | 'busy' | 'idle' | 'waiting-for-answer' | 'ended';
+
+export interface ContextUsage {
+  usedTokens: number;
+  contextWindowTokens: number | null;   // null when not known for a watched session's model
+  model: string;
+  measuredAt: string;
+}
+
+export interface QuestionOption { label: string; description: string }
+export interface Question { question: string; header: string; multiSelect: boolean; options: QuestionOption[] }
+export interface PendingQuestion { requestId: string; askedAt: string; questions: Question[] }
+
+export interface OrchestratorSession {
+  ownership: OrchestratorOwnership;
+  sessionId: string;
+  pid: number;
+  state: OrchestratorState;
+  startedAt: string | null;
+  context: ContextUsage | null;
+  pendingQuestions: PendingQuestion[];  // always empty for a watched session
+}
+
+export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
+export interface ChatMessage { at: string; role: ChatRole; text: string }
+
+// ProjectSnapshot gains: orchestrator: OrchestratorSession | null;
 ```
 
 ## Visual design
