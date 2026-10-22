@@ -138,8 +138,8 @@ acting only on a message from the expected window and origin and of the exact sh
 | `agent-dashboard status` | Print the running server's URL and pid, or that none runs. |
 | `agent-dashboard help` | One screen of help to stdout; an unknown command prints it to stderr, exit 1. |
 
-Default port 4710, the board origin on the port above it (4711), so `--port` takes 1 to 65534. A port held by
-something that is not the dashboard, the dashboard's or the board's, is a refusal naming that port and `--port`, exit
+Default port 4710, the board origin on the port above it (4711), so `--port` takes 1 to 65534. A dashboard port held by
+something that is not the dashboard, or a board port held at all, is a refusal naming that port and `--port`, exit
 1. `serve` and `status` print the board origin beside the URL. The server record
 `~/.agent-progress-monitor/agent-dashboard/server.json` is `{ pid, port, url, boardOrigin, startedAt, version }`,
 written atomically; a record without `boardOrigin` (an older dashboard's) still reads, with it null. Exit codes: 0 done, 1 refusal or unknown command, 2 anything else.
