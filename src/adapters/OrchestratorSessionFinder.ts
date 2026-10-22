@@ -12,14 +12,18 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { processIsAlive }   from '../lib/process-liveness/ProcessIsAlive.ts';
-import { UnknownValueUtil } from '../shared/UnknownValueUtil.ts';
+import { processIsAlive }        from '../lib/process-liveness/ProcessIsAlive.ts';
+import { UnknownValueUtil }      from '../shared/UnknownValueUtil.ts';
+import { claudeProjectFolderOf } from './TranscriptUsageReader.ts';
 
 export interface LiveSession {
   pid:                 number;
   sessionId:           string;
   cwd:                 string;
   messagingSocketPath: string;
+  name:                string | null;
+  status:              string | null;
+  startedAt:           string | null;
 }
 
 export type OrchestratorSessionVerdict = { kind: 'found'; session: LiveSession } | { kind: 'refused'; reason: string };
@@ -31,24 +35,32 @@ export interface OrchestratorSearch {
   socketAccepts:   (socketPath: string) => Promise<boolean>;
 }
 
-const SESSION_FILE_SUFFIX = '.json';
+export interface WatchedSessionSearch {
+  homeDirectory:    string;
+  projectRoot:      string;
+  /** Whether the dashboard started the session, by its pid or its session id; such a session is never also watched. */
+  isDashboardOwned: (session: LiveSession) => boolean;
+}
 
-/** Everything outside `[a-zA-Z0-9]` becomes `-` in the folder Claude Code names after a session's working directory. */
-const CHARACTER_THE_SLUG_REPLACES = /[^a-zA-Z0-9]/g;
+const SESSION_FILE_SUFFIX = '.json';
 
 /** A run id is a folder name; anything else could reach outside the transcript folder. */
 const RUN_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
 function sessionOf(document: unknown): LiveSession | null {
   if (!UnknownValueUtil.isJsonObject(document)) return null;
   const {
-    pid, sessionId, cwd, messagingSocketPath
+    pid, sessionId, cwd, messagingSocketPath, name, status, startedAt
   } = document;
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return null;
   if (typeof sessionId !== 'string' || typeof cwd !== 'string' || typeof messagingSocketPath !== 'string') return null;
   if (sessionId.length === 0 || cwd.length === 0 || messagingSocketPath.length === 0) return null;
   return {
-    pid, sessionId, cwd, messagingSocketPath
+    pid, sessionId, cwd, messagingSocketPath, name: textOrNull(name), status: textOrNull(status), startedAt: textOrNull(startedAt)
   };
 }
 
@@ -90,8 +102,7 @@ function canonicalPathOf(path: string): string {
 }
 
 function holdsWorkflowRun(homeDirectory: string, session: LiveSession, runId: string): boolean {
-  const slug = resolve(session.cwd).replace(CHARACTER_THE_SLUG_REPLACES, '-');
-  return isDirectory(join(homeDirectory, '.claude', 'projects', slug, session.sessionId, 'subagents', 'workflows', runId));
+  return isDirectory(join(claudeProjectFolderOf(homeDirectory, session.cwd), session.sessionId, 'subagents', 'workflows', runId));
 }
 
 async function reachable(sessions: LiveSession[], socketAccepts: OrchestratorSearch['socketAccepts']): Promise<LiveSession[]> {
@@ -127,4 +138,12 @@ export async function findOrchestratorSession(search: OrchestratorSearch): Promi
     };
   }
   return { kind: 'refused', reason: `No live Claude Code session orchestrates ${search.projectRoot}: none holds its dispatcher run or runs in its root` };
+}
+
+/** Every live session in the project root but the dashboard-owned ones, by session id; no socket is probed. */
+export function findWatchedSessions(search: WatchedSessionSearch): LiveSession[] {
+  const projectRoot = canonicalPathOf(search.projectRoot);
+  return recordedSessions(search.homeDirectory)
+    .filter((session) => !search.isDashboardOwned(session) && canonicalPathOf(session.cwd) === projectRoot && processIsAlive(session.pid))
+    .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
 }

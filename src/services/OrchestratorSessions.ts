@@ -89,7 +89,7 @@ const START_POLL_MILLISECONDS = 50;
 
 function sessionFromRecord(sessionId: string, sessionPid: number, startedAt: string): OrchestratorSession {
   return {
-    ownership: 'dashboard', sessionId, pid: sessionPid, state: 'starting', startedAt, context: null, pendingQuestions: []
+    ownership: 'dashboard', sessionId, pid: sessionPid, name: null, state: 'starting', startedAt, context: null, pendingQuestions: []
   };
 }
 

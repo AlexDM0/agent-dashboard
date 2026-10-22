@@ -16,6 +16,9 @@
  * The orchestrator-request route is proven against scratch Unix-socket listeners standing in for Claude Code sessions
  * under a scratch home: the exact line a session receives, no write on any refusal (guards, a bad body, an id that is
  * not low-priority waiting, zero or several candidates), and 502 when the chosen session's socket fails.
+ * Watched sessions: the snapshot lists every live one in the root with its record's name and status and its
+ * transcript's usage (unknown without one) and never probes their sockets; a chat naming one reaches it alone, and a
+ * gone session is 409, a malformed body 400 and a missing launch grant 403, none writing.
  */
 import {
   existsSync,
@@ -36,14 +39,18 @@ import {
   test
 } from 'bun:test';
 
-import { type DashboardSnapshot, type ServerIdentity }                          from '../shared/DashboardContract.ts';
+import { type DashboardSnapshot, type LaunchToken, type ServerIdentity }        from '../shared/DashboardContract.ts';
 import { DASHBOARD_PROTOCOL }                                                   from '../shared/constants/DashboardProtocol.ts';
 import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../testing/ExampleBoards.ts';
 import {
+  EXAMPLE_SESSION_STARTED_AT,
   type ExampleSessionListener,
   createExampleWorkflowRun,
+  exampleAssistantLine,
+  exitedProcessId,
   listenAsExampleSession,
-  writeExampleSessionRecord
+  writeExampleSessionRecord,
+  writeExampleTranscript
 } from '../testing/ExampleClaudeSessions.ts';
 import {
   fakeExecutableFailing,
@@ -866,4 +873,86 @@ test('a socket that fails after its session was chosen answers 502', () => withS
   });
   const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'start-building' }));
   expect(answer.status).toBe(502);
+}));
+
+async function watchedChatRequest(runningServer: RunningDashboardServer, body: string, headers: Record<string, string> = {}): Promise<Response> {
+  const launchToken = (await (await fetch(`${runningServer.url}${DASHBOARD_PROTOCOL.LAUNCH_TOKEN_PATH}`)).json() as LaunchToken).token;
+  return fetch(`${runningServer.url}/api/projects/${TRACKER_ID}/orchestrator/messages`, {
+    method:  'POST',
+    headers: {
+      'Content-Type': 'application/json', 'Origin': runningServer.url, [DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME]: launchToken, ...headers
+    },
+    body,
+  });
+}
+
+test('the snapshot lists every live session in the root as watched, with name, status and usage', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('watched-snapshot');
+  const named = liveExampleSession(fixture, 'h', socketDirectory);
+  listeners.push(named);
+  writeExampleSessionRecord(fixture.homeDirectory, {
+    pid: process.pid, sessionId: 'h', cwd: projectRoot, messagingSocketPath: named.socketPath
+  }, { name: 'Example orchestrator', status: 'busy' });
+  writeExampleTranscript(fixture.homeDirectory, {
+    pid: process.pid, sessionId: 'h', cwd: projectRoot, messagingSocketPath: named.socketPath
+  }, [exampleAssistantLine('claude-example-1', { input_tokens: 5, cache_read_input_tokens: 50 }, '2026-10-22T10:01:00.000Z')]);
+  const unmeasured = liveExampleSession(fixture, 'i', socketDirectory, process.ppid);
+  listeners.push(unmeasured);
+
+  const snapshot = await (await fetch(`${fixture.server.url}/api/snapshot`)).json() as DashboardSnapshot;
+  expect(snapshot.watchedOrchestratorsByTracker).toEqual({
+    [TRACKER_ID]: [
+      {
+        ownership: 'watched',
+        sessionId: 'h',
+        pid:       process.pid,
+        name:      'Example orchestrator',
+        state:     'busy',
+        startedAt: EXAMPLE_SESSION_STARTED_AT,
+        context:   {
+          usedTokens: 55, contextWindowTokens: null, model: 'claude-example-1', measuredAt: '2026-10-22T10:01:00.000Z'
+        },
+        pendingQuestions: [],
+      },
+      {
+        ownership: 'watched', sessionId: 'i', pid: process.ppid, name: null, state: 'idle', startedAt: EXAMPLE_SESSION_STARTED_AT, context: null, pendingQuestions: []
+      },
+    ],
+  });
+  expect(snapshot.projects[0]?.orchestrator).toBeNull();
+  expect(named.connectionCount() + unmeasured.connectionCount()).toBe(0);
+}));
+
+test('a chat naming a watched session writes one user line to its socket alone, beside another in the root', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('watched-chat');
+  const chosen = liveExampleSession(fixture, 'j', socketDirectory);
+  const other = liveExampleSession(fixture, 'k', socketDirectory, process.ppid);
+  listeners.push(chosen, other);
+
+  const answer = await watchedChatRequest(fixture.server, JSON.stringify({ text: '  Example question?  ', sessionId: 'j' }));
+  expect(answer.status).toBe(204);
+  await waitUntil(() => chosen.receivedText().endsWith('\n'), 'the watched session receives the line');
+  expect(chosen.receivedText()).toBe(`${JSON.stringify({ type: 'user', message: { role: 'user', content: 'Example question?' } })}\n`);
+  expect(other.connectionCount()).toBe(0);
+}));
+
+test('a chat naming a gone session is 409, a malformed one 400, one without the grant 403, none writing', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('watched-refusals');
+  const live = liveExampleSession(fixture, 'l', socketDirectory);
+  listeners.push(live);
+  const gone = liveExampleSession(fixture, 'm', socketDirectory, await exitedProcessId());
+  listeners.push(gone);
+
+  expect((await watchedChatRequest(fixture.server, JSON.stringify({ text: 'Example', sessionId: 'm' }))).status).toBe(409);
+  expect((await watchedChatRequest(fixture.server, JSON.stringify({ text: 'Example', sessionId: 'no-such-session' }))).status).toBe(409);
+  const malformedBodies = [{ text: 'Example', sessionId: 7 }, { text: 'Example', sessionId: '' }, { text: 'Example', sessionId: 'l', extra: true }]
+    .map((body) => JSON.stringify(body));
+  for (const body of malformedBodies) {
+    expect((await watchedChatRequest(fixture.server, body)).status, body).toBe(400);
+  }
+  const wrongToken = { [DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME]: 'not-the-token' };
+  const withoutToken = await watchedChatRequest(fixture.server, JSON.stringify({ text: 'Example', sessionId: 'l' }), wrongToken);
+  expect(withoutToken.status).toBe(403);
+  await Bun.sleep(50);
+  expect(live.connectionCount() + gone.connectionCount()).toBe(0);
 }));

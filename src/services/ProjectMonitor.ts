@@ -32,7 +32,7 @@ export interface ProjectMonitorOptions {
 }
 
 /** The snapshot before the server names the board origin it serves the pages from; each `pageUrl` is a path on it. */
-export type MonitoredSnapshot = Omit<DashboardSnapshot, 'boardOrigin' | 'boardBridgeUrl' | 'projects'> & { projects: MonitoredProjectSnapshot[] };
+export type MonitoredSnapshot = Omit<DashboardSnapshot, 'boardOrigin' | 'boardBridgeUrl' | 'projects' | 'watchedOrchestratorsByTracker'> & { projects: MonitoredProjectSnapshot[] };
 
 /** A project before the server adds its dashboard-owned orchestrator, which the monitor does not hold. */
 export type MonitoredProjectSnapshot = Omit<ProjectSnapshot, 'orchestrator'>;

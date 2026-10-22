@@ -5,7 +5,8 @@
  * listed and reachable after the server process is killed and started again, and that a session ending, by Stop or by
  * itself, shows `ended` in the next snapshot, and that two simultaneous starts spawn one supervisor. Chat and answers
  * take the same token and Origin and write nothing when refused; a chat is the session's user turn, a stream opened late
- * replays the conversation in order, and a pending question is answered once, a second answer writing nothing.
+ * replays the conversation in order, and a pending question is answered once, a second answer writing nothing. The
+ * session's own `~/.claude/sessions/` record never lists it as watched, and a watched session borrows its context window.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join }                                  from 'node:path';
@@ -24,9 +25,10 @@ import type {
   LaunchToken,
   OrchestratorSession
 } from '../src/shared/DashboardContract.ts';
-import { orchestratorDirectoryOf }                                              from '../src/shared/OrchestratorFilePaths.ts';
-import { DASHBOARD_PROTOCOL }                                                   from '../src/shared/constants/DashboardProtocol.ts';
-import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../src/testing/ExampleBoards.ts';
+import { orchestratorDirectoryOf }                                                 from '../src/shared/OrchestratorFilePaths.ts';
+import { DASHBOARD_PROTOCOL }                                                      from '../src/shared/constants/DashboardProtocol.ts';
+import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry }    from '../src/testing/ExampleBoards.ts';
+import { exampleAssistantLine, writeExampleSessionRecord, writeExampleTranscript } from '../src/testing/ExampleClaudeSessions.ts';
 import {
   FAKE_ANSWERED_PREFIX,
   FAKE_ASK_MARKER,
@@ -50,6 +52,7 @@ const SERVER_START_WAIT_MILLISECONDS = 10_000;
 const SESSION_WAIT_MILLISECONDS = 10_000;
 const TRACKER_ID = 'example-storefront-tracker';
 const PROJECT_NAME = 'Example Storefront';
+const WATCHED_USED_TOKENS = 4_321;
 
 const home = createShortScratchDirectory('ad');
 const projectRoot = createExampleProjectRoot(home, 'example-storefront');
@@ -197,6 +200,20 @@ test('a started session runs in the project root in auto mode and is still reach
   await waitUntil(startBuildingArrived, 'the start-building message reached the session', SESSION_WAIT_MILLISECONDS);
   const answered = await waitForOrchestratorState('idle', (orchestrator) => orchestrator.context !== null);
   expect(answered.context).toMatchObject({ usedTokens: FAKE_USED_TOKENS, contextWindowTokens: FAKE_CONTEXT_WINDOW_TOKENS, model: FAKE_CLAUDE_MODEL });
+
+  const ownRecord = {
+    pid: startedEntry.pid, sessionId: started.sessionId, cwd: projectRoot, messagingSocketPath: join(home, 'own.sock')
+  };
+  const watchedRecord = {
+    pid: process.pid, sessionId: 'example-watched', cwd: projectRoot, messagingSocketPath: join(home, 'watched.sock')
+  };
+  writeExampleSessionRecord(home, ownRecord);
+  writeExampleSessionRecord(home, watchedRecord);
+  writeExampleTranscript(home, watchedRecord, [exampleAssistantLine(FAKE_CLAUDE_MODEL, { input_tokens: WATCHED_USED_TOKENS }, '2026-10-22T10:00:00.000Z')]);
+  const snapshot = await (await fetch(`${url}/api/snapshot`)).json() as DashboardSnapshot;
+  const watched = snapshot.watchedOrchestratorsByTracker[TRACKER_ID] ?? [];
+  expect(watched.map((session) => session.sessionId)).toEqual([watchedRecord.sessionId]);
+  expect(watched[0]?.context).toMatchObject({ usedTokens: WATCHED_USED_TOKENS, contextWindowTokens: FAKE_CONTEXT_WINDOW_TOKENS });
 
   expect((await fetch(orchestratorPath, { method: 'DELETE', headers: launchHeaders() })).status).toBe(204);
   await waitForOrchestratorState('ended');

@@ -29,4 +29,6 @@ export const DASHBOARD_LIMITS = {
   CONVERSATION_HISTORY_MESSAGE_COUNT:     200,
   /** The longest chat message, in characters after trimming. */
   MAXIMUM_CHAT_TEXT_CHARACTERS:           20_000,
+  /** How much of a watched session's transcript end is read for its context usage, so no snapshot waits on a large file. */
+  TRANSCRIPT_TAIL_BYTES:                  262_144,
 } as const;

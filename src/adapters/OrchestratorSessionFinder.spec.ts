@@ -2,7 +2,8 @@
  * The lookup decides whose session a click reaches, so it must never guess: the session holding the board's dispatcher
  * run wins even beside others in the root, the root's only live session is the fallback, and zero or several candidates
  * are refusals. A record whose pid is gone or whose socket refuses is no candidate, and a run id that is not a plain
- * folder name never steers the lookup. Everything lives under a scratch home with scratch socket listeners.
+ * folder name never steers the lookup. The watched list leaves out the dashboard-owned session, a gone pid and any other
+ * folder. Everything lives under a scratch home with scratch socket listeners.
  */
 import { mkdirSync } from 'node:fs';
 import { join }      from 'node:path';
@@ -14,6 +15,7 @@ import {
 } from 'bun:test';
 
 import {
+  EXAMPLE_SESSION_STARTED_AT,
   type ExampleSession,
   type ExampleSessionListener,
   createExampleWorkflowRun,
@@ -21,9 +23,9 @@ import {
   listenAsExampleSession,
   writeExampleSessionRecord
 } from '../testing/ExampleClaudeSessions.ts';
-import { createScratchDirectory, removeScratchDirectory }           from '../testing/ScratchDirectory.ts';
-import { type OrchestratorSessionVerdict, findOrchestratorSession } from './OrchestratorSessionFinder.ts';
-import { sessionSocketAccepts }                                     from './SessionMessageWriter.ts';
+import { createScratchDirectory, removeScratchDirectory }                                from '../testing/ScratchDirectory.ts';
+import { type OrchestratorSessionVerdict, findOrchestratorSession, findWatchedSessions } from './OrchestratorSessionFinder.ts';
+import { sessionSocketAccepts }                                                          from './SessionMessageWriter.ts';
 
 const SOCKET_TIMEOUT_MILLISECONDS = 1_000;
 const EXAMPLE_RUN_ID = 'example-run-1';
@@ -135,4 +137,17 @@ test('a missing sessions folder or a damaged record is no session, never a throw
   await Bun.write(join(homeDirectory, '.claude', 'sessions', 'damaged.json'), '{ not json');
   await Bun.write(join(homeDirectory, '.claude', 'sessions', 'partial.json'), JSON.stringify({ pid: process.pid, cwd: projectRoot }));
   expect(foundSessionId(await find(null))).toBe('in-root');
+});
+
+test('the watched sessions are every live one in the root but the dashboard-owned, with the name, status and start their records carry', async () => {
+  const named = liveSession('watched-b', projectRoot);
+  writeExampleSessionRecord(homeDirectory, named, { name: 'Example orchestrator', status: 'busy' });
+  liveSession('watched-a', projectRoot, process.ppid);
+  liveSession('dashboard-owned', projectRoot);
+  liveSession('elsewhere', scratchDirectory);
+  liveSession('gone', projectRoot, await exitedProcessId());
+
+  const watched = findWatchedSessions({ homeDirectory, projectRoot, isDashboardOwned: (session) => session.sessionId === 'dashboard-owned' });
+  expect(watched.map((session) => session.sessionId)).toEqual(['watched-a', 'watched-b']);
+  expect(watched[1]).toMatchObject({ name: 'Example orchestrator', status: 'busy', startedAt: EXAMPLE_SESSION_STARTED_AT });
 });

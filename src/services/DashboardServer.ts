@@ -12,17 +12,19 @@ import { join, normalize }             from 'node:path';
 
 import dashboardApplication from '../../web/index.html';
 
-import { readBoardStatus }                           from '../adapters/BoardStatusReader.ts';
-import { writeConcurrencyLimit }                     from '../adapters/ConcurrencyLimitWriter.ts';
-import { writeDispatcherStopped }                    from '../adapters/DispatcherStopWriter.ts';
-import { findOrchestratorSession }                   from '../adapters/OrchestratorSessionFinder.ts';
-import { sessionSocketAccepts, writeSessionMessage } from '../adapters/SessionMessageWriter.ts';
-import { resolveContainedPath }                      from '../lib/contained-path/ContainedPath.ts';
+import { readBoardStatus }                                                from '../adapters/BoardStatusReader.ts';
+import { writeConcurrencyLimit }                                          from '../adapters/ConcurrencyLimitWriter.ts';
+import { writeDispatcherStopped }                                         from '../adapters/DispatcherStopWriter.ts';
+import { type LiveSession, findOrchestratorSession, findWatchedSessions } from '../adapters/OrchestratorSessionFinder.ts';
+import { sessionSocketAccepts, writeSessionMessage }                      from '../adapters/SessionMessageWriter.ts';
+import { readTranscriptUsage }                                            from '../adapters/TranscriptUsageReader.ts';
+import { resolveContainedPath }                                           from '../lib/contained-path/ContainedPath.ts';
 import {
   type BoardSummary,
   type DashboardSnapshot,
   type LaunchToken,
   type OrchestratorAnswerRequest,
+  type OrchestratorChatRequest,
   type OrchestratorSession,
   type PendingQuestion,
   type ServerIdentity
@@ -237,7 +239,8 @@ function requestedStartBuildingOf(bodyText: string): boolean | null {
   return keys.length === 1 && keys[0] === 'startBuilding' && typeof startBuilding === 'boolean' ? startBuilding : null;
 }
 
-const ORCHESTRATOR_CHAT_BODY_REFUSAL = `The body must be { "text": <string> }, 1 to ${DASHBOARD_LIMITS.MAXIMUM_CHAT_TEXT_CHARACTERS} characters after trimming`;
+const ORCHESTRATOR_CHAT_BODY_REFUSAL
+  = `The body must be { "text": <string> } or { "text": <string>, "sessionId": <string> }, the text 1 to ${DASHBOARD_LIMITS.MAXIMUM_CHAT_TEXT_CHARACTERS} characters trimmed`;
 
 function parsedJsonObjectOrNull(bodyText: string): Record<string, unknown> | null {
   try {
@@ -249,11 +252,17 @@ function parsedJsonObjectOrNull(bodyText: string): Record<string, unknown> | nul
 }
 
 /** The trimmed text of a `{ "text": <string> }` body, or null for any other body. */
-function requestedChatTextOf(bodyText: string): string | null {
+/** The request with its text trimmed. */
+function requestedChatOf(bodyText: string): OrchestratorChatRequest | null {
   const body = parsedJsonObjectOrNull(bodyText);
-  if (body === null || Object.keys(body).join() !== 'text' || typeof body['text'] !== 'string') return null;
+  if (body === null || typeof body['text'] !== 'string') return null;
+  const keys = Object.keys(body).sort().join();
+  if (keys !== 'text' && keys !== 'sessionId,text') return null;
   const text = body['text'].trim();
-  return text.length > 0 && text.length <= DASHBOARD_LIMITS.MAXIMUM_CHAT_TEXT_CHARACTERS ? text : null;
+  if (text.length === 0 || text.length > DASHBOARD_LIMITS.MAXIMUM_CHAT_TEXT_CHARACTERS) return null;
+  const { sessionId } = body;
+  if (sessionId === undefined) return { text };
+  return typeof sessionId === 'string' && sessionId.length > 0 ? { text, sessionId } : null;
 }
 
 const ORCHESTRATOR_ANSWER_BODY_REFUSAL = 'The body must be { "requestId": <string>, "answers": { "<question>": "<answer>" } }, every answer non-empty';
@@ -281,13 +290,68 @@ function serverSentEventOf(eventName: string, data: unknown): string {
   return `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-/** The monitor's snapshot with every page addressed on the board origin and each project's dashboard-owned orchestrator. */
-function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orchestratorOf: (trackerId: string) => OrchestratorSession | null): DashboardSnapshot {
+/** Every live session in `root` the dashboard did not start, matched against the dashboard-owned ones by pid and session id. */
+function watchedSessionsIn(homeDirectory: string, root: string, dashboardOwnedSessions: OrchestratorSession[]): LiveSession[] {
+  const ownedPids = new Set(dashboardOwnedSessions.map((session) => session.pid));
+  const ownedSessionIds = new Set(dashboardOwnedSessions.map((session) => session.sessionId));
+  return findWatchedSessions({
+    homeDirectory,
+    projectRoot:      root,
+    isDashboardOwned: (session) => ownedPids.has(session.pid) || ownedSessionIds.has(session.sessionId),
+  });
+}
+
+/** A transcript carries no context window, so a watched session borrows the one a dashboard-owned session reported for its model. */
+function watchedOrchestratorOf(homeDirectory: string, session: LiveSession, contextWindowByModel: ReadonlyMap<string, number>): OrchestratorSession {
+  const reading = readTranscriptUsage({ homeDirectory, cwd: session.cwd, sessionId: session.sessionId }, DASHBOARD_LIMITS.TRANSCRIPT_TAIL_BYTES);
+  const context = reading.kind === 'measured' ? { ...reading.usage, contextWindowTokens: contextWindowByModel.get(reading.usage.model) ?? null } : null;
+  return {
+    ownership:        'watched',
+    sessionId:        session.sessionId,
+    pid:              session.pid,
+    name:             session.name,
+    state:            session.status === 'busy' ? 'busy' : 'idle',
+    startedAt:        session.startedAt,
+    context,
+    pendingQuestions: [],
+  };
+}
+
+function contextWindowsByModelOf(dashboardOwnedSessions: OrchestratorSession[]): Map<string, number> {
+  const contextWindowByModel = new Map<string, number>();
+  for (const { context } of dashboardOwnedSessions) {
+    if (context !== null && context.contextWindowTokens !== null) contextWindowByModel.set(context.model, context.contextWindowTokens);
+  }
+  return contextWindowByModel;
+}
+
+interface OrchestratorSources {
+  homeDirectory:  string;
+  orchestratorOf: (trackerId: string) => OrchestratorSession | null;
+}
+
+/**
+ * The monitor's snapshot with every page addressed on the board origin, each project's dashboard-owned orchestrator,
+ * and the sessions watched in each project's root, read afresh from `~/.claude/` for every snapshot served.
+ */
+function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orchestratorSources: OrchestratorSources): DashboardSnapshot {
+  const { homeDirectory, orchestratorOf } = orchestratorSources;
+  const dashboardOwnedByTracker = new Map(monitored.projects.map((project) => [project.trackerId, orchestratorOf(project.trackerId)]));
+  const dashboardOwnedSessions = [...dashboardOwnedByTracker.values()].filter((session): session is OrchestratorSession => session !== null);
+  const contextWindowByModel = contextWindowsByModelOf(dashboardOwnedSessions);
   return {
     ...monitored,
-    projects:       monitored.projects.map((project) => ({ ...project, pageUrl: `${boardOrigin}${project.pageUrl}`, orchestrator: orchestratorOf(project.trackerId) })),
+    projects: monitored.projects.map((project) => ({
+      ...project,
+      pageUrl:      `${boardOrigin}${project.pageUrl}`,
+      orchestrator: dashboardOwnedByTracker.get(project.trackerId) ?? null,
+    })),
     boardOrigin,
-    boardBridgeUrl: `${boardOrigin}${DASHBOARD_PROTOCOL.BOARD_BRIDGE_PATH}`,
+    boardBridgeUrl:                `${boardOrigin}${DASHBOARD_PROTOCOL.BOARD_BRIDGE_PATH}`,
+    watchedOrchestratorsByTracker: Object.fromEntries(monitored.projects.map((project) => [
+      project.trackerId,
+      watchedSessionsIn(homeDirectory, project.root, dashboardOwnedSessions).map((session) => watchedOrchestratorOf(homeDirectory, session, contextWindowByModel)),
+    ])),
   };
 }
 
@@ -370,8 +434,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   const monitorStarted = monitor.start();
   orchestratorSessions.start();
 
+  const orchestratorSources: OrchestratorSources = { homeDirectory: options.homeDirectory, orchestratorOf: orchestratorSessions.sessionOf };
+
   function servedSnapshot(): DashboardSnapshot {
-    return servedSnapshotOf(monitor.snapshot(), boardOrigin, orchestratorSessions.sessionOf);
+    return servedSnapshotOf(monitor.snapshot(), boardOrigin, orchestratorSources);
   }
 
   function stop(): Promise<void> {
@@ -438,7 +504,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
 
   function snapshotEventsResponse(request: Request, servingServer: Bun.Server<undefined>): Response {
     return serverSentEventsResponse(request, servingServer, (send) => {
-      const unsubscribeFromMonitor = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSessions.sessionOf))));
+      const unsubscribeFromMonitor = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSources))));
       const unsubscribeFromOrchestrators = orchestratorSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
       send(snapshotEvent(servedSnapshot()));
       return () => {
@@ -578,10 +644,30 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const trackerId = decodedOrNull(encodedTrackerId);
     const root = trackerId === null ? null : monitor.rootOf(trackerId);
     if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const text = requestedChatTextOf(await request.text().catch(() => ''));
-    if (text === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
+    const chat = requestedChatOf(await request.text().catch(() => ''));
+    if (chat === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
+    if (chat.sessionId !== undefined) return deliveredToNamedSessionResponse(trackerId, root, chat.sessionId, chat.text);
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
-    return deliveredToOrchestratorResponse(trackerId, root, project?.health.kind === 'ready' ? project.health.board : null, text);
+    return deliveredToOrchestratorResponse(trackerId, root, project?.health.kind === 'ready' ? project.health.board : null, chat.text);
+  }
+
+  /** The dashboard-owned session takes the text as its user's turn; a watched one through its inbox, as a peer's request. */
+  async function deliveredToNamedSessionResponse(trackerId: string, root: string, sessionId: string, text: string): Promise<Response> {
+    const dashboardOwned = orchestratorSessions.sessionOf(trackerId);
+    if (dashboardOwned?.sessionId === sessionId) {
+      const delivery = await orchestratorSessions.chat(trackerId, text);
+      if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, 'The dashboard-owned orchestrator of this project has ended');
+      if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
+      return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+    }
+    const dashboardOwnedSessions = monitor.snapshot().projects
+      .map((project) => orchestratorSessions.sessionOf(project.trackerId))
+      .filter((session): session is OrchestratorSession => session !== null);
+    const watched = watchedSessionsIn(options.homeDirectory, root, dashboardOwnedSessions).find((session) => session.sessionId === sessionId);
+    if (watched === undefined) return plainResponse(HTTP_STATUS.CONFLICT, `No live session ${sessionId} runs in this project's root`);
+    const delivery = await writeSessionMessage(watched.messagingSocketPath, text, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS);
+    if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
   /** Only a dashboard-owned session's questions are answered here; a watched one answers in its own app. */

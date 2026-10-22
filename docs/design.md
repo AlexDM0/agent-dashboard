@@ -221,6 +221,7 @@ export interface DashboardSnapshot {
   machineParallelAgentLimit: number;
   boardOrigin: string;             // http://127.0.0.1:<port + 1>
   boardBridgeUrl: string;          // <boardOrigin>/bridge
+  watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;  // see "Watched sessions"
 }
 
 export interface ServerIdentity { application: 'agent-dashboard'; version: string; pid: number }
@@ -314,7 +315,23 @@ the share divides them by the context window. A dashboard-owned session takes th
 `modelUsage`. A watched session's usage comes from the last `assistant` line of `~/.claude/projects/<slug of its
 cwd>/<sessionId>.jsonl` (the same `message.usage` fields and `message.model`); that transcript carries no context
 window, so a watched session's share is shown only when a dashboard-owned session has reported the window for the same
-model, else the token count alone.
+model, else the token count alone. Only the transcript's last `TRANSCRIPT_TAIL_BYTES` (256 KiB,
+`src/shared/constants/DashboardLimits.ts`) are read (`src/adapters/TranscriptUsageReader.ts`), so a transcript of any
+size costs one bounded read; a missing or unreadable transcript, or a tail with no real `assistant` usage (Claude Code's
+`<synthetic>` turns are skipped), is usage unknown (`context: null`), never a throw.
+
+### Watched sessions
+
+A watched session is a live Claude Code session in a project's root the dashboard did not start: every record in
+`~/.claude/sessions/` whose `cwd` resolves to the root and whose pid is alive
+(`findWatchedSessions` in `src/adapters/OrchestratorSessionFinder.ts`), less every dashboard-owned session, matched by
+its session pid or its session id, so a dashboard-owned session is never also watched. No socket is probed for the list.
+Each is an `OrchestratorSession` with `ownership: "watched"`, its record's `sessionId`, `pid`, `name` and `startedAt`
+(null when absent), `state` `busy` when the record's `status` is `busy`, else `idle`, its context usage from its
+transcript, and no pending questions: its questions are answered in its own app. Its conversation is not streamed;
+chat to it is send-only. The snapshot carries them per project in `watchedOrchestratorsByTracker`, every project a key,
+read afresh for every snapshot served, so a watched session's status and usage are as fresh as the latest snapshot
+event (at most the safety sweep's 60 s old while its board is quiet).
 
 ### Routes
 
@@ -331,7 +348,7 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | --- | --- |
 | `POST /api/projects/<trackerId>/orchestrator` | body `{ "startBuilding": <boolean> }`: starts the supervisor in the project's root and answers 201 with the `OrchestratorSession` once its socket accepts (at most 10 s). With `startBuilding` true its first message is the `start-building` text of `orchestrator-requests`, carrying the user's go that `Workflow` needs. 400 for any other body, 409 while a dashboard-owned orchestrator of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
 | `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204. 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
-| `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }`, 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. The text is sent trimmed. 400 for any other body, 409 when no dashboard-owned session lives and the finder refuses (no or several sessions), 502 when the socket fails |
+| `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }` or `{ "text": <string>, "sessionId": <string> }`, the text 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. The text is sent trimmed. With `sessionId` it goes to that session alone: the project's dashboard-owned one, or one of its watched sessions; without it, to the live dashboard-owned session, else the one the finder names. 400 for any other body, 409 for a `sessionId` that names neither a live dashboard-owned session nor a live watched one of the project (a session that is gone), or, without one, when no dashboard-owned session lives and the finder refuses (no or several sessions), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<answer>" } }`, one non-empty answer for every question of that pending request (a label it offered, labels joined for a multi-select, or free text for an "Other" choice): sent as `answer`, 204; the request is no longer pending from then on, so a second answer is 409 and the supervisor ignores an answer to a request it no longer holds. 400 for any other body, 404 when no dashboard-owned orchestrator ran since this server started, 409 for one that has ended, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
 | `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the project's dashboard-owned conversation (the last 200 `ChatMessage`s, from the session's start) on connect, then `event: session` with the `OrchestratorSession` (null for none), then `event: message` per new message and `event: session` on every change of it; a `: heartbeat` comment every 25 s. A project with no dashboard-owned session streams an empty history and waits for one. A watched session's messages are to be tailed from its transcript (not built yet) |
 
@@ -360,6 +377,7 @@ export interface OrchestratorSession {
   ownership: OrchestratorOwnership;
   sessionId: string;
   pid: number;
+  name: string | null;                  // a watched session's record name; null for a dashboard-owned one
   state: OrchestratorState;
   startedAt: string | null;
   context: ContextUsage | null;
@@ -370,11 +388,12 @@ export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 export interface ChatMessage { at: string; role: ChatRole; text: string }
 
 export interface OrchestratorStartRequest { startBuilding: boolean }
-export interface OrchestratorChatRequest { text: string }
+export interface OrchestratorChatRequest { text: string; sessionId?: string }
 export interface OrchestratorAnswerRequest { requestId: string; answers: Record<string, string> }
 export interface LaunchToken { token: string }
 
 // ProjectSnapshot gains: orchestrator: OrchestratorSession | null;
+// DashboardSnapshot gains: watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
 ```
 
 ## Visual design

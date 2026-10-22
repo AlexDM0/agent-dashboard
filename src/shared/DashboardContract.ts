@@ -63,6 +63,8 @@ export interface OrchestratorSession {
   ownership:        OrchestratorOwnership;
   sessionId:        string;
   pid:              number;
+  /** The name a watched session's record carries; null for a dashboard-owned session or a record without one. */
+  name:             string | null;
   state:            OrchestratorState;
   startedAt:        string | null;
   context:          ContextUsage | null;
@@ -75,8 +77,11 @@ export interface ChatMessage { at: string; role: ChatRole; text: string }
 /** The body of `POST /api/projects/<trackerId>/orchestrator`. */
 export interface OrchestratorStartRequest { startBuilding: boolean }
 
-/** The body of `POST /api/projects/<trackerId>/orchestrator/messages`: 1 to 20000 characters after trimming. */
-export interface OrchestratorChatRequest { text: string }
+/**
+ * The body of `POST /api/projects/<trackerId>/orchestrator/messages`: 1 to 20000 characters after trimming, to the
+ * session `sessionId` names (the dashboard-owned one or a watched one of the project), else to the project's orchestrator.
+ */
+export interface OrchestratorChatRequest { text: string; sessionId?: string }
 
 /** The body of `POST /api/projects/<trackerId>/orchestrator/answers`: one answer per question of the pending request. */
 export interface OrchestratorAnswerRequest { requestId: string; answers: Record<string, string> }
@@ -106,16 +111,21 @@ export type RegistryHealth =
   | { kind: 'unreadable'; reason: string };
 
 export interface DashboardSnapshot {
-  registry:                  RegistryHealth;
-  registryPath:              string;
-  projects:                  ProjectSnapshot[];  // registry order; the web sorts
-  generatedAt:               string;
+  registry:                      RegistryHealth;
+  registryPath:                  string;
+  projects:                      ProjectSnapshot[];  // registry order; the web sorts
+  generatedAt:                   string;
   /** The serving machine's available parallelism: the most agents it runs at once, one per logical core. */
-  machineParallelAgentLimit: number;
+  machineParallelAgentLimit:     number;
   /** The second loopback origin the board pages are served from, so nothing on them is same-origin with the dashboard. */
-  boardOrigin:               string;
+  boardOrigin:                   string;
   /** The page on the board origin that carries the theme and Esc between the dashboard and the framed board. */
-  boardBridgeUrl:            string;
+  boardBridgeUrl:                string;
+  /**
+   * Per tracked project, every live Claude Code session in its root the dashboard did not start, `ownership: 'watched'`;
+   * every project of `projects` is a key, its list empty for none.
+   */
+  watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
 }
 
 export interface ServerIdentity { application: 'agent-dashboard'; version: string; pid: number }
