@@ -444,7 +444,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   template's `.ap-head-stats` manner: Projects, Agents (in flight across every board / the machine's parallel
   maximum, `availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
   the projects' concurrency limits are not summed here), Ready, Awaiting review, Held; the
-  Inbox control and the theme toggle at the end.
+  notification control, the Inbox control and the theme toggle at the end.
 - **Inbox** (in the header on every view): a button with the count of questions every live dashboard-owned
   orchestrator owes, across all projects (watched desktop sessions' questions stay in the desktop app). It opens a
   panel listing them oldest first, each with its project (a link to its board), how long it has waited and the same
