@@ -243,6 +243,15 @@ hex digits of SHA-256 (a Unix socket path is limited to 104 bytes on macOS; a lo
 | `<key>.ndjson` | every session stdout line and every client line, stamped, so chat history survives a server restart |
 | `<key>.log` | the supervisor's own stdout and stderr |
 
+### Peer messages and the user's go
+
+A line written to a watched session's `messagingSocketPath` arrives there as "Message from another session" with a
+peer notice: the session takes it as a teammate's request, never as its user's words or approval (observed by the
+user on a live desktop session, ticket #016). So nothing sent to a watched session, chat or an
+`orchestrator-requests` line alike, carries the user's go: a watched orchestrator asks its own user before it
+launches the dispatcher. Only a dashboard-owned session's stdin `user` line is its user's turn, so `startBuilding`
+and chat to a dashboard-owned session carry the user's go that `Workflow` needs.
+
 ### Context usage
 
 Used tokens are the last assistant turn's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`;
@@ -260,7 +269,7 @@ Every route below takes the server's Host guard, 403 for a present foreign `Orig
 | --- | --- |
 | `POST /api/projects/<trackerId>/orchestrator` | body `{ "startBuilding": <boolean> }`: starts the supervisor in the project's root and answers 201 with the `OrchestratorSession` once its socket accepts (at most 10 s). With `startBuilding` true its first message is the `start-building` text of `orchestrator-requests`, carrying the user's go that `Workflow` needs. 400 for any other body, 409 while a dashboard-owned orchestrator of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
 | `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204. 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
-| `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }`, 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`; 204. 400 for any other body, 409 when the finder refuses (no or several sessions), 502 when the socket fails |
+| `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }`, 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. 400 for any other body, 409 when the finder refuses (no or several sessions), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<label>" } }`, one answer for every question of that pending request, each a label it offered (or free text for an "Other" choice): sent as `answer`, 204. 400 for any other body, 404 when no dashboard-owned orchestrator lives, 409 for a watched session, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
 | `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the last 200 `ChatMessage`s on connect, then `event: message` per new one and `event: session` with the `OrchestratorSession` on every change; a `: heartbeat` comment every 25 s. A watched session's messages are tailed from its transcript |
 
