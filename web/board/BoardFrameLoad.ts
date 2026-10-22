@@ -14,7 +14,8 @@ function holdsCompleteBoard(frame: LoadableBoardFrame): boolean {
 
 /**
  * Calls `onBoardLoaded` on every load of the frame, and at once when its board finished loading before this was
- * attached. Returns the function that stops following.
+ * attached. A board on its own origin hides its document (`null`), so only its load event shows it: attach at mount,
+ * before the frame can load. Returns the function that stops following.
  */
 export function followBoardFrameLoads(frame: LoadableBoardFrame, onBoardLoaded: () => void): () => void {
   frame.addEventListener('load', onBoardLoaded);

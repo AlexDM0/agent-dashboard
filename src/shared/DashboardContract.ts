@@ -54,7 +54,7 @@ export interface ProjectSnapshot {
   lastChangedAt: string;
   lastCommand:   string;
   pageAvailable: boolean;  // progress.html exists
-  pageUrl:       string;   // /projects/<trackerId>/page/progress.html
+  pageUrl:       string;   // <boardOrigin>/projects/<trackerId>/page/progress.html, never on the dashboard's own origin
   readAt:        string;   // when the dashboard last read it, shown only
   health:        ProjectHealth;
 }
@@ -71,6 +71,10 @@ export interface DashboardSnapshot {
   generatedAt:               string;
   /** The serving machine's available parallelism: the most agents it runs at once, one per logical core. */
   machineParallelAgentLimit: number;
+  /** The second loopback origin the board pages are served from, so nothing on them is same-origin with the dashboard. */
+  boardOrigin:               string;
+  /** The page on the board origin that carries the theme and Esc between the dashboard and the framed board. */
+  boardBridgeUrl:            string;
 }
 
 export interface ServerIdentity { application: 'agent-dashboard'; version: string; pid: number }

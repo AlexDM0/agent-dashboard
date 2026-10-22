@@ -1,12 +1,21 @@
-import { type RefObject, useLayoutEffect, useState } from 'react';
-import { flushSync }                                 from 'react-dom';
-import { EMBEDDED_BOARD_ATTRIBUTE }                  from '../preferences/EmbeddedBoardTheme.ts';
-import { OVERVIEW_HASH }                             from '../shell/HashRoute.ts';
-import { followBoardFrameLoads }                     from './BoardFrameLoad.ts';
-import { followEscapeInEmbeddedBoard }               from './EmbeddedBoardEscape.ts';
+import {
+  type RefObject,
+  useLayoutEffect,
+  useRef,
+  useState
+} from 'react';
+import { flushSync }                                                                       from 'react-dom';
+import { BOARD_FRAME_NAME }                                                                from '../bridge/BoardBridgeMessageUtil.ts';
+import { BOARD_BRIDGE_ORIGIN_ATTRIBUTE, applyThemeToEmbeddedBoards, bridgeMessageOfEvent } from '../preferences/EmbeddedBoardTheme.ts';
+import { PreferenceStore }                                                                 from '../preferences/PreferenceStore.ts';
+import { THEME_STORAGE_KEY, ThemeChoiceUtil }                                              from '../preferences/ThemeChoiceUtil.ts';
+import { OVERVIEW_HASH }                                                                   from '../shell/HashRoute.ts';
+import { followBoardFrameLoads }                                                           from './BoardFrameLoad.ts';
 
 interface PageFrameProperties {
   pageUrl:        string;
+  boardOrigin:    string;
+  bridgeUrl:      string;
   projectName:    string;
   frameReference: RefObject<HTMLIFrameElement | null>;
 }
@@ -15,45 +24,44 @@ function leaveTheBoard(): void {
   window.location.hash = OVERVIEW_HASH;
 }
 
-export function PageFrame({ pageUrl, projectName, frameReference }: PageFrameProperties) {
+function sendTheStoredTheme(): void {
+  applyThemeToEmbeddedBoards(ThemeChoiceUtil.choiceOf(PreferenceStore.readText(THEME_STORAGE_KEY)));
+}
+
+/**
+ * The board on its own origin, beside a hidden bridge frame on that origin: the bridge reaches the board's document and
+ * storage, and tells this page when the board's toggle chose a theme, Esc left it, or it is reloading.
+ */
+export function PageFrame({
+  pageUrl, boardOrigin, bridgeUrl, projectName, frameReference
+}: PageFrameProperties) {
   // The board's template carries a placeholder project name until its script runs, so the frame stays hidden until load.
   const [isBoardLoaded, setIsBoardLoaded] = useState(false);
+  const bridgeReference = useRef<HTMLIFrameElement | null>(null);
 
-  // A key pressed inside the frame never reaches this window, so each page the frame loads is followed itself.
   useLayoutEffect(() => {
     const frame = frameReference.current;
-    if (frame === null) {
+    const bridge = bridgeReference.current;
+    if (frame === null || bridge === null) {
       return undefined;
     }
-    let stopFollowing = (): void => {};
-    const followLoadedBoard = (): void => {
-      stopFollowing();
-      stopFollowing = () => {};
+    const showLoadedBoard = (): void => {
       setIsBoardLoaded(true);
-      try {
-        const boardWindow = frame.contentWindow;
-        if (boardWindow !== null) {
-          // Committed synchronously, so the next document's first paint already lands in a hidden frame.
-          const hideWhileReloading = (): void => flushSync(() => setIsBoardLoaded(false));
-          const stopFollowingEscape = followEscapeInEmbeddedBoard(boardWindow, leaveTheBoard);
-          boardWindow.addEventListener('pagehide', hideWhileReloading);
-          stopFollowing = () => {
-            stopFollowingEscape();
-            boardWindow.removeEventListener('pagehide', hideWhileReloading);
-          };
-        }
-      } catch {
-        // A frame from another origin cannot be reached; Esc then works only outside it.
-      }
+      sendTheStoredTheme();
     };
-    const stopFollowingLoads = followBoardFrameLoads(frame, followLoadedBoard);
+    const followBridgeMessage = (event: MessageEvent): void => {
+      const message = bridgeMessageOfEvent(event);
+      if (message?.kind === 'leave-board') leaveTheBoard();
+      // Committed synchronously, so the next document's first paint already lands in a hidden frame.
+      if (message?.kind === 'board-unloading') flushSync(() => setIsBoardLoaded(false));
+    };
+    const stopFollowingLoads = followBoardFrameLoads(frame, showLoadedBoard);
+    bridge.addEventListener('load', sendTheStoredTheme);
+    window.addEventListener('message', followBridgeMessage);
     return () => {
       stopFollowingLoads();
-      try {
-        stopFollowing();
-      } catch {
-        // The followed page may already be gone.
-      }
+      bridge.removeEventListener('load', sendTheStoredTheme);
+      window.removeEventListener('message', followBridgeMessage);
     };
   }, [frameReference]);
 
@@ -61,10 +69,17 @@ export function PageFrame({ pageUrl, projectName, frameReference }: PageFramePro
     <section className="ap-frame" aria-label={`Embedded progress.html of ${projectName}`}>
       <iframe
         ref={frameReference}
+        name={BOARD_FRAME_NAME}
         className={isBoardLoaded ? 'ap-page-frame' : 'ap-page-frame is-loading'}
         src={pageUrl}
         title={`Board of ${projectName}`}
-        {...{ [EMBEDDED_BOARD_ATTRIBUTE]: '' }}
+      />
+      <iframe
+        ref={bridgeReference}
+        src={bridgeUrl}
+        title={`Theme and Esc bridge for the board of ${projectName}`}
+        hidden
+        {...{ [BOARD_BRIDGE_ORIGIN_ATTRIBUTE]: boardOrigin }}
       />
     </section>
   );

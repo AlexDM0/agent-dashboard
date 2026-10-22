@@ -31,12 +31,15 @@ export interface ProjectMonitorOptions {
   machineParallelAgentLimit:    number;
 }
 
-export type SnapshotListener = (snapshot: DashboardSnapshot) => void;
+/** The snapshot before the server names the board origin it serves the pages from; each `pageUrl` is a path on it. */
+export type MonitoredSnapshot = Omit<DashboardSnapshot, 'boardOrigin' | 'boardBridgeUrl'>;
+
+export type SnapshotListener = (snapshot: MonitoredSnapshot) => void;
 
 export interface ProjectMonitor {
   /** Reads the registry and every project once, then watches; resolves once that first read is complete. */
   start(): Promise<void>;
-  snapshot(): DashboardSnapshot;
+  snapshot(): MonitoredSnapshot;
   /** The folder a project's page is served from, or null for a tracker the registry does not hold. */
   pageFolderOf(trackerId: string): string | null;
   /** The project's root, or null for a tracker the registry does not hold. */
@@ -122,7 +125,7 @@ export function createProjectMonitor(options: ProjectMonitorOptions): ProjectMon
     return createCoalescingRunner({ run, quietMilliseconds: options.quietMilliseconds, maximumWaitMilliseconds: options.maximumWaitMilliseconds });
   }
 
-  function snapshot(): DashboardSnapshot {
+  function snapshot(): MonitoredSnapshot {
     const projectSnapshots: ProjectSnapshot[] = [];
     for (const trackerId of projectOrder) {
       const project = projects.get(trackerId);

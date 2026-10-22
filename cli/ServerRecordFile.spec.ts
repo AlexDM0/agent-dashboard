@@ -28,8 +28,16 @@ function scratchHome(): string {
 }
 
 const EXAMPLE_RECORD: ServerRecord = {
-  pid: 4242, port: 4811, url: 'http://127.0.0.1:4811', startedAt: '2026-09-18T20:11:03.000Z', version: '0.1.0'
+  pid: 4242, port: 4811, url: 'http://127.0.0.1:4811', boardOrigin: 'http://127.0.0.1:4812', startedAt: '2026-09-18T20:11:03.000Z', version: '0.1.0'
 };
+
+test('a record an older dashboard wrote, without the board origin, still reads, its board origin null', () => {
+  const home = scratchHome();
+  mkdirSync(dashboardDirectoryOf(home), { recursive: true });
+  const { boardOrigin: _boardOrigin, ...olderRecord } = EXAMPLE_RECORD;
+  writeFileSync(serverRecordPathOf(home), JSON.stringify(olderRecord));
+  expect(readServerRecord(home)).toEqual({ kind: 'present', record: { ...EXAMPLE_RECORD, boardOrigin: null } });
+});
 
 test('a written record reads back whole, its folder created and no temporary file left', () => {
   const home = scratchHome();

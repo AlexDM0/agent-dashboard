@@ -20,21 +20,24 @@ export async function serveCommand(options: CommandOptions, context: CommandCont
     clock:                     context.now,
     machineParallelAgentLimit: context.machineParallelAgentLimit,
   });
-  if (start.kind === 'port-in-use') throw portHeldRefusalFor(start.port);
+  if (start.kind === 'port-in-use') throw portHeldRefusalFor(start.port, start.role);
   const { server } = start;
   const stopListening = context.onInterruption(() => { void server.stop(); });
   try {
     writeServerRecord(context.homeDirectory, {
-      pid:       context.processId,
-      port:      server.port,
-      url:       server.url,
-      startedAt: context.now().toISOString(),
-      version:   context.version,
+      pid:         context.processId,
+      port:        server.port,
+      url:         server.url,
+      boardOrigin: server.boardOrigin,
+      startedAt:   context.now().toISOString(),
+      version:     context.version,
     });
     if (context.agentProgressExecutable === null) {
       context.standardError('agent-progress is not on PATH, so every project reads as unreadable; set AGENT_DASHBOARD_AGENT_PROGRESS to its path.');
     }
-    context.standardOutput(`The dashboard server runs at ${server.url} (pid ${context.processId}); stop it with Ctrl-C or agent-dashboard stop.`);
+    context.standardOutput(
+      `The dashboard server runs at ${server.url}, its board pages at ${server.boardOrigin} (pid ${context.processId}); stop it with Ctrl-C or agent-dashboard stop.`,
+    );
     await server.stopped;
   } finally {
     stopListening();

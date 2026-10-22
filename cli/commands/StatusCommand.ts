@@ -4,7 +4,10 @@ import { runningDashboardServerOf } from './RunningDashboardServer.ts';
 
 export async function statusCommand(_options: CommandOptions, context: CommandContext): Promise<void> {
   const running = await runningDashboardServerOf(context.homeDirectory);
-  context.standardOutput(running.kind === 'running'
-    ? `The dashboard server runs at ${running.url} (pid ${running.identity.pid}, version ${running.identity.version}).`
-    : 'No dashboard server is running.');
+  if (running.kind !== 'running') {
+    context.standardOutput('No dashboard server is running.');
+    return;
+  }
+  const boardPages = running.boardOrigin === null ? '' : `, its board pages at ${running.boardOrigin}`;
+  context.standardOutput(`The dashboard server runs at ${running.url}${boardPages} (pid ${running.identity.pid}, version ${running.identity.version}).`);
 }

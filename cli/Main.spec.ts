@@ -36,7 +36,7 @@ async function recordedRunningServer(home: string): Promise<RunningDashboardServ
   if (start.kind !== 'started') throw new Error(`the spec server did not start: port ${start.port} in use`);
   runningServers.push(start.server);
   writeServerRecord(home, {
-    pid: process.pid, port: start.server.port, url: start.server.url, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
+    pid: process.pid, port: start.server.port, url: start.server.url, boardOrigin: start.server.boardOrigin, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
   });
   return start.server;
 }
@@ -50,7 +50,7 @@ function scratchHome(): string {
 function writeStaleRecord(home: string): void {
   const port = freeLocalPort();
   writeServerRecord(home, {
-    pid: 2_147_483_001, port, url: `http://127.0.0.1:${port}`, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
+    pid: 2_147_483_001, port, url: `http://127.0.0.1:${port}`, boardOrigin: null, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
   });
 }
 
@@ -74,8 +74,24 @@ test('a refused argument names the problem on standard error at exit 1 and start
   const home = scratchHome();
   const context = createCapturedCommandContext(home);
   expect(await runCommandLine(['serve', '--port', '70000'], context)).toBe(1);
-  expect(context.errorText()).toContain('--port takes a whole number from 1 to 65535, not "70000".');
+  expect(context.errorText()).toContain('--port takes a whole number from 1 to 65534, not "70000".');
   expect(existsSync(serverRecordPathOf(home))).toBe(false);
+});
+
+test('a held board port refuses open and serve at exit 1 naming that port, and writes no record', async () => {
+  const boardPortHolder = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data: () => {} } });
+  const dashboardPort = boardPortHolder.port - 1;
+  try {
+    for (const commandLine of [['open', '--no-open', '--port', String(dashboardPort)], ['serve', '--port', String(dashboardPort)]]) {
+      const home = scratchHome();
+      const context = createCapturedCommandContext(home);
+      expect(await runCommandLine(commandLine, context), commandLine.join(' ')).toBe(1);
+      expect(context.errorText(), commandLine.join(' ')).toContain(`Port ${boardPortHolder.port} on 127.0.0.1, where the board pages are served`);
+      expect(existsSync(serverRecordPathOf(home))).toBe(false);
+    }
+  } finally {
+    boardPortHolder.stop(true);
+  }
 });
 
 test('status with no record says nothing runs, at exit 0', async () => {
@@ -103,7 +119,7 @@ test('stop leaves the record of a process that lives but does not answer, and re
   const home = scratchHome();
   const port = freeLocalPort();
   writeServerRecord(home, {
-    pid: process.pid, port, url: `http://127.0.0.1:${port}`, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
+    pid: process.pid, port, url: `http://127.0.0.1:${port}`, boardOrigin: null, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
   });
   const context = createCapturedCommandContext(home);
   expect(await runCommandLine(['stop'], context)).toBe(1);

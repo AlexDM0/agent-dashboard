@@ -9,11 +9,13 @@ import { writeFileAtomically } from '../src/lib/atomic-file/AtomicFile.ts';
 import { DASHBOARD_FILES }     from '../src/shared/constants/DashboardFiles.ts';
 
 export interface ServerRecord {
-  pid:       number;
-  port:      number;
-  url:       string;
-  startedAt: string;
-  version:   string;
+  pid:         number;
+  port:        number;
+  url:         string;
+  /** Where the board pages are served; null in a record an older dashboard wrote, which still names a server to stop. */
+  boardOrigin: string | null;
+  startedAt:   string;
+  version:     string;
 }
 
 export type ServerRecordReading =
@@ -37,13 +39,14 @@ function recordFrom(document: unknown): ServerRecord | null {
   if (typeof document !== 'object' || document === null) return null;
   const candidate = document as Record<string, unknown>;
   const {
-    pid: processId, port, url, startedAt, version
+    pid: processId, port, url, boardOrigin, startedAt, version
   } = candidate;
   if (typeof processId !== 'number' || !Number.isInteger(processId)) return null;
   if (typeof port !== 'number' || !Number.isInteger(port)) return null;
   if (typeof url !== 'string' || typeof startedAt !== 'string' || typeof version !== 'string') return null;
+  if (boardOrigin !== undefined && boardOrigin !== null && typeof boardOrigin !== 'string') return null;
   return {
-    pid: processId, port, url, startedAt, version
+    pid: processId, port, url, boardOrigin: boardOrigin ?? null, startedAt, version
   };
 }
 

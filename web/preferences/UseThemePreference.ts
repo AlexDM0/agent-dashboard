@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { applyThemeToEmbeddedBoards }       from './EmbeddedBoardTheme.ts';
-import { PreferenceStore }                  from './PreferenceStore.ts';
+import { useCallback, useEffect, useState }                               from 'react';
+import { applyThemeToEmbeddedBoards, followThemesChosenInEmbeddedBoards } from './EmbeddedBoardTheme.ts';
+import { PreferenceStore }                                                from './PreferenceStore.ts';
 import {
   type ResolvedTheme,
   THEME_STORAGE_KEY,
@@ -54,6 +54,9 @@ export function useThemePreference(): ThemePreference {
     setChoice(nextChoice);
     PreferenceStore.writeText(THEME_STORAGE_KEY, nextChoice);
   }, []);
+
+  // The board origin keeps its own storage, so the board's toggle reaches this page as a bridge message, not an event.
+  useEffect(() => followThemesChosenInEmbeddedBoards(chooseTheme), [chooseTheme]);
 
   return { choice, resolvedTheme, chooseTheme };
 }

@@ -7,7 +7,7 @@ import { probeServerIdentity }                 from '../ServerIdentityProbe.ts';
 import { type ServerRecord, readServerRecord } from '../ServerRecordFile.ts';
 
 export type RunningServerVerdict =
-  | { kind: 'running'; url: string; identity: ServerIdentity }
+  | { kind: 'running'; url: string; boardOrigin: string | null; identity: ServerIdentity }
   | { kind: 'no-record' }
   | { kind: 'unreadable-record' }
   | { kind: 'not-answering'; record: ServerRecord };
@@ -18,6 +18,8 @@ export async function runningDashboardServerOf(homeDirectory: string): Promise<R
   if (reading.kind === 'unreadable') return { kind: 'unreadable-record' };
   const probe = await probeServerIdentity(reading.record.url);
   return probe.kind === 'dashboard'
-    ? { kind: 'running', url: reading.record.url, identity: probe.identity }
+    ? {
+      kind: 'running', url: reading.record.url, boardOrigin: reading.record.boardOrigin, identity: probe.identity
+    }
     : { kind: 'not-answering', record: reading.record };
 }

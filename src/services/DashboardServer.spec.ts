@@ -3,7 +3,8 @@
  * agent-progress printing a captured status document. The cases are the server's promises: the Host guard on every
  * data route (the app shell, which Bun answers first, holds no data), the page route serving only what lies inside the
  * page folder (planted escapes: `../`, encoded `%2e%2e`, an encoded slash, NUL, a symlink out) with every file but the
- * board page sandboxed, 404s, the event stream opening with a snapshot and releasing its subscription
+ * board page sandboxed, the page folders and the bridge served only on the board origin (its own port and Host guard,
+ * framed only by the dashboard) and nothing of the dashboard's there, 404s, the event stream opening with a snapshot and releasing its subscription
  * on disconnect, a shutdown only the CLI can ask for, a held port reported, not thrown, a second dashboard never
  * sharing the port, and a start that answers its
  * identity before the first board read ends, since the CLI writes the server record as soon as the start resolves.
@@ -36,6 +37,7 @@ import {
 } from 'bun:test';
 
 import { type DashboardSnapshot, type ServerIdentity }                          from '../shared/DashboardContract.ts';
+import { DASHBOARD_PROTOCOL }                                                   from '../shared/constants/DashboardProtocol.ts';
 import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../testing/ExampleBoards.ts';
 import {
   type ExampleSessionListener,
@@ -57,6 +59,7 @@ import {
   type DashboardServerOptions,
   type RunningDashboardServer,
   allowedHostHeadersOf,
+  boardPortOf,
   serveDashboard,
   startDashboardServer
 } from './DashboardServer.ts';
@@ -136,7 +139,16 @@ test('the snapshot holds the registered project with its board read through agen
   const snapshot = await (await fetch(`${server.url}/api/snapshot`)).json() as DashboardSnapshot;
   expect(snapshot.registry).toEqual({ kind: 'ready' });
   expect(snapshot.projects.map((project) => [project.trackerId, project.pageAvailable, project.health.kind])).toEqual([[TRACKER_ID, true, 'ready']]);
-  expect(snapshot.projects[0]?.pageUrl).toBe(pageTarget('progress.html'));
+  expect(snapshot.projects[0]?.pageUrl).toBe(`${server.boardOrigin}${pageTarget('progress.html')}`);
+});
+
+test('the board origin is the loopback address on a port of its own, carried in the snapshot with the bridge', async () => {
+  expect(server.boardPort).not.toBe(server.port);
+  expect(server.boardOrigin).toBe(`http://127.0.0.1:${server.boardPort}`);
+  const snapshot = await (await fetch(`${server.url}/api/snapshot`)).json() as DashboardSnapshot;
+  expect(snapshot.boardOrigin).toBe(server.boardOrigin);
+  expect(snapshot.boardBridgeUrl).toBe(`${server.boardOrigin}/bridge`);
+  expect(boardPortOf(4710)).toBe(4711);
 });
 
 test('the snapshot carries the machine parallel agent limit the server was started with', async () => {
@@ -149,7 +161,6 @@ test('a Host that is not this server\'s own is refused on every data route, and 
     '/api/identity',
     '/api/snapshot',
     '/api/events',
-    pageTarget('progress.html'),
     '/api/shutdown',
     `/api/projects/${TRACKER_ID}/concurrency`,
     `/api/projects/${TRACKER_ID}/dispatcher`,
@@ -165,6 +176,18 @@ test('a Host that is not this server\'s own is refused on every data route, and 
   }
 });
 
+test('the board origin keeps the Host guard on its own port for every route', async () => {
+  for (const target of [pageTarget('progress.html'), '/bridge', '/bridge.js']) {
+    for (const host of ['evil.example', `evil.example:${server.boardPort}`, `127.0.0.1:${server.port}`, '127.0.0.1']) {
+      const answer = await sendRawHttpRequest({ port: server.boardPort, target, headers: { Host: host } });
+      expect(answer.status, `${host} ${target}`).toBe(403);
+    }
+    for (const host of [`127.0.0.1:${server.boardPort}`, `localhost:${server.boardPort}`, `[::1]:${server.boardPort}`]) {
+      expect((await sendRawHttpRequest({ port: server.boardPort, target, headers: { Host: host } })).status, `${host} ${target}`).toBe(200);
+    }
+  }
+});
+
 test('the app shell answers a foreign Host, as Bun serves it before the guard, and carries no board data', async () => {
   const answer = await sendRawHttpRequest({ port: server.port, target: '/', headers: { Host: 'evil.example' } });
   expect(answer.status).toBe(200);
@@ -177,30 +200,30 @@ test('on the default HTTP port the bare loopback names are let in too, since a b
   expect([...allowedHostHeadersOf(4710)].sort()).toEqual(['127.0.0.1:4710', '[::1]:4710', 'localhost:4710']);
 });
 
-test('the board page and its stamp may reach only this server, and every other page-folder file is sandboxed', async () => {
+test('the board page and its stamp may reach only the board origin, framed only by the dashboard, and every other page-folder file is sandboxed', async () => {
   for (const target of [pageTarget('progress.html'), pageTarget('progress.stamp.js'), pageTarget('./progress.html')]) {
-    const policy = (await sendRawHttpRequest({ port: server.port, target })).headers.get('content-security-policy') ?? '';
+    const policy = (await sendRawHttpRequest({ port: server.boardPort, target })).headers.get('content-security-policy') ?? '';
     expect(policy, target).toContain('connect-src \'self\'');
     expect(policy, target).toContain('default-src \'self\'');
-    expect(policy, target).toContain('frame-ancestors \'self\'');
+    expect(policy, target).toContain(`frame-ancestors http://127.0.0.1:${server.port} http://localhost:${server.port}`);
   }
   for (const target of [pageTarget('example-diagram.svg'), pageTarget('assets/example.css')]) {
-    const answer = await sendRawHttpRequest({ port: server.port, target });
+    const answer = await sendRawHttpRequest({ port: server.boardPort, target });
     expect(answer.status, target).toBe(200);
     expect(answer.headers.get('content-security-policy'), target).toBe('sandbox');
   }
 });
 
 test('a page file is served with its content type and no caching', async () => {
-  const page = await sendRawHttpRequest({ port: server.port, target: pageTarget('progress.html') });
+  const page = await sendRawHttpRequest({ port: server.boardPort, target: pageTarget('progress.html') });
   expect(page.status).toBe(200);
   expect(page.headers.get('content-type')).toStartWith('text/html');
   expect(page.headers.get('cache-control')).toBe('no-store');
   expect(page.body).toContain('<title>example-storefront</title>');
 
-  const stylesheet = await sendRawHttpRequest({ port: server.port, target: pageTarget('assets/example.css') });
+  const stylesheet = await sendRawHttpRequest({ port: server.boardPort, target: pageTarget('assets/example.css') });
   expect(stylesheet.headers.get('content-type')).toStartWith('text/css');
-  const stamp = await sendRawHttpRequest({ port: server.port, target: pageTarget('progress.stamp.js') });
+  const stamp = await sendRawHttpRequest({ port: server.boardPort, target: pageTarget('progress.stamp.js') });
   expect(stamp.headers.get('content-type')).toStartWith('text/javascript');
 });
 
@@ -218,16 +241,54 @@ test('every way out of the page folder is a 404, the planted secret never served
     `/projects/${TRACKER_ID}/page/%`,
   ];
   for (const target of escapes) {
-    const answer = await sendRawHttpRequest({ port: server.port, target });
+    const answer = await sendRawHttpRequest({ port: server.boardPort, target });
     expect(answer.status, target).toBe(404);
     expect(answer.body, target).not.toContain('secret');
   }
 });
 
 test('an unknown tracker, a missing file, a folder and an unknown route are 404', async () => {
-  for (const target of ['/projects/tracker-unknown/page/progress.html', pageTarget('absent.html'), pageTarget('assets'), pageTarget(''), '/api/unknown', '/projects']) {
+  for (const target of ['/projects/tracker-unknown/page/progress.html', pageTarget('absent.html'), pageTarget('assets'), pageTarget(''), '/projects']) {
+    expect((await sendRawHttpRequest({ port: server.boardPort, target })).status, target).toBe(404);
+  }
+  expect((await sendRawHttpRequest({ port: server.port, target: '/api/unknown' })).status).toBe(404);
+});
+
+test('the dashboard origin serves no board file, and the board origin nothing of the dashboard\'s', async () => {
+  for (const target of [pageTarget('progress.html'), pageTarget('progress.stamp.js'), pageTarget('assets/example.css'), '/bridge', '/bridge.js']) {
     expect((await sendRawHttpRequest({ port: server.port, target })).status, target).toBe(404);
   }
+  for (const target of ['/api/identity', '/api/snapshot', '/api/events', `/api/projects/${TRACKER_ID}/concurrency`, '/api/shutdown', '/']) {
+    expect((await sendRawHttpRequest({ port: server.boardPort, target })).status, target).toBe(404);
+  }
+  const boardOriginPost = await sendRawHttpRequest({
+    port: server.boardPort, method: 'POST', target: '/api/shutdown', headers: { [DASHBOARD_PROTOCOL.SHUTDOWN_HEADER_NAME]: DASHBOARD_PROTOCOL.SHUTDOWN_HEADER_VALUE }
+  });
+  expect(boardOriginPost.status).toBe(404);
+  expect((await fetch(`${server.url}/api/identity`)).status).toBe(200);
+});
+
+test('a fetch from the board origin to the dashboard\'s snapshot carries no CORS grant, so the board cannot read it', async () => {
+  const answer = await fetch(`${server.url}/api/snapshot`, { headers: { Origin: server.boardOrigin } });
+  expect(answer.headers.get('access-control-allow-origin')).toBeNull();
+  expect(answer.headers.get('access-control-allow-credentials')).toBeNull();
+});
+
+test('the bridge page is framed only by the dashboard, runs only its own script, and names the dashboard origins it answers', async () => {
+  const bridge = await sendRawHttpRequest({ port: server.boardPort, target: '/bridge' });
+  expect(bridge.status).toBe(200);
+  expect(bridge.headers.get('content-type')).toStartWith('text/html');
+  const policy = bridge.headers.get('content-security-policy') ?? '';
+  expect(policy).toContain('default-src \'none\'');
+  expect(policy).toContain('script-src \'self\'');
+  expect(policy).toContain(`frame-ancestors http://127.0.0.1:${server.port} http://localhost:${server.port}`);
+  expect(bridge.body).toContain(`data-dashboard-origins="http://127.0.0.1:${server.port} http://localhost:${server.port}"`);
+  expect(bridge.body).toContain('<script src="/bridge.js"></script>');
+
+  const script = await sendRawHttpRequest({ port: server.boardPort, target: '/bridge.js' });
+  expect(script.status).toBe(200);
+  expect(script.headers.get('content-type')).toStartWith('text/javascript');
+  expect(script.body).toContain('agent-dashboard-board');
 });
 
 test('the app is served at the root', async () => {
@@ -341,11 +402,28 @@ test('a port something else holds is reported as in use, not thrown', async () =
   const address = holder.address();
   const heldPort = typeof address === 'object' && address !== null ? address.port : 0;
   try {
-    expect(await startDashboardServer({ ...serverOptions, port: heldPort })).toEqual({ kind: 'port-in-use', port: heldPort });
+    expect(await startDashboardServer({ ...serverOptions, port: heldPort })).toEqual({ kind: 'port-in-use', port: heldPort, role: 'dashboard' });
+    // The port below the held one is free here, so the dashboard binds it and meets the held one as its board port.
+    expect(await startDashboardServer({ ...serverOptions, port: heldPort - 1 })).toEqual({ kind: 'port-in-use', port: heldPort, role: 'board' });
+    expect(await portAccepts(heldPort - 1)).toBe(false);
   } finally {
     holder.close();
   }
 });
+
+function portAccepts(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    void Bun.connect({
+      hostname: '127.0.0.1',
+      port,
+      socket:   {
+        open:         (socket) => { socket.end(); resolve(true); },
+        data:         () => {},
+        connectError: () => resolve(false),
+      },
+    }).catch(() => resolve(false));
+  });
+}
 
 // Another process, since that is how a second dashboard meets the first; Bun's default without development mode shares the port.
 test('a second dashboard in another process on the first one\'s port is in use, never a second listener', () => {

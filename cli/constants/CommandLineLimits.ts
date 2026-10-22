@@ -4,5 +4,6 @@ export const COMMAND_LINE_LIMITS = {
   SERVER_STOP_TIMEOUT_MILLISECONDS:      5_000,
   SHUTDOWN_REQUEST_TIMEOUT_MILLISECONDS: 2_000,
   LOWEST_PORT:                           1,
-  HIGHEST_PORT:                          65_535,
+  /** One below the highest TCP port, since the board origin listens on the port above the dashboard's. */
+  HIGHEST_PORT:                          65_534,
 } as const;

@@ -1,6 +1,7 @@
 import { spawn }                          from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 
+import { boardPortOf }                           from '../../src/services/DashboardServer.ts';
 import { DASHBOARD_LIMITS }                      from '../../src/shared/constants/DashboardLimits.ts';
 import type { CommandContext }                   from '../CommandContext.ts';
 import { CommandRefusal }                        from '../CommandRefusal.ts';
@@ -68,6 +69,7 @@ async function urlOfAServerStartedOrReused(options: CommandOptions, context: Com
   const probe = await probeServerIdentity(url);
   if (probe.kind === 'dashboard') return { url, started: false };
   if (probe.kind === 'something-else' || !portIsFree(options.port)) throw portHeldRefusalFor(options.port);
+  if (!portIsFree(boardPortOf(options.port))) throw portHeldRefusalFor(boardPortOf(options.port), 'board');
   await waitUntilTheServerAnswers(context, url, startDetachedServer(context, options.port));
   return { url, started: true };
 }

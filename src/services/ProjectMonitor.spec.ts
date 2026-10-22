@@ -20,7 +20,6 @@ import {
 } from 'bun:test';
 
 import { type BoardSummaryVerdict } from '../adapters/BoardSummaryMapper.ts';
-import { type DashboardSnapshot }   from '../shared/DashboardContract.ts';
 import {
   createExampleProjectRoot,
   exampleBoardSummary,
@@ -29,7 +28,12 @@ import {
 } from '../testing/ExampleBoards.ts';
 import { createScratchDirectory, removeScratchDirectory, requireScratchDirectory } from '../testing/ScratchDirectory.ts';
 import { waitUntil }                                                               from '../testing/WaitUntil.ts';
-import { type ProjectMonitor, type ProjectMonitorOptions, createProjectMonitor }   from './ProjectMonitor.ts';
+import {
+  type MonitoredSnapshot,
+  type ProjectMonitor,
+  type ProjectMonitorOptions,
+  createProjectMonitor
+} from './ProjectMonitor.ts';
 
 const QUIET_MILLISECONDS = 30;
 const LONG_SWEEP_MILLISECONDS = 60_000;
@@ -303,7 +307,7 @@ test('a subscriber gets the whole snapshot after a change, and no more once unsu
   const storefront = createExampleProjectRoot(scratchDirectory, 'example-storefront');
   writeExampleRegistry(homeDirectory, { 'tracker-storefront': exampleRegistryEntry(storefront, 'example-storefront') });
   const running = await startedMonitor();
-  const received: DashboardSnapshot[] = [];
+  const received: MonitoredSnapshot[] = [];
   const unsubscribe = running.subscribe((snapshot) => received.push(snapshot));
 
   writeFileSync(join(storefront, '.agent-progress', 'progress.json'), '{}');

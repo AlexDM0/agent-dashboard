@@ -56,7 +56,7 @@ web/                 the React frontend, its own DOM-only TypeScript project; im
 
 Imports run `src/lib → src/shared → src/adapters → src/services → cli`; `web/` imports nothing from `src/` but
 `import type` from `src/shared/DashboardContract.ts`. Nothing does work at module load except the entry points
-(`agent-dashboard.ts`, `web/Main.tsx`).
+(`agent-dashboard.ts`, `web/Main.tsx`, and the bridge's `web/bridge/BoardBridgeMain.ts`, bundled on its own).
 
 ### The monitor
 
@@ -79,12 +79,18 @@ Imports run `src/lib → src/shared → src/adapters → src/services → cli`; 
 
 ### The server
 
-`Bun.serve`, bound to `127.0.0.1` only, with `reusePort: false` (Bun otherwise sets `SO_REUSEPORT` outside development
-mode, and a second dashboard would share the port instead of meeting `EADDRINUSE`). Every request to a data route
-(`/api/*`, `/projects/*`) whose `Host` header is not `127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>` (on port
+Two `Bun.serve` listeners, both bound to `127.0.0.1` only, with `reusePort: false` (Bun otherwise sets `SO_REUSEPORT`
+outside development mode, and a second dashboard would share the port instead of meeting `EADDRINUSE`): the
+**dashboard origin** on `<port>` and the **board origin** on `<port> + 1`, which serves every project's page folder and
+the bridge page and nothing else. A board page is an agent-progress file holding text agents wrote, so it never runs in
+the dashboard's origin: it cannot read the dashboard's document (`window.parent.document` throws inside the frame) nor
+read its API (`/api/*` sends no CORS grant, and the board page's `connect-src 'self'` refuses the request outright). The
+snapshot carries the board origin (`boardOrigin`), the bridge's address (`boardBridgeUrl`) and each `pageUrl` on it;
+the server record carries it too. Every request to a data route (on the dashboard origin `/api/*`, on the board origin
+every route) whose `Host` header is not `127.0.0.1:<its port>`, `localhost:<its port>` or `[::1]:<its port>` (on port
 80 also the bare names, as browsers send them there) is refused 403 (DNS-rebinding guard). The app shell at `/` and the
 chunks Bun bundles for it are exempt: Bun answers its HTML-import route before `fetch`, and they are the public build,
-holding no data. Routes:
+holding no data. Dashboard-origin routes:
 
 | Route | Answer |
 | --- | --- |
@@ -92,11 +98,35 @@ holding no data. Routes:
 | `GET /api/identity` | `ServerIdentity`, how the CLI knows a running server is the dashboard |
 | `GET /api/snapshot` | the current `DashboardSnapshot` |
 | `GET /api/events` | Server-Sent Events: `event: snapshot` with the whole snapshot on connect and on every change; a `: heartbeat` comment every 25 s |
-| `GET /projects/<trackerId>/page/<path>` | a file from that project's page folder: 404 for an unknown tracker, a missing file, or any path that resolves (after `realpath`) outside the folder; `Cache-Control: no-store`. `progress.html` and `progress.stamp.js` carry a CSP limiting them to this origin (inline script and style allowed, `frame-ancestors 'self'`); every other file carries `Content-Security-Policy: sandbox`, so a script in a ticket's linked SVG or HTML runs in an opaque origin |
 | `POST /api/projects/<trackerId>/concurrency` | body `{ "limit": <n> }`, an absolute whole number from 1 to 10: runs `agent-progress concurrency <n>` in that project's root (one of the two CLI runs a click may make in a tracked repository, beside `agent-progress dispatcher stopped`), re-reads the board at once so the next snapshot carries the new limit, and answers 204. Same Host guard; 403 for an `Origin` that is present and not this server's own, 404 for an unknown tracker, 400 for any other body (no CLI run), 409 with the CLI's message on its exit 1, 502 for any other failure |
 | `POST /api/projects/<trackerId>/dispatcher` | body exactly `{ "state": "stopped" }`: runs `agent-progress dispatcher stopped` in that project's root (the other CLI run a click may make in a tracked repository, beside `agent-progress concurrency <n>`), re-reads the board at once and answers 204. The running dispatcher reads the stored state as each agent returns and starts no new agent while those in flight finish; the store clears `concurrency.dispatcherRunId`, so the orchestrator is found afterwards by its working directory. Same Host guard; 403 for a foreign `Origin`, 404 for an unknown tracker, 400 for any other body (no CLI run), 409 with the CLI's message on its exit 1, 502 for any other failure |
 | `POST /api/projects/<trackerId>/orchestrator-requests` | body `{ "kind": "start-building" }` or `{ "kind": "clear-low-tickets", "ticketIds": [...] }` (1 to 50 non-empty ids, each among the board's `lowPriorityWaitingTickets`): writes one NDJSON line `{"type":"user","message":{"role":"user","content":<text>}}` to the board's orchestrator session's `messagingSocketPath` and answers 204. The text relays the user's click, names the project and says what to do: run the board through the agent-progress dispatcher, leaving a run in flight running; or triage the named tickets and launch with `includeLowPriority: true` once no run is in flight, never stopping a running dispatcher. The orchestrator is the one live session (pid alive, socket accepting) whose `~/.claude/projects/<slug of its cwd>/<sessionId>/subagents/workflows/` holds the board's `dispatcherRunId`, else the one live session whose `cwd` is the project root. Nothing is written to the board or the repository. Same Host guard; 403 for a foreign `Origin`, 404 for an unknown tracker, 400 for any other body, 409 for an id that is not low-priority waiting or for zero or several candidate sessions, 502 when the chosen socket fails; none of these writes to a socket |
 | `POST /api/shutdown` | stops the server (used by `agent-dashboard stop`; same Host guard) |
+
+`/projects/*` and the bridge are 404 on the dashboard origin. Board-origin routes, `GET` and `HEAD` only (any other
+method 405), every other path 404, `/api/*` included:
+
+| Route | Answer |
+| --- | --- |
+| `GET /projects/<trackerId>/page/<path>` | a file from that project's page folder: 404 for an unknown tracker, a missing file, or any path that resolves (after `realpath`) outside the folder; `Cache-Control: no-store`. `progress.html` and `progress.stamp.js` carry a CSP limiting them to the board origin (inline script and style allowed) with `frame-ancestors` naming the dashboard's origins (`http://127.0.0.1:<port> http://localhost:<port>`; CSP takes no bracketed IPv6 literal); every other file carries `Content-Security-Policy: sandbox`, so a script in a ticket's linked SVG or HTML runs in an opaque origin |
+| `GET /bridge` | the bridge page: no content of its own, `<html data-dashboard-origins="…">` naming the dashboard's origins and one script; CSP `default-src 'none'; script-src 'self'`, `frame-ancestors` the dashboard's origins |
+| `GET /bridge.js` | the bridge script, `web/bridge/BoardBridgeMain.ts` bundled by `Bun.build` on its first request (its own small bundle, not the React app) |
+
+#### The bridge
+
+The board frame holds `progress.html` on the board origin; beside it the dashboard frames the bridge, hidden, on the
+same board origin. The bridge is a sibling rather than the board's parent, so the board's `window.parent` is the
+dashboard and `window.parent.document` throws. Same-origin with the board, the bridge finds it among its parent's
+frames by the frame name `agent-dashboard-board`, and reaches what the dashboard no longer can: the board's document
+and the board origin's storage. The two sides talk by `postMessage` (`web/bridge/BoardBridgeMessageUtil.ts`), each
+acting only on a message from the expected window and origin and of the exact shape, and ignoring any other:
+
+| From → to | Message | Effect |
+| --- | --- | --- |
+| dashboard → bridge | `{ kind: 'theme', themeChoice }`, from the dashboard's window on one of the origins `/bridge` names | writes `agent-progress:theme` in the board origin's storage (a board still loading reads it), clicks the board's own theme radio, and follows the board's current document (Esc and `pagehide`) if not followed yet. Sent on every theme choice and on every load of either frame |
+| bridge → dashboard | `{ kind: 'theme-chosen', themeChoice }`, from the bridge frame's window on the board origin | the board's own toggle wrote the key (a `storage` event in the bridge): the dashboard takes the choice as its toggle's |
+| bridge → dashboard | `{ kind: 'leave-board' }` | Esc inside the board that the board did not use: back to the overview |
+| bridge → dashboard | `{ kind: 'board-unloading' }` | the board's `pagehide` (its stamp reload, Reload): the frame hides until its next `load` |
 
 ### The command line
 
@@ -108,9 +138,11 @@ holding no data. Routes:
 | `agent-dashboard status` | Print the running server's URL and pid, or that none runs. |
 | `agent-dashboard help` | One screen of help to stdout; an unknown command prints it to stderr, exit 1. |
 
-Default port 4710. A port held by something that is not the dashboard is a refusal naming `--port`, exit 1. The server
-record `~/.agent-progress-monitor/agent-dashboard/server.json` is `{ pid, port, url, startedAt, version }`, written
-atomically. Exit codes: 0 done, 1 refusal or unknown command, 2 anything else.
+Default port 4710, the board origin on the port above it (4711), so `--port` takes 1 to 65534. A port held by
+something that is not the dashboard, the dashboard's or the board's, is a refusal naming that port and `--port`, exit
+1. `serve` and `status` print the board origin beside the URL. The server record
+`~/.agent-progress-monitor/agent-dashboard/server.json` is `{ pid, port, url, boardOrigin, startedAt, version }`,
+written atomically; a record without `boardOrigin` (an older dashboard's) still reads, with it null. Exit codes: 0 done, 1 refusal or unknown command, 2 anything else.
 
 ### The contract (`src/shared/DashboardContract.ts`)
 
@@ -166,7 +198,7 @@ export interface ProjectSnapshot {
   lastChangedAt: string;
   lastCommand: string;
   pageAvailable: boolean;          // progress.html exists
-  pageUrl: string;                 // /projects/<trackerId>/page/progress.html
+  pageUrl: string;                 // <boardOrigin>/projects/<trackerId>/page/progress.html
   readAt: string;                  // when the dashboard last read it, shown only
   health: ProjectHealth;
 }
@@ -181,6 +213,9 @@ export interface DashboardSnapshot {
   registryPath: string;
   projects: ProjectSnapshot[];     // registry order; the web sorts
   generatedAt: string;
+  machineParallelAgentLimit: number;
+  boardOrigin: string;             // http://127.0.0.1:<port + 1>
+  boardBridgeUrl: string;          // <boardOrigin>/bridge
 }
 
 export interface ServerIdentity { application: 'agent-dashboard'; version: string; pid: number }
@@ -323,8 +358,9 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 
 - **Theme**: one preference shared with every embedded page, the same storage key agent-progress uses,
   `agent-progress:theme` (`auto` | `light` | `dark`), resolved before first paint into `data-theme` on `<html>`.
-  The dashboard's toggle writes it; every new choice, the toggle's or one a `storage` event brings from another tab or
-  the embedded page's own toggle, is applied to the open iframe's document (same origin). The toggle is a radio group
+  The dashboard's toggle writes it; every new choice, the toggle's or one a `storage` event brings from another
+  dashboard tab, is sent to the bridge, which writes it in the board origin's storage and clicks the open board's own
+  radio; the board's own toggle reaches the dashboard as the bridge's `theme-chosen` message (see "The bridge"). The toggle is a radio group
   as the template's is: one tab stop, the arrow keys move the choice.
 - **Live status**: the template's `.ap-status-dot` idiom: a `--status-live` dot that pulses while the event stream
   is connected, grey with "reconnecting" when it is not, and "updated 45s ago" from the last snapshot ("updated just now" under 30 seconds, as is the
@@ -374,8 +410,11 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 - A **toolbar** over the frame: back to overview (`←` and Esc, also pressed inside the frame unless the board used it
   to close its detail panel or a popover), project name, root path in mono, dispatcher pill,
   slot meter compact, and on the right "Reload" and "Open in new tab".
-- The **frame**: `progress.html` in an iframe filling the rest of the viewport, no border, `--bg` behind it. A
-  project whose page does not exist yet shows a panel saying so instead.
+- The **frame**: `progress.html` from the board origin in an iframe filling the rest of the viewport, no border,
+  `--bg` behind it, hidden until it loads and again from the bridge's `board-unloading` to the next load; beside it the
+  hidden bridge frame. Esc inside it arrives as the bridge's `leave-board`; Reload sends the frame to its page again,
+  since a page on another origin cannot be told to reload. A project whose page does not exist yet shows a panel saying
+  so instead.
 
 ## Conventions
 

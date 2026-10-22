@@ -27,7 +27,9 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
   }, []);
 
   const reloadPage = useCallback(() => {
-    frameReference.current?.contentWindow?.location.reload();
+    // A board on another origin cannot be told to reload, but its frame may be sent to its page again.
+    const frame = frameReference.current;
+    frame?.contentWindow?.location.replace(frame.src);
   }, []);
 
   if (snapshot === null) {
@@ -44,7 +46,16 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
             <>
               <BoardToolbar project={project} onReload={reloadPage} />
               {project.pageAvailable
-                ? <PageFrame key={project.trackerId} pageUrl={project.pageUrl} projectName={project.project} frameReference={frameReference} />
+                ? (
+                  <PageFrame
+                    key={project.trackerId}
+                    pageUrl={project.pageUrl}
+                    boardOrigin={snapshot.boardOrigin}
+                    bridgeUrl={snapshot.boardBridgeUrl}
+                    projectName={project.project}
+                    frameReference={frameReference}
+                  />
+                )
                 : <NoPagePanel root={project.root} />}
             </>
           )}

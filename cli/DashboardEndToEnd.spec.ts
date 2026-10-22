@@ -40,7 +40,8 @@ test('open starts a server, a second open reuses it, status reports it and stop 
 
   const status = await runAgentDashboard(['status'], home);
   expect(status.exitCode).toBe(0);
-  expect(status.standardOutput).toContain(`runs at ${url} (pid ${startedRecord.record.pid}`);
+  expect(startedRecord.record.boardOrigin).toBe(`http://127.0.0.1:${port + 1}`);
+  expect(status.standardOutput).toContain(`runs at ${url}, its board pages at http://127.0.0.1:${port + 1} (pid ${startedRecord.record.pid}`);
 
   const stop = await runAgentDashboard(['stop'], home);
   expect(stop.exitCode).toBe(0);
