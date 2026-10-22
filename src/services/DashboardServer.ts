@@ -251,8 +251,7 @@ function parsedJsonObjectOrNull(bodyText: string): Record<string, unknown> | nul
   }
 }
 
-/** The trimmed text of a `{ "text": <string> }` body, or null for any other body. */
-/** The request with its text trimmed. */
+/** The request with its text trimmed, or null for any body but `{ "text" }` or `{ "text", "sessionId" }`. */
 function requestedChatOf(bodyText: string): OrchestratorChatRequest | null {
   const body = parsedJsonObjectOrNull(bodyText);
   if (body === null || typeof body['text'] !== 'string') return null;
