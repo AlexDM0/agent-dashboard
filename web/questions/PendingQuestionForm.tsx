@@ -1,8 +1,8 @@
 import { type FormEvent, useId, useState }        from 'react';
 import type { PendingQuestion, Question }         from '../../src/shared/DashboardContract.ts';
-import { sendOrchestratorAnswer }                 from './OrchestratorSessionDelivery.ts';
+import { sendOrchestratorAnswer }                 from '../orchestrator/OrchestratorSessionDelivery.ts';
+import { useSessionRequest }                      from '../orchestrator/UseSessionRequest.ts';
 import { type QuestionDraft, QuestionAnswerUtil } from './QuestionAnswerUtil.ts';
-import { useSessionRequest }                      from './UseSessionRequest.ts';
 
 interface PendingQuestionFormProperties {
   trackerId:       string;

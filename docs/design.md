@@ -422,7 +422,13 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   template's `.ap-head-stats` manner: Projects, Agents (in flight across every board / the machine's parallel
   maximum, `availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
   the projects' concurrency limits are not summed here), Ready, Awaiting review, Held; the
-  theme toggle at the end.
+  Inbox control and the theme toggle at the end.
+- **Inbox** (in the header on every view): a button with the count of questions every live dashboard-owned
+  orchestrator owes, across all projects (watched desktop sessions' questions stay in the desktop app). It opens a
+  panel listing them oldest first, each with its project (a link to its board), how long it has waited and the same
+  question card the board's orchestrator panel shows (`web/questions/PendingQuestionForm.tsx`), answered in place
+  through the answers route; a card leaves when a snapshot no longer holds the request, wherever it was answered.
+  Esc closes the panel before it can leave a board. While a question waits, the tab title starts with `(<n>) `.
 - **Filter bar**: a search field (project name or path) and a segmented toggle `All | Active`.
 - **Two groups**: "Active" (agents in flight, or the dispatcher `running`) and "Idle", each a responsive grid of
   project cards (`repeat(auto-fill, minmax(360px, 1fr))`); within a group, A–Z by project name,

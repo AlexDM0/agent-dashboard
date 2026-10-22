@@ -1,6 +1,7 @@
 import type {
   BoardSummary,
   OrchestratorSession,
+  PendingQuestion,
   ProjectHealth,
   ProjectSnapshot
 } from '../../src/shared/DashboardContract.ts';
@@ -16,6 +17,16 @@ export function orchestratorSessionWith(overrides: Partial<OrchestratorSession> 
     context:          null,
     pendingQuestions: [],
     ...overrides,
+  };
+}
+
+export function pendingQuestionWith(requestId: string, askedAt: string): PendingQuestion {
+  return {
+    requestId,
+    askedAt,
+    questions: [{
+      question: `Example question ${requestId}?`, header: '', multiSelect: false, options: [{ label: 'Yes', description: '' }]
+    }],
   };
 }
 

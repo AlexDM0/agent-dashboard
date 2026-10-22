@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BoardView }           from './board/BoardView.tsx';
+import { InboxUtil }           from './inbox/InboxUtil.ts';
 import { OverviewView }        from './overview/OverviewView.tsx';
 import type { ProjectFilter }  from './overview/ProjectOrdering.ts';
 import { useThemePreference }  from './preferences/UseThemePreference.ts';
@@ -26,14 +27,18 @@ export function App() {
   const staleSince = stream.connection === 'reconnecting' ? stream.lastUpdateAt : null;
   const boardProjectName = route.kind === 'board' ? projects.find((project) => project.trackerId === route.trackerId)?.project : undefined;
 
+  const inboxEntries = InboxUtil.entriesOf(projects);
+  const pendingQuestionCount = inboxEntries.length;
+
   useEffect(() => {
-    document.title = boardProjectName === undefined ? APPLICATION_NAME : `${boardProjectName} · ${APPLICATION_NAME}`;
-  }, [boardProjectName]);
+    const pageTitle = boardProjectName === undefined ? APPLICATION_NAME : `${boardProjectName} · ${APPLICATION_NAME}`;
+    document.title = InboxUtil.documentTitleOf(pendingQuestionCount, pageTitle);
+  }, [boardProjectName, pendingQuestionCount]);
 
   return (
     <div className="ap-app" data-route={route.kind}>
       <div className="ap-page">
-        <Header stream={stream} totals={headerTotalsOf(projects)} theme={theme} now={now} />
+        <Header stream={stream} totals={headerTotalsOf(projects)} inboxEntries={inboxEntries} theme={theme} now={now} />
         <ConnectionBanner connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
         {route.kind === 'board'
           ? <BoardView snapshot={stream.snapshot} trackerId={route.trackerId} />

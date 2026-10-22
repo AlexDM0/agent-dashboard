@@ -1,3 +1,5 @@
+import { Inbox }                from '../inbox/Inbox.tsx';
+import type { InboxEntry }      from '../inbox/InboxUtil.ts';
 import type { ThemePreference } from '../preferences/UseThemePreference.ts';
 import { OVERVIEW_HASH }        from './HashRoute.ts';
 import { HeaderStatistics }     from './HeaderStatistics.tsx';
@@ -7,14 +9,15 @@ import { ThemeToggle }          from './ThemeToggle.tsx';
 import type { DashboardStream } from './UseDashboardStream.ts';
 
 interface HeaderProperties {
-  stream: DashboardStream;
-  totals: HeaderTotals;
-  theme:  ThemePreference;
-  now:    number;
+  stream:       DashboardStream;
+  totals:       HeaderTotals;
+  inboxEntries: InboxEntry[];
+  theme:        ThemePreference;
+  now:          number;
 }
 
 export function Header({
-  stream, totals, theme, now
+  stream, totals, inboxEntries, theme, now
 }: HeaderProperties) {
   return (
     <header className="ap-header">
@@ -23,7 +26,10 @@ export function Header({
         <LiveStatus connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
       </div>
       <HeaderStatistics totals={totals} machineParallelAgentLimit={stream.snapshot?.machineParallelAgentLimit ?? null} />
-      <ThemeToggle choice={theme.choice} resolvedTheme={theme.resolvedTheme} onChoose={theme.chooseTheme} />
+      <div className="ap-header-tools">
+        <Inbox entries={inboxEntries} now={now} />
+        <ThemeToggle choice={theme.choice} resolvedTheme={theme.resolvedTheme} onChoose={theme.chooseTheme} />
+      </div>
     </header>
   );
 }
