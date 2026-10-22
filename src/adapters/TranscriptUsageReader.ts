@@ -46,7 +46,8 @@ function transcriptTailOf(path: string, tailBytes: number): TranscriptTail {
   const descriptor = openSync(path, 'r');
   try {
     const { size, mtime } = fstatSync(descriptor);
-    const start = Math.max(0, size - tailBytes);
+    // One byte before the tail is read too, so a line starting exactly at the bound is kept whole.
+    const start = Math.max(0, size - tailBytes - 1);
     const buffer = Buffer.alloc(size - start);
     const readByteCount = readSync(descriptor, buffer, 0, buffer.length, start);
     const text = buffer.subarray(0, readByteCount).toString('utf8');

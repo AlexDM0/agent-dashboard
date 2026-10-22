@@ -2,7 +2,7 @@
  * A watched session's usage is read on every snapshot, so the reader must never throw and never read a whole large
  * transcript: the newest real `assistant` usage wins, a missing, malformed or usage-free transcript is `unknown`, a
  * session id that is not a plain file name reads nothing, and a usage line further from the end than the tail bound is
- * not seen, which proves only the tail is read. Every transcript lives under a scratch home.
+ * not seen, which proves only the tail is read, while one the bound starts exactly on is kept whole. Every transcript lives under a scratch home.
  */
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join }                      from 'node:path';
@@ -85,6 +85,15 @@ test('a transcript of malformed lines, synthetic turns and lines without usage i
 test('a session id that is not a plain file name reads nothing', () => {
   writeExampleTranscript(homeDirectory, session, [exampleAssistantLine(EXAMPLE_MODEL, { input_tokens: 5 }, '2026-10-22T10:00:00.000Z')]);
   expect(readUsage(`../${session.sessionId}`).kind).toBe('unknown');
+});
+
+test('a usage line the tail bound starts exactly on is seen whole', () => {
+  const usageLine = exampleAssistantLine(EXAMPLE_MODEL, { input_tokens: 11 }, '2026-10-22T10:00:00.000Z');
+  const remainingBytes = TAIL_BYTES - usageLine.length - 1;
+  const trailingLine = userLine('x'.repeat(remainingBytes - userLine('').length - 1));
+  writeExampleTranscript(homeDirectory, session, [userLine('Example earlier line'), usageLine, trailingLine]);
+  const verdict = readUsage();
+  expect(verdict.kind === 'measured' ? verdict.usage.usedTokens : null).toBe(11);
 });
 
 test('a usage line further from the end of a several-MB transcript than the tail bound is not seen, one inside it is', () => {
