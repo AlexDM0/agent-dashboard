@@ -33,21 +33,36 @@ function sendOnce(socketPath: string, payload: string, timeoutMilliseconds: numb
       settle({ kind: 'failed', reason: `The session socket ${socketPath} failed: ${UnknownValueUtil.errorMessageOf(error)}` });
     }
 
+    let unwrittenBytes = new TextEncoder().encode(payload);
+
+    /** A socket write may take only part of the bytes; the rest waits for `drain`, and only an empty remainder ends it. */
+    function writeRemainder(socket: { write: (bytes: Uint8Array) => number; end: () => void }): void {
+      while (unwrittenBytes.length > 0) {
+        const writtenByteCount = socket.write(unwrittenBytes);
+        if (writtenByteCount <= 0) return;
+        unwrittenBytes = unwrittenBytes.subarray(writtenByteCount);
+      }
+      socket.end();
+    }
+
     Bun.connect({
       unix:   socketPath,
       socket: {
         open(socket) {
           opened = true;
           closeConnection = () => socket.end();
-          if (payload.length > 0) socket.write(payload);
-          socket.end();
+          writeRemainder(socket);
+        },
+        drain(socket) {
+          writeRemainder(socket);
         },
         data() {
           // The session sends nothing back; anything it does send is not read.
         },
         close() {
-          if (opened) settle({ kind: 'delivered' });
-          else settle({ kind: 'failed', reason: `The session socket ${socketPath} closed before it opened` });
+          if (!opened) settle({ kind: 'failed', reason: `The session socket ${socketPath} closed before it opened` });
+          else if (unwrittenBytes.length > 0) settle({ kind: 'failed', reason: `The session socket ${socketPath} closed before the whole line was written` });
+          else settle({ kind: 'delivered' });
         },
         error(_socket, error) {
           failed(error);

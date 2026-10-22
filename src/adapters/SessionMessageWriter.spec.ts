@@ -10,10 +10,10 @@ import {
   test
 } from 'bun:test';
 
-import { type ExampleSessionListener, listenAsExampleSession } from '../testing/ExampleClaudeSessions.ts';
-import { createScratchDirectory, removeScratchDirectory }      from '../testing/ScratchDirectory.ts';
-import { waitUntil }                                           from '../testing/WaitUntil.ts';
-import { sessionSocketAccepts, writeSessionMessage }           from './SessionMessageWriter.ts';
+import { type ExampleSessionListener, listenAsExampleSession }             from '../testing/ExampleClaudeSessions.ts';
+import { createScratchDirectory, removeScratchDirectory }                  from '../testing/ScratchDirectory.ts';
+import { waitUntil }                                                       from '../testing/WaitUntil.ts';
+import { sessionMessageLineOf, sessionSocketAccepts, writeSessionMessage } from './SessionMessageWriter.ts';
 
 const SOCKET_TIMEOUT_MILLISECONDS = 1_000;
 
@@ -35,6 +35,13 @@ test('a message is exactly one NDJSON user-message line', async () => {
   expect(await writeSessionMessage(listener.socketPath, text, SOCKET_TIMEOUT_MILLISECONDS)).toEqual({ kind: 'delivered' });
   await waitUntil(() => listener.receivedText().endsWith('\n'), 'the line arrives');
   expect(listener.receivedText()).toBe(`${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`);
+});
+
+test('a line longer than one socket write arrives whole before it counts as delivered', async () => {
+  const text = 'Example long message from Alex Example. '.repeat(25_000);
+  expect(await writeSessionMessage(listener.socketPath, text, SOCKET_TIMEOUT_MILLISECONDS)).toEqual({ kind: 'delivered' });
+  await waitUntil(() => listener.receivedText().endsWith('\n'), 'the whole line arrives');
+  expect(listener.receivedText()).toBe(sessionMessageLineOf(text));
 });
 
 test('a probe connects and writes nothing', async () => {
