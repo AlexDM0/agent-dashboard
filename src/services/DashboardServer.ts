@@ -1,6 +1,7 @@
 /**
  * The dashboard's HTTP server, bound to 127.0.0.1 only: the React app, the server identity, the snapshot and its event
- * stream, each project's page folder, a project's concurrency limit set through its agent-progress CLI, a message to a
+ * stream, each project's page folder, a project's concurrency limit set and its dispatcher stopped through its
+ * agent-progress CLI, a message to a
  * board's orchestrator Claude Code session, and a shutdown the CLI's `stop` asks for. Every route but the app shell refuses a
  * request whose Host is not this server's own, against DNS rebinding; Bun answers the shell before `fetch`, and it holds
  * no data.
@@ -11,6 +12,7 @@ import dashboardApplication from '../../web/index.html';
 
 import { readBoardStatus }                                                                     from '../adapters/BoardStatusReader.ts';
 import { writeConcurrencyLimit }                                                               from '../adapters/ConcurrencyLimitWriter.ts';
+import { writeDispatcherStopped }                                                              from '../adapters/DispatcherStopWriter.ts';
 import { findOrchestratorSession }                                                             from '../adapters/OrchestratorSessionFinder.ts';
 import { sessionSocketAccepts, writeSessionMessage }                                           from '../adapters/SessionMessageWriter.ts';
 import { resolveContainedPath }                                                                from '../lib/contained-path/ContainedPath.ts';
@@ -74,6 +76,8 @@ const PAGE_ROUTE_PATTERN = /^\/projects\/([^/]+)\/page\/(.+)$/;
 
 const CONCURRENCY_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.CONCURRENCY_PATH_SUFFIX}$`);
 
+const DISPATCHER_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.DISPATCHER_PATH_SUFFIX}$`);
+
 const ORCHESTRATOR_REQUESTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_REQUESTS_PATH_SUFFIX}$`);
 
 const HTTP_STATUS = {
@@ -131,6 +135,21 @@ function requestedConcurrencyLimitOf(bodyText: string): number | null {
   const { limit } = body as Record<string, unknown>;
   if (typeof limit !== 'number' || !Number.isInteger(limit)) return null;
   return limit >= DASHBOARD_LIMITS.MINIMUM_CONCURRENCY_LIMIT && limit <= DASHBOARD_LIMITS.MAXIMUM_CONCURRENCY_LIMIT ? limit : null;
+}
+
+const DISPATCHER_BODY_REFUSAL = 'The body must be { "state": "stopped" }';
+
+/** Stopping is the one dispatcher change a click may make, so the body is that one object and nothing else. */
+function isDispatcherStopBody(bodyText: string): boolean {
+  let body: unknown;
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    return false;
+  }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return false;
+  const keys = Object.keys(body);
+  return keys.length === 1 && keys[0] === 'state' && (body as Record<string, unknown>)['state'] === 'stopped';
 }
 
 function snapshotEvent(snapshot: DashboardSnapshot): string {
@@ -269,6 +288,25 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
+  async function dispatcherStopResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    if (!isDispatcherStopBody(await request.text().catch(() => ''))) return plainResponse(HTTP_STATUS.BAD_REQUEST, DISPATCHER_BODY_REFUSAL);
+    const verdict = await writeDispatcherStopped({
+      executable:          options.agentProgressExecutable,
+      runtimeExecutable:   options.runtimeExecutablePath,
+      root,
+      timeoutMilliseconds: DASHBOARD_LIMITS.DISPATCHER_STOP_TIMEOUT_MILLISECONDS,
+    });
+    if (verdict.kind === 'refused') return plainResponse(HTTP_STATUS.CONFLICT, verdict.reason);
+    if (verdict.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, verdict.reason);
+    await monitor.refreshProjectNow(trackerId);
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+  }
+
   /** Writes nothing to the board or the repository: the message to the orchestrator session is the whole effect. */
   async function orchestratorRequestResponse(request: Request, encodedTrackerId: string): Promise<Response> {
     if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
@@ -339,6 +377,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const concurrencyRouteMatch = CONCURRENCY_ROUTE_PATTERN.exec(pathname);
     if (concurrencyRouteMatch?.[1] !== undefined) {
       return request.method === 'POST' ? concurrencyLimitResponse(request, concurrencyRouteMatch[1]) : methodNotAllowed('POST');
+    }
+    const dispatcherRouteMatch = DISPATCHER_ROUTE_PATTERN.exec(pathname);
+    if (dispatcherRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? dispatcherStopResponse(request, dispatcherRouteMatch[1]) : methodNotAllowed('POST');
     }
     const orchestratorRouteMatch = ORCHESTRATOR_REQUESTS_ROUTE_PATTERN.exec(pathname);
     if (orchestratorRouteMatch?.[1] !== undefined) {

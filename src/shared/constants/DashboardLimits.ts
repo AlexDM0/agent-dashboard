@@ -8,6 +8,7 @@ export const DASHBOARD_LIMITS = {
   STATUS_READ_TIMEOUT_MILLISECONDS:       10_000,
   MAXIMUM_CONCURRENT_STATUS_READS:        4,
   CONCURRENCY_WRITE_TIMEOUT_MILLISECONDS: 10_000,
+  DISPATCHER_STOP_TIMEOUT_MILLISECONDS:   10_000,
   /** The agent-progress CLI's own bounds on a project's concurrency limit, in agents. */
   MINIMUM_CONCURRENCY_LIMIT:              1,
   MAXIMUM_CONCURRENCY_LIMIT:              10,

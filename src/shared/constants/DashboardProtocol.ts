@@ -9,6 +9,8 @@ export const DASHBOARD_PROTOCOL = {
   /** `POST <PROJECTS_API_PATH>/<trackerId><CONCURRENCY_PATH_SUFFIX>` with `{ "limit": <n> }`. */
   PROJECTS_API_PATH:                 '/api/projects',
   CONCURRENCY_PATH_SUFFIX:           '/concurrency',
+  /** `POST <PROJECTS_API_PATH>/<trackerId><DISPATCHER_PATH_SUFFIX>` with `{ "state": "stopped" }`. */
+  DISPATCHER_PATH_SUFFIX:            '/dispatcher',
   /** `POST <PROJECTS_API_PATH>/<trackerId><ORCHESTRATOR_REQUESTS_PATH_SUFFIX>` with an `OrchestratorRequest`. */
   ORCHESTRATOR_REQUESTS_PATH_SUFFIX: '/orchestrator-requests',
 } as const;

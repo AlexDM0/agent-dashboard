@@ -9,7 +9,9 @@
  * identity before the first board read ends, since the CLI writes the server record as soon as the start resolves.
  * The concurrency route, the one write, is proven against a fake CLI that keeps a limit and logs its calls: a foreign
  * Origin, an unknown tracker and an out-of-range limit never reach the CLI, a CLI refusal and failure map to 409 and
- * 502, and a 204 is followed by a snapshot carrying the new limit without any change in the watched folder.
+ * 502, and a 204 is followed by a snapshot carrying the new limit without any change in the watched folder. The
+ * dispatcher route is proven the same way against a fake keeping a dispatcher state: only `{ "state": "stopped" }`
+ * reaches the CLI, and its 204 is followed by a snapshot showing the dispatcher stopped.
  * The orchestrator-request route is proven against scratch Unix-socket listeners standing in for Claude Code sessions
  * under a scratch home: the exact line a session receives, no write on any refusal (guards, a bad body, an id that is
  * not low-priority waiting, zero or several candidates), and 502 when the chosen session's socket fails.
@@ -44,6 +46,7 @@ import {
 import {
   fakeExecutableFailing,
   fakeExecutableKeepingAConcurrencyLimit,
+  fakeExecutableKeepingADispatcherState,
   fakeExecutablePrinting,
   fakeExecutablePrintingOnceReleased
 } from '../testing/FakeAgentProgressExecutable.ts';
@@ -142,7 +145,16 @@ test('the snapshot carries the machine parallel agent limit the server was start
 });
 
 test('a Host that is not this server\'s own is refused on every data route, and each loopback name is let in', async () => {
-  for (const target of ['/api/identity', '/api/snapshot', '/api/events', pageTarget('progress.html'), '/api/shutdown', `/api/projects/${TRACKER_ID}/concurrency`]) {
+  const dataRouteTargets = [
+    '/api/identity',
+    '/api/snapshot',
+    '/api/events',
+    pageTarget('progress.html'),
+    '/api/shutdown',
+    `/api/projects/${TRACKER_ID}/concurrency`,
+    `/api/projects/${TRACKER_ID}/dispatcher`,
+  ];
+  for (const target of dataRouteTargets) {
     for (const host of ['evil.example', `evil.example:${server.port}`, '127.0.0.1:1', '127.0.0.1']) {
       const answer = await sendRawHttpRequest({ port: server.port, target, headers: { Host: host } });
       expect(answer.status, `${host} ${target}`).toBe(403);
@@ -368,12 +380,12 @@ test('the start resolves while the first board read still runs, and the snapshot
   expect(snapshot.projects.map((project) => [project.trackerId, project.health.kind])).toEqual([[TRACKER_ID, 'ready']]);
 });
 
-interface ConcurrencyServer {
+interface CallLoggingServer {
   server:      RunningDashboardServer;
   callLogPath: string;
 }
 
-async function startConcurrencyServer(name: string): Promise<ConcurrencyServer> {
+async function startConcurrencyServer(name: string): Promise<CallLoggingServer> {
   const limitPath = join(scratchDirectory, `${name}-limit`);
   const callLogPath = join(scratchDirectory, `${name}-calls`);
   rmSync(limitPath, { force: true });
@@ -507,6 +519,104 @@ test('a CLI exit 1 answers 409 with the CLI\'s message, and any other failure an
   expect(missing.status).toBe(502);
   expect(await missing.text()).toBe('agent-progress is not on PATH');
   expect((await fetch(`${missingServer.url}/api/identity`)).status).toBe(200);
+});
+
+async function startDispatcherServer(name: string): Promise<CallLoggingServer> {
+  const statePath = join(scratchDirectory, `${name}-state`);
+  const callLogPath = join(scratchDirectory, `${name}-calls`);
+  rmSync(statePath, { force: true });
+  rmSync(callLogPath, { force: true });
+  const dispatcherServer = startedOrThrow(await startDashboardServer({
+    ...serverOptions,
+    agentProgressExecutable: fakeExecutableKeepingADispatcherState(scratchDirectory, statusDocumentPath(), statePath, callLogPath),
+  }));
+  extraServers.push(dispatcherServer);
+  return { server: dispatcherServer, callLogPath };
+}
+
+function dispatcherRequest(runningServer: RunningDashboardServer, body: string, headers: Record<string, string> = {}, trackerId = TRACKER_ID): Promise<Response> {
+  return fetch(`${runningServer.url}/api/projects/${trackerId}/dispatcher`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body,
+  });
+}
+
+function dispatcherStateOf(snapshot: DashboardSnapshot): string | null {
+  const health = snapshot.projects[0]?.health;
+  return health?.kind === 'ready' ? health.board.dispatcherState : null;
+}
+
+const DISPATCHER_STOP_BODY = JSON.stringify({ state: 'stopped' });
+
+test('a dispatcher stop POST runs agent-progress dispatcher stopped in the project root, answers 204, and the next snapshot shows it stopped', async () => {
+  const { server: dispatcherServer, callLogPath } = await startDispatcherServer('dispatcher-stop');
+  const abort = new AbortController();
+  const events = snapshotEventsOf(await fetch(`${dispatcherServer.url}/api/events`, { signal: abort.signal }));
+  try {
+    const first = await events.next();
+    expect(first.value === undefined ? null : dispatcherStateOf(first.value)).toBe('running');
+
+    const answer = await dispatcherRequest(dispatcherServer, DISPATCHER_STOP_BODY, { Origin: dispatcherServer.url });
+    expect(answer.status).toBe(204);
+    expect(callsLogged(callLogPath)).toEqual([`dispatcher stopped in ${realpathSync(projectRoot)}`]);
+
+    const next = await events.next();
+    expect(next.value === undefined ? null : dispatcherStateOf(next.value)).toBe('stopped');
+  } finally {
+    abort.abort();
+  }
+});
+
+test('a dispatcher POST with a foreign Origin is 403, an unknown tracker 404 and a GET 405, none running the CLI', async () => {
+  const { server: dispatcherServer, callLogPath } = await startDispatcherServer('dispatcher-guards');
+  for (const origin of ['http://evil.example', `http://localhost:${dispatcherServer.port + 1}`, 'null']) {
+    expect((await dispatcherRequest(dispatcherServer, DISPATCHER_STOP_BODY, { Origin: origin })).status, origin).toBe(403);
+  }
+  expect((await dispatcherRequest(dispatcherServer, DISPATCHER_STOP_BODY, {}, 'tracker-unknown')).status).toBe(404);
+  expect((await dispatcherRequest(dispatcherServer, DISPATCHER_STOP_BODY, {}, '%')).status).toBe(404);
+  const getAnswer = await fetch(`${dispatcherServer.url}/api/projects/${TRACKER_ID}/dispatcher`);
+  expect(getAnswer.status).toBe(405);
+  expect(getAnswer.headers.get('allow')).toBe('POST');
+  expect(callsLogged(callLogPath)).toEqual([]);
+});
+
+test('any body but { "state": "stopped" } is refused 400 and never runs the CLI', async () => {
+  const { server: dispatcherServer, callLogPath } = await startDispatcherServer('dispatcher-bodies');
+  const badBodies = [
+    JSON.stringify({ state: 'running' }),
+    JSON.stringify({ state: 'finished' }),
+    JSON.stringify({ state: 'STOPPED' }),
+    JSON.stringify({ state: 'stopped', run: 'example-run' }),
+    JSON.stringify({ limit: 3 }),
+    JSON.stringify(['stopped']),
+    JSON.stringify('stopped'),
+    'null',
+    'not json',
+    '',
+  ];
+  for (const body of badBodies) expect((await dispatcherRequest(dispatcherServer, body)).status, body).toBe(400);
+  expect(callsLogged(callLogPath)).toEqual([]);
+});
+
+test('a dispatcher stop the CLI refuses answers 409 with its message, and any other failure answers 502', async () => {
+  const refusingServer = startedOrThrow(await startDashboardServer({
+    ...serverOptions,
+    agentProgressExecutable: fakeExecutableFailing(scratchDirectory, 'Example refusal to stop.\n  Usage: example\n', 1),
+  }));
+  extraServers.push(refusingServer);
+  const refused = await dispatcherRequest(refusingServer, DISPATCHER_STOP_BODY);
+  expect(refused.status).toBe(409);
+  expect(await refused.text()).toBe('Example refusal to stop.');
+
+  const failingServer = startedOrThrow(await startDashboardServer({
+    ...serverOptions,
+    agentProgressExecutable: fakeExecutableFailing(scratchDirectory, 'Example crash', 3),
+  }));
+  extraServers.push(failingServer);
+  const failed = await dispatcherRequest(failingServer, DISPATCHER_STOP_BODY);
+  expect(failed.status).toBe(502);
+  expect(await failed.text()).toBe('agent-progress dispatcher exited with code 3: Example crash');
 });
 
 const ORCHESTRATOR_RUN_ID = 'example-run-9';

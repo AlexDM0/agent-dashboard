@@ -84,6 +84,28 @@ export function fakeExecutableKeepingAConcurrencyLimit(directory: string, docume
   ].join('\n'));
 }
 
+/**
+ * Keeps a dispatcher state in `statePath`, starting at `running`: `dispatcher <state>` appends its arguments and working
+ * directory to `callLogPath`, refuses a word other than running, finished or stopped at exit 1 as the CLI does, and
+ * stores it; `status --json --full` prints the document with the concurrency block's dispatcherState replaced.
+ */
+export function fakeExecutableKeepingADispatcherState(directory: string, documentPath: string, statePath: string, callLogPath: string): string {
+  return writeScript(directory, 'fake-agent-progress-dispatcher', [
+    'if [ "$1" = dispatcher ]; then',
+    `  echo "$* in $(pwd -P)" >> ${shellQuoted(callLogPath)}`,
+    '  case "$2" in',
+    '    running|finished|stopped) ;;',
+    '    *) echo "\\"$2\\" is not a dispatcher state. Write running, finished or stopped." >&2; exit 1;;',
+    '  esac',
+    `  printf %s "$2" > ${shellQuoted(statePath)}`,
+    '  exit 0',
+    'fi',
+    'if [ "$1 $2 $3" != "status --json --full" ]; then echo "unexpected arguments: $*" >&2; exit 64; fi',
+    `state=$(cat ${shellQuoted(statePath)} 2>/dev/null || echo running)`,
+    `sed "s/\\"dispatcherState\\": \\"[a-z]*\\"/\\"dispatcherState\\": \\"$state\\"/" ${shellQuoted(documentPath)}`,
+  ].join('\n'));
+}
+
 /** Prints the document only once `releasePath` exists, so a spec decides when the first status read ends. */
 export function fakeExecutablePrintingOnceReleased(directory: string, documentPath: string, releasePath: string): string {
   return writeScript(directory, 'fake-agent-progress-released', [
