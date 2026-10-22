@@ -9,12 +9,20 @@ interface ProjectRailProperties {
   selectedTrackerId: string;
 }
 
-export function ProjectRail({ projects, selectedTrackerId }: ProjectRailProperties) {
-  const groups = ProjectOrdering.grouped(projects, 'all', '');
+interface RailGroupProperties {
+  title:             string;
+  projects:          ProjectSnapshot[];
+  selectedTrackerId: string;
+}
+
+function RailGroup({ title, projects, selectedTrackerId }: RailGroupProperties) {
+  if (projects.length === 0) {
+    return null;
+  }
   return (
-    <nav className="ap-rail" aria-label="Projects">
-      <div className="ap-rail-title">Projects</div>
-      {[...groups.active, ...groups.idle].map((project) => {
+    <div className="ap-rail-group" role="group" aria-label={title}>
+      <div className="ap-rail-title">{title}</div>
+      {projects.map((project) => {
         const isSelected = project.trackerId === selectedTrackerId;
         return (
           <a
@@ -31,6 +39,16 @@ export function ProjectRail({ projects, selectedTrackerId }: ProjectRailProperti
           </a>
         );
       })}
+    </div>
+  );
+}
+
+export function ProjectRail({ projects, selectedTrackerId }: ProjectRailProperties) {
+  const groups = ProjectOrdering.grouped(projects, 'all', '');
+  return (
+    <nav className="ap-rail" aria-label="Projects">
+      <RailGroup title="Active" projects={groups.active} selectedTrackerId={selectedTrackerId} />
+      <RailGroup title="Idle" projects={groups.idle} selectedTrackerId={selectedTrackerId} />
     </nav>
   );
 }

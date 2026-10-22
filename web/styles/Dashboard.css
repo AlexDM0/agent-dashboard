@@ -272,6 +272,8 @@ ul { padding: 0; list-style: none; }
 /* ------------------------------------------------------------------ board -- */
 .ap-board { flex: 1; min-height: 0; display: flex; gap: 16px 24px; }
 .ap-rail { flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.ap-rail-group { display: flex; flex-direction: column; gap: 6px; }
+.ap-rail-group + .ap-rail-group { margin-top: 12px; }
 .ap-rail-title { padding: 0 12px 4px; font-size: var(--fs-small); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
 .ap-rail-row {
   display: flex; align-items: center; gap: var(--sp-2); padding: 6px var(--sp-3);
@@ -300,6 +302,7 @@ ul { padding: 0; list-style: none; }
   .ap-app[data-route="board"] .ap-page { padding: 12px 16px; }
   .ap-board { flex-direction: column; gap: 10px; }
   .ap-rail { flex: none; flex-direction: row; gap: 4px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+  .ap-rail-group { display: contents; }
   .ap-rail-title { display: none; }
   .ap-rail-row { flex: none; max-width: 220px; border: 1px solid var(--line); }
   .ap-rail-row.is-selected { border-color: var(--line-strong); }

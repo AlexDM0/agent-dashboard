@@ -1,6 +1,6 @@
 /**
  * Which group a project lands in and in what order: activity is agents in flight or a running dispatcher, never an
- * unreadable board; the order compares instants, so stamps in different offsets sort by when they happened; the
+ * unreadable board; each group is A to Z by name, ignoring case and the change stamp, ties stable by tracker id; the
  * search reads the name and the path; the Active filter drops the idle group entirely.
  */
 import { describe, expect, test }                from 'bun:test';
@@ -37,11 +37,23 @@ describe('isActive', () => {
 });
 
 describe('grouped', () => {
-  test('active and idle projects are each ordered most recently changed first, by instant', () => {
-    const groups = ProjectOrdering.grouped([idle, building, unreadable, dispatching], 'all', '');
-    expect(groups.active.map((project) => project.project)).toEqual(['invoice-service', 'example-storefront']);
-    expect(groups.idle.map((project) => project.project)).toEqual(['research-wiki', 'field-notes-app']);
+  test('active and idle projects are each ordered A to Z by name, active ones never mixing into the idle group', () => {
+    const groups = ProjectOrdering.grouped([unreadable, dispatching, idle, building], 'all', '');
+    expect(groups.active.map((project) => project.project)).toEqual(['example-storefront', 'invoice-service']);
+    expect(groups.idle.map((project) => project.project)).toEqual(['field-notes-app', 'research-wiki']);
     expect(groups.shownCount).toBe(4);
+  });
+  test('names sort case-insensitively, whatever order they last changed in', () => {
+    const beta = projectSnapshotWith('beta', { lastChangedAt: '2026-10-21T12:00:00+02:00' });
+    const alpha = projectSnapshotWith('Alpha', { lastChangedAt: '2026-10-19T08:00:00+02:00' });
+    const gamma = projectSnapshotWith('gamma', { lastChangedAt: 'unknown' });
+    expect(ProjectOrdering.grouped([gamma, beta, alpha], 'all', '').idle.map((project) => project.project))
+      .toEqual(['Alpha', 'beta', 'gamma']);
+  });
+  test('projects with the same name keep a stable order by tracker id', () => {
+    const second = projectSnapshotWith('example-app', { trackerId: 'tracker-2' });
+    const first = projectSnapshotWith('Example-App', { trackerId: 'tracker-1' });
+    expect(ProjectOrdering.grouped([second, first], 'all', '').idle).toEqual([first, second]);
   });
   test('the Active filter leaves the idle group empty', () => {
     const groups = ProjectOrdering.grouped([idle, building, unreadable], 'active', '');
@@ -51,10 +63,5 @@ describe('grouped', () => {
   test('the search matches the name or the path, ignoring case and surrounding space', () => {
     expect(ProjectOrdering.grouped([idle, building], 'all', '  NOTES ').shownCount).toBe(1);
     expect(ProjectOrdering.grouped([idle, building], 'all', 'alex.example/development/example-store').active).toEqual([building]);
-  });
-  test('an unparsable change stamp sorts last', () => {
-    const undated = projectSnapshotWith('example-agency-site', { lastChangedAt: 'unknown' });
-    expect(ProjectOrdering.grouped([undated, idle], 'all', '').idle.map((project) => project.project))
-      .toEqual(['field-notes-app', 'example-agency-site']);
   });
 });

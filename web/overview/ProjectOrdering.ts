@@ -21,19 +21,14 @@ function matchesSearch(project: ProjectSnapshot, searchText: string): boolean {
   return needle === '' || project.project.toLowerCase().includes(needle) || project.root.toLowerCase().includes(needle);
 }
 
-function changedEpochMillisecondsOf(project: ProjectSnapshot): number {
-  const parsed = Date.parse(project.lastChangedAt);
-  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
-}
-
-function mostRecentlyChangedFirst(projects: ProjectSnapshot[]): ProjectSnapshot[] {
+function alphabeticalByName(projects: ProjectSnapshot[]): ProjectSnapshot[] {
   return projects.toSorted((a, b) =>
-    changedEpochMillisecondsOf(b) - changedEpochMillisecondsOf(a) || a.project.localeCompare(b.project));
+    a.project.localeCompare(b.project, undefined, { sensitivity: 'base' }) || a.trackerId.localeCompare(b.trackerId));
 }
 
 function grouped(projects: ProjectSnapshot[], filter: ProjectFilter, searchText: string): ProjectGroups {
   const shown = projects.filter((project) => matchesSearch(project, searchText) && (filter === 'all' || isActive(project)));
-  const ordered = mostRecentlyChangedFirst(shown);
+  const ordered = alphabeticalByName(shown);
   return {
     active:     ordered.filter((project) => isActive(project)),
     idle:       ordered.filter((project) => !isActive(project)),
@@ -42,5 +37,5 @@ function grouped(projects: ProjectSnapshot[], filter: ProjectFilter, searchText:
 }
 
 export const ProjectOrdering = Object.freeze({
-  isActive, matchesSearch, mostRecentlyChangedFirst, grouped
+  isActive, matchesSearch, alphabeticalByName, grouped
 });

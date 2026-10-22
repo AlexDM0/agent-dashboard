@@ -208,7 +208,8 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   theme toggle at the end.
 - **Filter bar**: a search field (project name or path) and a segmented toggle `All | Active`.
 - **Two groups**: "Active" (agents in flight, or the dispatcher `running`) and "Idle", each a responsive grid of
-  project cards (`repeat(auto-fill, minmax(360px, 1fr))`); within a group, most recently changed first.
+  project cards (`repeat(auto-fill, minmax(360px, 1fr))`); within a group, A–Z by project name,
+  ignoring case (ties by tracker id), whenever it last changed.
 - **Project card** (`--surface`, `--line` border, `--r-3`), top to bottom:
   1. Status dot (pulsing `--status-live` with agents in flight; amber when the dispatcher runs with none; grey
      otherwise), project name (`--fs-title`, 600), dispatcher pill (`running` / `finished` / `stopped`).
@@ -235,7 +236,9 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 ### Board (`#/projects/<trackerId>`)
 
 - A **project rail** on the left (240 px, collapses to a top strip under 768 px): every project as a compact row,
-  status dot, name, `2/2` agents, the selected one `--surface-selected`.
+  status dot, name, `2/2` agents, the selected one `--surface-selected`; the rows under an "Active" and an "Idle"
+  heading, split and ordered as the overview's groups, an empty group without its heading (the top strip drops the
+  headings).
 - A **toolbar** over the frame: back to overview (`←` and Esc, also pressed inside the frame unless the board used it
   to close its detail panel or a popover), project name, root path in mono, dispatcher pill,
   slot meter compact, and on the right "Reload" and "Open in new tab".
