@@ -3,6 +3,8 @@ import { ConcurrencyStepper }   from '../shell/ConcurrencyStepper.tsx';
 import { DispatcherPill }       from '../shell/DispatcherPill.tsx';
 import { OVERVIEW_HASH }        from '../shell/HashRoute.ts';
 import { SlotMeter }            from '../shell/SlotMeter.tsx';
+import { StartBuildingButton }  from '../shell/StartBuildingButton.tsx';
+import { LowTicketClearance }   from './LowTicketClearance.tsx';
 
 interface BoardToolbarProperties {
   project:  ProjectSnapshot;
@@ -24,6 +26,8 @@ export function BoardToolbar({ project, onReload }: BoardToolbarProperties) {
             <DispatcherPill dispatcherState={project.health.board.dispatcherState} />
             <SlotMeter concurrencyLimit={project.health.board.concurrencyLimit} busyCount={project.health.board.agentsInFlight} compact />
             <ConcurrencyStepper trackerId={project.trackerId} projectName={project.project} shownLimit={project.health.board.concurrencyLimit} />
+            <StartBuildingButton trackerId={project.trackerId} projectName={project.project} />
+            <LowTicketClearance trackerId={project.trackerId} projectName={project.project} waitingTickets={project.health.board.lowPriorityWaitingTickets} />
           </>
         )
         : <span className="ap-pill is-error">{project.health.kind}</span>}
