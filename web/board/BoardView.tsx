@@ -21,7 +21,7 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
   useEffect(() => {
     const backOnEscape = (event: KeyboardEvent): void => {
       // Esc in a chat box or an answer field keeps what is typed there rather than leaving the board.
-      const isTypingField = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+      const isTypingField = (event.target instanceof HTMLInputElement && event.target.type === 'text') || event.target instanceof HTMLTextAreaElement;
       if (event.key === 'Escape' && !isTypingField) {
         window.location.hash = OVERVIEW_HASH;
       }
