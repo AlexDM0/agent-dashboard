@@ -6,22 +6,30 @@
  * dashboard. Every route but the app shell refuses a request whose Host is not its server's own, against DNS rebinding;
  * Bun answers the shell before `fetch`, and it holds no data.
  */
-import { join, normalize } from 'node:path';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { join, normalize }             from 'node:path';
 
 import dashboardApplication from '../../web/index.html';
 
-import { readBoardStatus }                                                                     from '../adapters/BoardStatusReader.ts';
-import { writeConcurrencyLimit }                                                               from '../adapters/ConcurrencyLimitWriter.ts';
-import { writeDispatcherStopped }                                                              from '../adapters/DispatcherStopWriter.ts';
-import { findOrchestratorSession }                                                             from '../adapters/OrchestratorSessionFinder.ts';
-import { sessionSocketAccepts, writeSessionMessage }                                           from '../adapters/SessionMessageWriter.ts';
-import { resolveContainedPath }                                                                from '../lib/contained-path/ContainedPath.ts';
-import { type DashboardSnapshot, type ServerIdentity }                                         from '../shared/DashboardContract.ts';
+import { readBoardStatus }                           from '../adapters/BoardStatusReader.ts';
+import { writeConcurrencyLimit }                     from '../adapters/ConcurrencyLimitWriter.ts';
+import { writeDispatcherStopped }                    from '../adapters/DispatcherStopWriter.ts';
+import { findOrchestratorSession }                   from '../adapters/OrchestratorSessionFinder.ts';
+import { sessionSocketAccepts, writeSessionMessage } from '../adapters/SessionMessageWriter.ts';
+import { resolveContainedPath }                      from '../lib/contained-path/ContainedPath.ts';
+import {
+  type DashboardSnapshot,
+  type LaunchToken,
+  type OrchestratorSession,
+  type ServerIdentity
+} from '../shared/DashboardContract.ts';
+import { orchestratorDirectoryOf }                                                             from '../shared/OrchestratorFilePaths.ts';
 import { UnknownValueUtil }                                                                    from '../shared/UnknownValueUtil.ts';
 import { DASHBOARD_FILES }                                                                     from '../shared/constants/DashboardFiles.ts';
 import { DASHBOARD_LIMITS }                                                                    from '../shared/constants/DashboardLimits.ts';
 import { DASHBOARD_PROTOCOL }                                                                  from '../shared/constants/DashboardProtocol.ts';
 import { ORCHESTRATOR_REQUEST_BODY_REFUSAL, orchestratorMessageTextOf, orchestratorRequestOf } from './OrchestratorRequestMessage.ts';
+import { type OrchestratorSessions, createOrchestratorSessions }                               from './OrchestratorSessions.ts';
 import { type MonitoredSnapshot, type ProjectMonitor, createProjectMonitor }                   from './ProjectMonitor.ts';
 
 export interface DashboardServerOptions {
@@ -30,6 +38,10 @@ export interface DashboardServerOptions {
   agentProgressExecutable:   string | null;
   /** The Bun running the server, which runs a Bun-script agent-progress itself. */
   runtimeExecutablePath:     string;
+  /** `agent-dashboard.ts`, which the server runs a detached orchestrator supervisor with. */
+  dashboardEntryPointPath:   string;
+  /** The Claude Code executable an orchestrator session runs; null refuses every start. */
+  claudeExecutable:          string | null;
   version:                   string;
   clock:                     () => Date;
   /** Read by the CLI, since only `cli/CommandContext.ts` reads the machine. */
@@ -123,7 +135,10 @@ const DISPATCHER_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_
 
 const ORCHESTRATOR_REQUESTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_REQUESTS_PATH_SUFFIX}$`);
 
+const ORCHESTRATOR_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX}$`);
+
 const HTTP_STATUS = {
+  CREATED:               201,
   NO_CONTENT:            204,
   BAD_REQUEST:           400,
   FORBIDDEN:             403,
@@ -196,11 +211,27 @@ function isDispatcherStopBody(bodyText: string): boolean {
   return keys.length === 1 && keys[0] === 'state' && (body as Record<string, unknown>)['state'] === 'stopped';
 }
 
-/** The monitor's snapshot with every page addressed on the board origin. */
-function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string): DashboardSnapshot {
+const ORCHESTRATOR_START_BODY_REFUSAL = 'The body must be { "startBuilding": <boolean> }';
+
+/** Starting is all the body may ask, so it is that one key and nothing else. */
+function requestedStartBuildingOf(bodyText: string): boolean | null {
+  let body: unknown;
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    return null;
+  }
+  if (!UnknownValueUtil.isJsonObject(body)) return null;
+  const keys = Object.keys(body);
+  const { startBuilding } = body;
+  return keys.length === 1 && keys[0] === 'startBuilding' && typeof startBuilding === 'boolean' ? startBuilding : null;
+}
+
+/** The monitor's snapshot with every page addressed on the board origin and each project's dashboard-owned orchestrator. */
+function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orchestratorOf: (trackerId: string) => OrchestratorSession | null): DashboardSnapshot {
   return {
     ...monitored,
-    projects:       monitored.projects.map((project) => ({ ...project, pageUrl: `${boardOrigin}${project.pageUrl}` })),
+    projects:       monitored.projects.map((project) => ({ ...project, pageUrl: `${boardOrigin}${project.pageUrl}`, orchestrator: orchestratorOf(project.trackerId) })),
     boardOrigin,
     boardBridgeUrl: `${boardOrigin}${DASHBOARD_PROTOCOL.BOARD_BRIDGE_PATH}`,
   };
@@ -212,12 +243,25 @@ function snapshotEvent(snapshot: DashboardSnapshot): string {
 
 interface ServingDependencies {
   monitor:                       ProjectMonitor;
+  orchestratorSessions:          OrchestratorSessions;
   heartbeatIntervalMilliseconds: number;
+}
+
+export function createDashboardOrchestratorSessions(options: DashboardServerOptions): OrchestratorSessions {
+  return createOrchestratorSessions({
+    orchestratorDirectory:    orchestratorDirectoryOf(options.homeDirectory),
+    runtimeExecutablePath:    options.runtimeExecutablePath,
+    dashboardEntryPointPath:  options.dashboardEntryPointPath,
+    startTimeoutMilliseconds: DASHBOARD_LIMITS.SUPERVISOR_START_TIMEOUT_MILLISECONDS,
+    reconnectMilliseconds:    DASHBOARD_LIMITS.SUPERVISOR_RECONNECT_MILLISECONDS,
+  });
 }
 
 /** The server with its monitor given; `startDashboardServer` builds the real monitor, a spec may pass its own. */
 export async function serveDashboard(options: DashboardServerOptions, dependencies: ServingDependencies): Promise<DashboardServerStart> {
-  const { monitor } = dependencies;
+  const { monitor, orchestratorSessions } = dependencies;
+  // Held in memory only: never in the app shell, the log, the server record or a tracked repository.
+  const launchToken = randomUUID();
   const closeOpenStreams = new Set<() => void>();
   let stopping: Promise<void> | null = null;
   let resolveStopped = (): void => {};
@@ -270,14 +314,16 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   const boardPagePolicy = boardPagePolicyOf(dashboardSources);
   let bridgeScript: Promise<string> | null = null;
   const monitorStarted = monitor.start();
+  orchestratorSessions.start();
 
   function servedSnapshot(): DashboardSnapshot {
-    return servedSnapshotOf(monitor.snapshot(), boardOrigin);
+    return servedSnapshotOf(monitor.snapshot(), boardOrigin, orchestratorSessions.sessionOf);
   }
 
   function stop(): Promise<void> {
     stopping ??= (async () => {
       for (const closeStream of [...closeOpenStreams]) closeStream();
+      orchestratorSessions.close();
       await monitor.stop();
       await boardServer.stop(true);
       await server.stop(true);
@@ -304,7 +350,8 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
             releaseStream();
           }
         }
-        const unsubscribe = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin))));
+        const unsubscribeFromMonitor = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSessions.sessionOf))));
+        const unsubscribeFromOrchestrators = orchestratorSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
         const heartbeat = setInterval(() => send(': heartbeat\n\n'), dependencies.heartbeatIntervalMilliseconds);
 
         function closeStream(): void {
@@ -319,7 +366,8 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
         releaseStream = () => {
           if (released) return;
           released = true;
-          unsubscribe();
+          unsubscribeFromMonitor();
+          unsubscribeFromOrchestrators();
           clearInterval(heartbeat);
           closeOpenStreams.delete(closeStream);
         };
@@ -411,6 +459,13 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       }
     }
 
+    const messageText = orchestratorMessageTextOf(orchestratorRequest, project?.project ?? trackerId);
+    if (orchestratorSessions.isLive(trackerId)) {
+      const delivery = await orchestratorSessions.chat(trackerId, messageText);
+      if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
+      if (delivery.kind === 'delivered') return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+    }
+
     const search = await findOrchestratorSession({
       homeDirectory:   options.homeDirectory,
       projectRoot:     root,
@@ -418,8 +473,59 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       socketAccepts:   (socketPath) => sessionSocketAccepts(socketPath, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS),
     });
     if (search.kind === 'refused') return plainResponse(HTTP_STATUS.CONFLICT, search.reason);
-    const messageText = orchestratorMessageTextOf(orchestratorRequest, project?.project ?? trackerId);
     const delivery = await writeSessionMessage(search.session.messagingSocketPath, messageText, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS);
+    if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+  }
+
+  /** A page elsewhere can neither read the token (no CORS grant) nor send this server's own `Origin`. */
+  function carriesLaunchGrant(request: Request): boolean {
+    const origin = request.headers.get('Origin');
+    if (origin === null || !ownOrigins.has(origin)) return false;
+    const presentedToken = Buffer.from(request.headers.get(DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME) ?? '');
+    const expectedToken = Buffer.from(launchToken);
+    return presentedToken.length === expectedToken.length && timingSafeEqual(presentedToken, expectedToken);
+  }
+
+  function launchTokenResponse(request: Request): Response {
+    if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    const answerBody: LaunchToken = { token: launchToken };
+    return Response.json(answerBody, { headers: NO_STORE_HEADERS });
+  }
+
+  /** Starts the supervisor in the project's root; the session, not the dashboard, writes the tracker from then on. */
+  async function orchestratorStartResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const startBuilding = requestedStartBuildingOf(await request.text().catch(() => ''));
+    if (startBuilding === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_START_BODY_REFUSAL);
+    if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
+    const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
+    const firstMessage = startBuilding ? orchestratorMessageTextOf({ kind: 'start-building' }, project?.project ?? trackerId) : null;
+    const launch = await orchestratorSessions.launch(trackerId, root, firstMessage);
+    switch (launch.kind) {
+      case 'started':
+        return Response.json(launch.session, { status: HTTP_STATUS.CREATED, headers: NO_STORE_HEADERS });
+      case 'running':
+        return plainResponse(HTTP_STATUS.CONFLICT, 'A dashboard-owned orchestrator of this project already runs');
+      case 'refused':
+        return plainResponse(HTTP_STATUS.CONFLICT, launch.reason);
+      case 'failed':
+        return plainResponse(HTTP_STATUS.BAD_GATEWAY, launch.reason);
+    }
+  }
+
+  async function orchestratorStopResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const delivery = await orchestratorSessions.stop(trackerId);
+    if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
@@ -499,10 +605,16 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (dispatcherRouteMatch?.[1] !== undefined) {
       return request.method === 'POST' ? dispatcherStopResponse(request, dispatcherRouteMatch[1]) : methodNotAllowed('POST');
     }
-    const orchestratorRouteMatch = ORCHESTRATOR_REQUESTS_ROUTE_PATTERN.exec(pathname);
-    if (orchestratorRouteMatch?.[1] !== undefined) {
-      return request.method === 'POST' ? orchestratorRequestResponse(request, orchestratorRouteMatch[1]) : methodNotAllowed('POST');
+    const orchestratorRequestsRouteMatch = ORCHESTRATOR_REQUESTS_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorRequestsRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? orchestratorRequestResponse(request, orchestratorRequestsRouteMatch[1]) : methodNotAllowed('POST');
     }
+    const orchestratorRouteMatch = ORCHESTRATOR_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorRouteMatch?.[1] !== undefined) {
+      if (request.method === 'POST') return orchestratorStartResponse(request, orchestratorRouteMatch[1]);
+      return request.method === 'DELETE' ? orchestratorStopResponse(request, orchestratorRouteMatch[1]) : methodNotAllowed('POST, DELETE');
+    }
+    if (pathname === DASHBOARD_PROTOCOL.LAUNCH_TOKEN_PATH) return request.method === 'GET' ? launchTokenResponse(request) : methodNotAllowed('GET');
     if (pathname === '/api/snapshot' || pathname === '/api/events') {
       if (!isRead) return methodNotAllowed('GET, HEAD');
       await monitorStarted;
@@ -538,5 +650,9 @@ export function startDashboardServer(options: DashboardServerOptions): Promise<D
     maximumConcurrentStatusReads: DASHBOARD_LIMITS.MAXIMUM_CONCURRENT_STATUS_READS,
     machineParallelAgentLimit:    options.machineParallelAgentLimit,
   });
-  return serveDashboard(options, { monitor, heartbeatIntervalMilliseconds: DASHBOARD_LIMITS.HEARTBEAT_INTERVAL_MILLISECONDS });
+  return serveDashboard(options, {
+    monitor,
+    orchestratorSessions:          createDashboardOrchestratorSessions(options),
+    heartbeatIntervalMilliseconds: DASHBOARD_LIMITS.HEARTBEAT_INTERVAL_MILLISECONDS,
+  });
 }

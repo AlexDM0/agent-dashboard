@@ -14,6 +14,15 @@ export function agentProgressExecutableOverride(): string | undefined {
   return value;
 }
 
+const CLAUDE_EXECUTABLE_VARIABLE = 'AGENT_DASHBOARD_CLAUDE';
+
+/** The Claude Code executable an orchestrator session runs instead of the one on `PATH`; empty or whitespace reads as unset. */
+export function claudeExecutableOverride(): string | undefined {
+  const value = process.env[CLAUDE_EXECUTABLE_VARIABLE];
+  if (value === undefined || value.trim().length === 0) return undefined;
+  return value;
+}
+
 /** Any value but empty, whitespace or `0` disables opening the browser, so a `true` or `yes` is never ignored. */
 export function browserOpeningIsDisabled(): boolean {
   const value = process.env[NO_BROWSER_VARIABLE]?.trim();

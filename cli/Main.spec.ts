@@ -29,6 +29,8 @@ async function recordedRunningServer(home: string): Promise<RunningDashboardServ
     homeDirectory:             home,
     agentProgressExecutable:   null,
     runtimeExecutablePath:     process.execPath,
+    dashboardEntryPointPath:   'agent-dashboard.ts',
+    claudeExecutable:          null,
     version:                   '0.0.0-spec',
     clock:                     () => new Date('2026-09-18T20:11:03Z'),
     machineParallelAgentLimit: 12,

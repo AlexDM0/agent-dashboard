@@ -15,6 +15,8 @@ export async function serveCommand(options: CommandOptions, context: CommandCont
     port:                      options.port,
     homeDirectory:             context.homeDirectory,
     agentProgressExecutable:   context.agentProgressExecutable,
+    claudeExecutable:          context.claudeExecutable,
+    dashboardEntryPointPath:   context.dashboardEntryPointPath,
     runtimeExecutablePath:     context.runtimeExecutablePath,
     version:                   context.version,
     clock:                     context.now,

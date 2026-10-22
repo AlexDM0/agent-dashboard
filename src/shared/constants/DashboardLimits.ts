@@ -17,4 +17,12 @@ export const DASHBOARD_LIMITS = {
   MAXIMUM_CLEARED_TICKET_COUNT:           50,
   /** Bounds connecting to, and writing one line into, a Claude Code session's messaging socket. */
   SESSION_SOCKET_TIMEOUT_MILLISECONDS:    2_000,
+  /** How long a start waits for a new supervisor's socket to accept. */
+  SUPERVISOR_START_TIMEOUT_MILLISECONDS:  10_000,
+  /** How long a supervisor waits, after closing its session's stdin on Stop, before it sends SIGTERM. */
+  SESSION_STOP_GRACE_MILLISECONDS:        10_000,
+  /** How often a dropped supervisor connection is retried while its record lives. */
+  SUPERVISOR_RECONNECT_MILLISECONDS:      5_000,
+  /** macOS keeps 104 bytes for a Unix socket path, its terminating zero among them. */
+  MAXIMUM_SOCKET_PATH_BYTES:              103,
 } as const;

@@ -46,8 +46,9 @@ src/lib/  →  src/shared/  →  src/adapters/  →  src/services/  →  cli/
   it; command verbs are literals, so they grep.
 - `src/adapters/` holds only translations: a stored or printed format to a verdict, a document to a summary.
 - The dashboard never writes a tracked repository or the registry (`~/.agent-progress-monitor/projects.json`); it
-  changes a tracked repository only by running `agent-progress concurrency <n>` or `agent-progress dispatcher stopped`
-  there on the user's click, so the CLI writes its own tracker. Its own files live in `~/.agent-progress-monitor/agent-dashboard/`.
+  changes a tracked repository only on the user's click: by running `agent-progress concurrency <n>` or
+  `agent-progress dispatcher stopped` there, so the CLI writes its own tracker, or by starting an orchestrator session
+  there through its supervisor, so that session writes the tracker. Its own files live in `~/.agent-progress-monitor/agent-dashboard/`.
 - A count the agent-progress CLI already computes is taken from its `status --json --full`, never recomputed.
 
 ### Errors and exit codes

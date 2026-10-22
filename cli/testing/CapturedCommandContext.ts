@@ -31,6 +31,7 @@ export function createCapturedCommandContext(homeDirectory: string): CapturedCom
     dashboardEntryPointPath:   join(import.meta.dir, '..', '..', 'agent-dashboard.ts'),
     version:                   '0.0.0-spec',
     agentProgressExecutable:   null,
+    claudeExecutable:          null,
     browserOpeningIsDisabled:  true,
     machineParallelAgentLimit: SPEC_MACHINE_PARALLEL_AGENT_LIMIT,
     onInterruption:            () => () => {},

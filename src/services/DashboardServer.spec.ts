@@ -60,6 +60,7 @@ import {
   type RunningDashboardServer,
   allowedHostHeadersOf,
   boardPortOf,
+  createDashboardOrchestratorSessions,
   serveDashboard,
   startDashboardServer
 } from './DashboardServer.ts';
@@ -104,6 +105,8 @@ beforeAll(async () => {
     homeDirectory,
     agentProgressExecutable:   fakeExecutablePrinting(scratchDirectory, statusDocumentPath()),
     runtimeExecutablePath:     process.execPath,
+    dashboardEntryPointPath:   join(import.meta.dir, '..', '..', 'agent-dashboard.ts'),
+    claudeExecutable:          null,
     version:                   EXAMPLE_VERSION,
     clock:                     () => EXAMPLE_INSTANT,
     machineParallelAgentLimit: EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
@@ -341,7 +344,11 @@ test('an event stream sends heartbeats and releases its subscription when the cl
       };
     },
   };
-  const extraServer = startedOrThrow(await serveDashboard(serverOptions, { monitor: countingMonitor, heartbeatIntervalMilliseconds: SHORT_HEARTBEAT_MILLISECONDS }));
+  const extraServer = startedOrThrow(await serveDashboard(serverOptions, {
+    monitor:                       countingMonitor,
+    orchestratorSessions:          createDashboardOrchestratorSessions(serverOptions),
+    heartbeatIntervalMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
+  }));
   extraServers.push(extraServer);
 
   const abort = new AbortController();

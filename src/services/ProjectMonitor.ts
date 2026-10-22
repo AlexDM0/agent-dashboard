@@ -32,7 +32,10 @@ export interface ProjectMonitorOptions {
 }
 
 /** The snapshot before the server names the board origin it serves the pages from; each `pageUrl` is a path on it. */
-export type MonitoredSnapshot = Omit<DashboardSnapshot, 'boardOrigin' | 'boardBridgeUrl'>;
+export type MonitoredSnapshot = Omit<DashboardSnapshot, 'boardOrigin' | 'boardBridgeUrl' | 'projects'> & { projects: MonitoredProjectSnapshot[] };
+
+/** A project before the server adds its dashboard-owned orchestrator, which the monitor does not hold. */
+export type MonitoredProjectSnapshot = Omit<ProjectSnapshot, 'orchestrator'>;
 
 export type SnapshotListener = (snapshot: MonitoredSnapshot) => void;
 
@@ -126,7 +129,7 @@ export function createProjectMonitor(options: ProjectMonitorOptions): ProjectMon
   }
 
   function snapshot(): MonitoredSnapshot {
-    const projectSnapshots: ProjectSnapshot[] = [];
+    const projectSnapshots: MonitoredProjectSnapshot[] = [];
     for (const trackerId of projectOrder) {
       const project = projects.get(trackerId);
       if (project === undefined || project.reading === null) continue;

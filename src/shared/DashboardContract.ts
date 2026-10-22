@@ -45,6 +45,39 @@ export type ProjectHealth =
   | { kind: 'unreadable'; reason: string }
   | { kind: 'missing'; reason: string };
 
+export type OrchestratorOwnership = 'dashboard' | 'watched';
+export type OrchestratorState = 'starting' | 'busy' | 'idle' | 'waiting-for-answer' | 'ended';
+
+export interface ContextUsage {
+  usedTokens:          number;
+  contextWindowTokens: number | null;  // null when not known for a watched session's model
+  model:               string;
+  measuredAt:          string;
+}
+
+export interface QuestionOption { label: string; description: string }
+export interface Question { question: string; header: string; multiSelect: boolean; options: QuestionOption[] }
+export interface PendingQuestion { requestId: string; askedAt: string; questions: Question[] }
+
+export interface OrchestratorSession {
+  ownership:        OrchestratorOwnership;
+  sessionId:        string;
+  pid:              number;
+  state:            OrchestratorState;
+  startedAt:        string | null;
+  context:          ContextUsage | null;
+  pendingQuestions: PendingQuestion[];  // always empty for a watched session
+}
+
+export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
+export interface ChatMessage { at: string; role: ChatRole; text: string }
+
+/** The body of `POST /api/projects/<trackerId>/orchestrator`. */
+export interface OrchestratorStartRequest { startBuilding: boolean }
+
+/** The answer of `GET /api/launch-token`, the header value an orchestrator start or stop must carry. */
+export interface LaunchToken { token: string }
+
 export interface ProjectSnapshot {
   trackerId:     string;
   project:       string;
@@ -57,6 +90,8 @@ export interface ProjectSnapshot {
   pageUrl:       string;   // <boardOrigin>/projects/<trackerId>/page/progress.html, never on the dashboard's own origin
   readAt:        string;   // when the dashboard last read it, shown only
   health:        ProjectHealth;
+  /** The dashboard-owned orchestrator session of the project, live or ended since this server started; null for none. */
+  orchestrator:  OrchestratorSession | null;
 }
 
 export type RegistryHealth =

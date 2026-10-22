@@ -3,9 +3,10 @@
 A governing dashboard over every repository the agent-progress CLI tracks on this machine. `agent-dashboard` starts
 (or reuses) a local Bun server and opens it in the browser: an overview of every project's agentic work in flight,
 and each project's own `progress.html` opened inside the dashboard in an iframe. It reads the files on disk live and
-never writes to a tracked repository itself: the changes it makes there are running `agent-progress concurrency <n>`
-or `agent-progress dispatcher stopped` in the project's root when the user clicks for it, so the CLI takes its lock
-and writes its own tracker. The second
+never writes to a tracked repository itself: the changes it makes there are effects of the user's click, running
+`agent-progress concurrency <n>` or `agent-progress dispatcher stopped` in the project's root, so the CLI takes its lock
+and writes its own tracker, or starting an orchestrator session there through its supervisor, so that session writes
+the tracker. The second
 effect a click can have writes nothing at all: a message to the board's live orchestrator Claude Code session, asking
 it to start building or telling it which low-priority tickets the user cleared to run. The server finds that session
 by reading `~/.claude/sessions/` (one record per live session) and `~/.claude/projects/` (each session's workflow
@@ -49,8 +50,12 @@ src/adapters/        RegistryReader (projects.json → verdict), BoardStatusRead
                      BoardSummaryMapper (status JSON → BoardSummary), ConcurrencyLimitWriter (spawn concurrency
                      → verdict), DispatcherStopWriter (spawn dispatcher stopped → verdict), AgentProgressWrite
                      (a writing run's exit → verdict, for both writers), AgentProgressRun (one agent-progress run →
-                     how it ended, for every spawn)
-src/services/        ProjectMonitor (watch, refresh, hold snapshots, notify), DashboardServer (Bun.serve routes)
+                     how it ended, for every spawn), OrchestratorRecordReader (a supervisor record → verdict),
+                     SessionStreamEventMapper (a stream-json line → event), SupervisorLineReader (a supervisor
+                     socket line → request or state)
+src/services/        ProjectMonitor (watch, refresh, hold snapshots, notify), DashboardServer (Bun.serve routes),
+                     OrchestratorSupervisor (the detached process holding one session), OrchestratorSessions (the
+                     server's connections to every supervisor)
 web/                 the React frontend, its own DOM-only TypeScript project; imports only src/shared types
 ```
 
@@ -249,15 +254,20 @@ Raw `claude -p --input-format stream-json --output-format stream-json --verbose 
 
 ### The supervisor
 
-`agent-dashboard supervise <trackerId>`, a command the server alone runs (not in `help`), spawned detached
+`agent-dashboard supervise <trackerId> <root>`, a command the server alone runs (not in `help`), spawned detached
 (`detached: true`, its own process group, stdio to its log, `unref()`), as `open` starts the server. It spawns the
-session with the project root as working directory, then listens on a Unix socket. It outlives its starter (the probe's
+session (`claude` on `PATH`, or `AGENT_DASHBOARD_CLAUDE`) with the project root as working directory, its own process
+group, and `--session-id <uuid>` it generates, so the record names the session before its `init` line arrives; then it
+listens on a Unix socket and writes its record. It outlives its starter (the probe's
 supervisor was reparented to pid 1 and served two later clients); it ends when the session exits, by itself or on Stop,
 and removes its record and socket then.
 
 - **Socket protocol** (NDJSON both ways). Client to supervisor: `{"kind":"chat","text":…}`, `{"kind":"answer",
-  "requestId":…,"answers":{…}}`, `{"kind":"stop"}`. Supervisor to client: on connect one `{"kind":"state",…}` line
-  (the record, pending questions, latest context usage), then each session stdout line as `{"kind":"session","line":…}`.
+  "requestId":…,"answers":{…}}`, `{"kind":"stop"}`. Supervisor to client: a `{"kind":"state",…}` line (the record, the
+  `OrchestratorState`, pending questions, latest context usage) on connect and on every change, the last one `ended`;
+  and each session stdout line as `{"kind":"session","line":…}`. A server takes the session's state from state lines
+  alone. The state is `busy` from a `chat` until the next `result`, `waiting-for-answer` while a question is held, else
+  `idle`; `starting` is the server's own, from reading a record until its first state line.
   Writes to a client are buffered per client and drained (`drain`), since one `write` of a 20 kB `init` line was cut
   short in the probe.
 - **Questions**: an `AskUserQuestion` `control_request` is held as pending until answered, whether or not a server is
@@ -266,7 +276,8 @@ and removes its record and socket then.
 - **Stop**: the supervisor closes the session's stdin and sends `SIGTERM` to the session's process group after 10 s
   if it still runs; it records the exit code (143 for the signal, as in the probe) in its log before it removes its record and socket.
 - **Reconnecting**: the server reads every record at start and connects to each socket that accepts; a record whose
-  supervisor pid is gone is stale and removed. A connection that drops is retried every 5 s while the record lives.
+  supervisor pid is gone is stale and removed. A connection that drops is retried every 5 s while the record lives;
+  once the record or its supervisor is gone the session shows `ended` until the server restarts.
 - **The finder**: the session writes its own `~/.claude/sessions/<pid>.json` (`kind: "interactive"`, `entrypoint`
   inherited from the environment, a `messagingSocketPath`), so `src/adapters/OrchestratorSessionFinder.ts` sees it.
   A project with a live dashboard-owned orchestrator takes it as its orchestrator, matched by the record's
@@ -303,6 +314,12 @@ model, else the token count alone.
 ### Routes
 
 Every route below takes the server's Host guard, 403 for a present foreign `Origin`, and 404 for an unknown tracker.
+Start and stop are stricter: the server issues a random launch token when it starts, held in memory only (never in the
+app shell at `/`, which Bun answers before the Host guard, nor the log, the server record or a tracked repository), and
+a start or stop whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
+this server's own, is refused 403 before anything is read or spawned. The token is the answer of a Host-guarded
+`GET /api/launch-token` (`LaunchToken`, 403 for a foreign `Origin`), which a page elsewhere cannot read (no CORS grant)
+and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 
 | Route | Answer |
 | --- | --- |
@@ -312,7 +329,9 @@ Every route below takes the server's Host guard, 403 for a present foreign `Orig
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<label>" } }`, one answer for every question of that pending request, each a label it offered (or free text for an "Other" choice): sent as `answer`, 204. 400 for any other body, 404 when no dashboard-owned orchestrator lives, 409 for a watched session, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
 | `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the last 200 `ChatMessage`s on connect, then `event: message` per new one and `event: session` with the `OrchestratorSession` on every change; a `: heartbeat` comment every 25 s. A watched session's messages are tailed from its transcript |
 
-The snapshot carries each project's `orchestrator` so the overview needs no second stream.
+The snapshot carries each project's dashboard-owned `orchestrator` (live, or `ended` since this server started; null
+for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
+When one lives, `orchestrator-requests` sends its text to it as `chat`, before any `~/.claude/sessions/` lookup.
 
 ### Contract additions (`src/shared/DashboardContract.ts`)
 
@@ -343,6 +362,9 @@ export interface OrchestratorSession {
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 export interface ChatMessage { at: string; role: ChatRole; text: string }
+
+export interface OrchestratorStartRequest { startBuilding: boolean }
+export interface LaunchToken { token: string }
 
 // ProjectSnapshot gains: orchestrator: OrchestratorSession | null;
 ```

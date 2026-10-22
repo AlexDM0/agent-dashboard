@@ -29,10 +29,16 @@ export async function runCommandLine(commandLineArguments: readonly string[], co
     case 'refused':
       context.standardError(`${parsed.reason} See agent-dashboard help.`);
       return 1;
+    case 'supervise':
     case 'command':
       break;
   }
   try {
+    if (parsed.kind === 'supervise') {
+      const { superviseCommand } = await import('./commands/SuperviseCommand.ts');
+      await superviseCommand(parsed.trackerId, parsed.root, context);
+      return 0;
+    }
     const runCommand = await COMMAND_LOADERS[parsed.command]();
     await runCommand(parsed.options, context);
     return 0;

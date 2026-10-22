@@ -37,6 +37,7 @@ export function projectSnapshotWith(project: string, overrides: Partial<ProjectS
     pageUrl:       `/projects/tracker-${project}/page/progress.html`,
     readAt:        '2026-10-21T10:00:01+02:00',
     health,
+    orchestrator:  null,
     ...overrides,
   };
 }

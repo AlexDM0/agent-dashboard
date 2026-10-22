@@ -1,5 +1,5 @@
 /**
- * Real folders under the system temp folder, the only places a spec points a home directory or a project at; resolved
+ * Real folders under the system temp folder or `/tmp`, the only places a spec points a home directory or a project at; resolved
  * through symlinks (`/private/var` rather than `/var` on macOS), so they compare equal to a path the code under test
  * resolved. Test-only.
  */
@@ -7,8 +7,15 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir }                            from 'node:os';
 import { isAbsolute, join, relative }        from 'node:path';
 
+const SHORT_SCRATCH_ROOT = '/tmp';
+
 export function createScratchDirectory(prefix: string): string {
   return realpathSync(mkdtempSync(join(tmpdir(), `agent-dashboard-${prefix}-`)));
+}
+
+/** Under `/tmp` with a short prefix, for a spec whose home must hold a Unix socket path within the 104 bytes macOS allows. */
+export function createShortScratchDirectory(prefix: string): string {
+  return realpathSync(mkdtempSync(join(SHORT_SCRATCH_ROOT, `${prefix}-`)));
 }
 
 /** `force`, so cleaning up after a test that failed before creating anything does not turn one red test into two. */
@@ -18,8 +25,12 @@ export function removeScratchDirectory(directory: string): void {
 
 /** Throws, since its callers are spec helpers and a throw there fails the spec before anything reads or writes a live home. */
 export function requireScratchDirectory(directory: string): void {
-  const pathFromScratchRoot = relative(realpathSync(tmpdir()), realpathSync(directory));
-  if (pathFromScratchRoot === '' || pathFromScratchRoot.startsWith('..') || isAbsolute(pathFromScratchRoot)) {
+  const resolvedDirectory = realpathSync(directory);
+  const isUnderScratchRoot = [tmpdir(), SHORT_SCRATCH_ROOT].some((scratchRoot) => {
+    const pathFromScratchRoot = relative(realpathSync(scratchRoot), resolvedDirectory);
+    return pathFromScratchRoot !== '' && !pathFromScratchRoot.startsWith('..') && !isAbsolute(pathFromScratchRoot);
+  });
+  if (!isUnderScratchRoot) {
     throw new Error(`A spec pointed the dashboard at ${directory}, outside the scratch root; use src/testing/ScratchDirectory.ts.`);
   }
 }

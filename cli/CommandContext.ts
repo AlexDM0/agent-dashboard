@@ -6,7 +6,7 @@ import { readFileSync }                  from 'node:fs';
 import { availableParallelism, homedir } from 'node:os';
 import { join, resolve }                 from 'node:path';
 
-import { agentProgressExecutableOverride, browserOpeningIsDisabled } from '../src/shared/Environment.ts';
+import { agentProgressExecutableOverride, browserOpeningIsDisabled, claudeExecutableOverride } from '../src/shared/Environment.ts';
 
 export type InterruptionSignal = 'SIGINT' | 'SIGTERM';
 
@@ -26,6 +26,8 @@ export interface CommandContext {
   /** `package.json`'s version, which the server reports as its identity. */
   version:                   string;
   agentProgressExecutable:   string | null;
+  /** The Claude Code executable a dashboard-owned orchestrator session runs, absolute, or null when none is found. */
+  claudeExecutable:          string | null;
   browserOpeningIsDisabled:  boolean;
   /** `availableParallelism()`: the most agents this machine runs at once, which the header counts against. */
   machineParallelAgentLimit: number;
@@ -58,6 +60,11 @@ function agentProgressExecutableFrom(currentDirectory: string): string | null {
   return override === undefined ? Bun.which('agent-progress') ?? null : resolve(currentDirectory, override);
 }
 
+function claudeExecutableFrom(currentDirectory: string): string | null {
+  const override = claudeExecutableOverride();
+  return override === undefined ? Bun.which('claude') ?? null : resolve(currentDirectory, override);
+}
+
 /** A function, never a module constant: a constant would read the process at import time and hand every spec the runner's own. */
 export function createProcessContext(): CommandContext {
   const currentDirectory = process.cwd();
@@ -73,6 +80,7 @@ export function createProcessContext(): CommandContext {
     dashboardEntryPointPath:   join(import.meta.dir, '..', 'agent-dashboard.ts'),
     version:                   packageVersion(),
     agentProgressExecutable:   agentProgressExecutableFrom(currentDirectory),
+    claudeExecutable:          claudeExecutableFrom(currentDirectory),
     browserOpeningIsDisabled:  browserOpeningIsDisabled(),
     machineParallelAgentLimit: availableParallelism(),
     onInterruption:            listenForInterruption,
