@@ -12,4 +12,8 @@ export const DASHBOARD_LIMITS = {
   MINIMUM_CONCURRENCY_LIMIT:              1,
   MAXIMUM_CONCURRENCY_LIMIT:              10,
   RECENT_LOG_LINE_COUNT:                  5,
+  /** The most tickets one clear-low-tickets request may name. */
+  MAXIMUM_CLEARED_TICKET_COUNT:           50,
+  /** Bounds connecting to, and writing one line into, a Claude Code session's messaging socket. */
+  SESSION_SOCKET_TIMEOUT_MILLISECONDS:    2_000,
 } as const;

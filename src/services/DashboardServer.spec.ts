@@ -10,6 +10,9 @@
  * The concurrency route, the one write, is proven against a fake CLI that keeps a limit and logs its calls: a foreign
  * Origin, an unknown tracker and an out-of-range limit never reach the CLI, a CLI refusal and failure map to 409 and
  * 502, and a 204 is followed by a snapshot carrying the new limit without any change in the watched folder.
+ * The orchestrator-request route is proven against scratch Unix-socket listeners standing in for Claude Code sessions
+ * under a scratch home: the exact line a session receives, no write on any refusal (guards, a bad body, an id that is
+ * not low-priority waiting, zero or several candidates), and 502 when the chosen session's socket fails.
  */
 import {
   existsSync,
@@ -33,6 +36,12 @@ import {
 import { type DashboardSnapshot, type ServerIdentity }                          from '../shared/DashboardContract.ts';
 import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../testing/ExampleBoards.ts';
 import {
+  type ExampleSessionListener,
+  createExampleWorkflowRun,
+  listenAsExampleSession,
+  writeExampleSessionRecord
+} from '../testing/ExampleClaudeSessions.ts';
+import {
   fakeExecutableFailing,
   fakeExecutableKeepingAConcurrencyLimit,
   fakeExecutablePrinting,
@@ -40,6 +49,7 @@ import {
 } from '../testing/FakeAgentProgressExecutable.ts';
 import { sendRawHttpRequest }                                                      from '../testing/RawHttpRequest.ts';
 import { createScratchDirectory, removeScratchDirectory, requireScratchDirectory } from '../testing/ScratchDirectory.ts';
+import { waitUntil }                                                               from '../testing/WaitUntil.ts';
 import {
   type DashboardServerOptions,
   type RunningDashboardServer,
@@ -47,6 +57,7 @@ import {
   serveDashboard,
   startDashboardServer
 } from './DashboardServer.ts';
+import { orchestratorMessageTextOf }                 from './OrchestratorRequestMessage.ts';
 import { type ProjectMonitor, createProjectMonitor } from './ProjectMonitor.ts';
 
 const TRACKER_ID = 'tracker-storefront';
@@ -497,3 +508,167 @@ test('a CLI exit 1 answers 409 with the CLI\'s message, and any other failure an
   expect(await missing.text()).toBe('agent-progress is not on PATH');
   expect((await fetch(`${missingServer.url}/api/identity`)).status).toBe(200);
 });
+
+const ORCHESTRATOR_RUN_ID = 'example-run-9';
+
+interface OrchestratorFixture {
+  server:        RunningDashboardServer;
+  homeDirectory: string;
+}
+
+/** The captured board plus two low-priority waiting tickets and a dispatcher run id, behind its own fake CLI. */
+function orchestratorStatusExecutable(): string {
+  const fakeDirectory = join(scratchDirectory, 'orchestrator-fake');
+  mkdirSync(fakeDirectory, { recursive: true });
+  const document = JSON.parse(readFileSync(statusDocumentPath(), 'utf8')) as { concurrency: Record<string, unknown>; tickets: unknown[] };
+  document.concurrency['dispatcherRunId'] = ORCHESTRATOR_RUN_ID;
+  document.tickets.push(
+    {
+      id: '012', title: 'Example low chore', status: 'pending', priority: 'low'
+    },
+    {
+      id: '014', title: 'Example other low chore', status: 'pending', priority: 'low'
+    },
+  );
+  const documentPath = join(fakeDirectory, 'status.json');
+  writeFileSync(documentPath, JSON.stringify(document));
+  return fakeExecutablePrinting(fakeDirectory, documentPath);
+}
+
+async function startOrchestratorServer(name: string): Promise<OrchestratorFixture> {
+  const homeDirectory = join(scratchDirectory, `${name}-home`);
+  mkdirSync(homeDirectory);
+  writeExampleRegistry(homeDirectory, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, 'example-storefront') });
+  const orchestratorServer = startedOrThrow(await startDashboardServer({ ...serverOptions, homeDirectory, agentProgressExecutable: orchestratorStatusExecutable() }));
+  extraServers.push(orchestratorServer);
+  return { server: orchestratorServer, homeDirectory };
+}
+
+/** Sockets live in a scratch folder of their own, short enough for macOS's 104-byte socket path limit. */
+function liveExampleSession(fixture: OrchestratorFixture, sessionId: string, socketDirectory: string, pid = process.pid): ExampleSessionListener {
+  const listener = listenAsExampleSession(socketDirectory, sessionId);
+  writeExampleSessionRecord(fixture.homeDirectory, {
+    pid, sessionId, cwd: projectRoot, messagingSocketPath: listener.socketPath
+  });
+  return listener;
+}
+
+function orchestratorRequest(runningServer: RunningDashboardServer, body: string, headers: Record<string, string> = {}, trackerId = TRACKER_ID): Promise<Response> {
+  return fetch(`${runningServer.url}/api/projects/${trackerId}/orchestrator-requests`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body,
+  });
+}
+
+function withSocketDirectory(work: (socketDirectory: string, listeners: ExampleSessionListener[]) => Promise<void>): Promise<void> {
+  const socketDirectory = createScratchDirectory('sock');
+  const listeners: ExampleSessionListener[] = [];
+  return work(socketDirectory, listeners).finally(() => {
+    for (const listener of listeners) listener.stop();
+    removeScratchDirectory(socketDirectory);
+  });
+}
+
+test('start-building writes exactly one user-message line to the session holding the run, then answers 204', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('orchestrator-start');
+  const orchestrator = liveExampleSession(fixture, 'a', socketDirectory);
+  listeners.push(orchestrator);
+  createExampleWorkflowRun(fixture.homeDirectory, {
+    pid: process.pid, sessionId: 'a', cwd: projectRoot, messagingSocketPath: orchestrator.socketPath
+  }, ORCHESTRATOR_RUN_ID);
+
+  const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'start-building' }), { Origin: fixture.server.url });
+  expect(answer.status).toBe(204);
+  await waitUntil(() => orchestrator.receivedText().endsWith('\n'), 'the session receives the line');
+  const expectedText = orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront');
+  expect(orchestrator.receivedText()).toBe(`${JSON.stringify({ type: 'user', message: { role: 'user', content: expectedText } })}\n`);
+}));
+
+test('a clear-low-tickets request names every id; an id not low-priority waiting is 409 with no write', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('orchestrator-clear');
+  const orchestrator = liveExampleSession(fixture, 'b', socketDirectory);
+  listeners.push(orchestrator);
+
+  const refused = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'clear-low-tickets', ticketIds: ['012', '005'] }));
+  expect(refused.status).toBe(409);
+  expect(await refused.text()).toContain('005');
+  expect(orchestrator.connectionCount()).toBe(0);
+
+  const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'clear-low-tickets', ticketIds: ['012', '014'] }));
+  expect(answer.status).toBe(204);
+  await waitUntil(() => orchestrator.receivedText().endsWith('\n'), 'the session receives the line');
+  const received = JSON.parse(orchestrator.receivedText()) as { message: { content: string } };
+  expect(received.message.content).toContain('#012, #014');
+  expect(received.message.content).toContain('includeLowPriority: true');
+}));
+
+test('a malformed orchestrator request is 400 and nothing is written', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('orchestrator-malformed');
+  const orchestrator = liveExampleSession(fixture, 'c', socketDirectory);
+  listeners.push(orchestrator);
+  const badBodies = [
+    JSON.stringify({ kind: 'stop-building' }),
+    JSON.stringify({ kind: 'clear-low-tickets', ticketIds: [] }),
+    JSON.stringify({ kind: 'clear-low-tickets', ticketIds: [12] }),
+    JSON.stringify({ kind: 'clear-low-tickets', ticketIds: Array.from({ length: 51 }, () => '012') }),
+    'not json',
+  ];
+  for (const body of badBodies) expect((await orchestratorRequest(fixture.server, body)).status, body).toBe(400);
+  expect(orchestrator.connectionCount()).toBe(0);
+}));
+
+test('two live sessions in the root and no run match answer 409 naming that, and neither receives anything', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('orchestrator-several');
+  const first = liveExampleSession(fixture, 'd', socketDirectory);
+  const second = liveExampleSession(fixture, 'e', socketDirectory, process.ppid);
+  listeners.push(first, second);
+  const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'start-building' }));
+  expect(answer.status).toBe(409);
+  expect(await answer.text()).toContain('Several live Claude Code sessions');
+  await Bun.sleep(50);
+  expect(first.receivedText() + second.receivedText()).toBe('');
+}));
+
+test('no orchestrator session answers 409 naming that', async () => {
+  const fixture = await startOrchestratorServer('orchestrator-none');
+  const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'start-building' }));
+  expect(answer.status).toBe(409);
+  expect(await answer.text()).toContain('No live Claude Code session');
+});
+
+test('the orchestrator route keeps the concurrency guards: Host and Origin 403, unknown tracker 404, GET 405', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('orchestrator-guards');
+  const orchestrator = liveExampleSession(fixture, 'f', socketDirectory);
+  listeners.push(orchestrator);
+  const body = JSON.stringify({ kind: 'start-building' });
+  for (const origin of ['http://evil.example', 'null']) expect((await orchestratorRequest(fixture.server, body, { Origin: origin })).status, origin).toBe(403);
+  expect((await orchestratorRequest(fixture.server, body, {}, 'tracker-unknown')).status).toBe(404);
+  const getAnswer = await fetch(`${fixture.server.url}/api/projects/${TRACKER_ID}/orchestrator-requests`);
+  expect(getAnswer.status).toBe(405);
+  expect(getAnswer.headers.get('allow')).toBe('POST');
+  const foreignHost = await sendRawHttpRequest({
+    port: fixture.server.port, method: 'POST', target: `/api/projects/${TRACKER_ID}/orchestrator-requests`, headers: { Host: 'evil.example' }
+  });
+  expect(foreignHost.status).toBe(403);
+  expect(orchestrator.connectionCount()).toBe(0);
+}));
+
+test('a socket that fails after its session was chosen answers 502', () => withSocketDirectory(async (socketDirectory) => {
+  const fixture = await startOrchestratorServer('orchestrator-failing');
+  const socketPath = join(socketDirectory, 'g.sock');
+  const acceptingOnlyTheProbe = Bun.listen({
+    unix:   socketPath,
+    socket: {
+      open() {
+        acceptingOnlyTheProbe.stop(true);
+      },
+      data() {},
+    },
+  });
+  writeExampleSessionRecord(fixture.homeDirectory, {
+    pid: process.pid, sessionId: 'g', cwd: projectRoot, messagingSocketPath: socketPath
+  });
+  const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'start-building' }));
+  expect(answer.status).toBe(502);
+}));

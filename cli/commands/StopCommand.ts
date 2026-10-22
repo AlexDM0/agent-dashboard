@@ -1,8 +1,8 @@
+import { processIsAlive }                                               from '../../src/lib/process-liveness/ProcessIsAlive.ts';
 import { DASHBOARD_PROTOCOL }                                           from '../../src/shared/constants/DashboardProtocol.ts';
 import type { CommandContext }                                          from '../CommandContext.ts';
 import { CommandRefusal }                                               from '../CommandRefusal.ts';
 import type { CommandOptions }                                          from '../ParsedCommandLine.ts';
-import { processIsAlive }                                               from '../ProcessIsAlive.ts';
 import { probeServerIdentity }                                          from '../ServerIdentityProbe.ts';
 import { removeServerRecord, removeServerRecordOf, serverRecordPathOf } from '../ServerRecordFile.ts';
 import { waitMilliseconds }                                             from '../WaitMilliseconds.ts';

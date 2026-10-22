@@ -5,8 +5,8 @@
 import { existsSync }             from 'node:fs';
 import { afterAll, expect, test } from 'bun:test';
 
+import { processIsAlive }                                 from '../src/lib/process-liveness/ProcessIsAlive.ts';
 import { createScratchDirectory, removeScratchDirectory } from '../src/testing/ScratchDirectory.ts';
-import { processIsAlive }                                 from './ProcessIsAlive.ts';
 import { readServerRecord, serverRecordPathOf }           from './ServerRecordFile.ts';
 import { freeLocalPort, runAgentDashboard }               from './testing/DashboardProcess.ts';
 

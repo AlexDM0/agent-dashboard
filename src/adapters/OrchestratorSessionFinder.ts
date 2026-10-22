@@ -1,0 +1,130 @@
+/**
+ * Finds the live Claude Code session orchestrating a board from the files every session writes: its record in
+ * `~/.claude/sessions/<pid>.json` and its workflow transcripts in `~/.claude/projects/<slug>/<sessionId>/`. The one
+ * session whose transcripts hold the board's latest dispatcher run, else the one live session in the project root; any
+ * other count is a refusal, never a guess.
+ */
+import {
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync
+} from 'node:fs';
+import { join, resolve } from 'node:path';
+
+import { processIsAlive }   from '../lib/process-liveness/ProcessIsAlive.ts';
+import { UnknownValueUtil } from '../shared/UnknownValueUtil.ts';
+
+export interface LiveSession {
+  pid:                 number;
+  sessionId:           string;
+  cwd:                 string;
+  messagingSocketPath: string;
+}
+
+export type OrchestratorSessionVerdict = { kind: 'found'; session: LiveSession } | { kind: 'refused'; reason: string };
+
+export interface OrchestratorSearch {
+  homeDirectory:   string;
+  projectRoot:     string;
+  dispatcherRunId: string | null;
+  socketAccepts:   (socketPath: string) => Promise<boolean>;
+}
+
+const SESSION_FILE_SUFFIX = '.json';
+
+/** Everything outside `[a-zA-Z0-9]` becomes `-` in the folder Claude Code names after a session's working directory. */
+const CHARACTER_THE_SLUG_REPLACES = /[^a-zA-Z0-9]/g;
+
+/** A run id is a folder name; anything else could reach outside the transcript folder. */
+const RUN_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function sessionOf(document: unknown): LiveSession | null {
+  if (!UnknownValueUtil.isJsonObject(document)) return null;
+  const {
+    pid, sessionId, cwd, messagingSocketPath
+  } = document;
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return null;
+  if (typeof sessionId !== 'string' || typeof cwd !== 'string' || typeof messagingSocketPath !== 'string') return null;
+  if (sessionId.length === 0 || cwd.length === 0 || messagingSocketPath.length === 0) return null;
+  return {
+    pid, sessionId, cwd, messagingSocketPath
+  };
+}
+
+/** Fail closed: a folder or file that cannot be read, or holds no session record, is no session. */
+function recordedSessions(homeDirectory: string): LiveSession[] {
+  const sessionsDirectory = join(homeDirectory, '.claude', 'sessions');
+  let fileNames: string[];
+  try {
+    fileNames = readdirSync(sessionsDirectory).filter((fileName) => fileName.endsWith(SESSION_FILE_SUFFIX));
+  } catch {
+    return [];
+  }
+  const sessions: LiveSession[] = [];
+  for (const fileName of fileNames) {
+    try {
+      const session = sessionOf(JSON.parse(readFileSync(join(sessionsDirectory, fileName), 'utf8')));
+      if (session !== null) sessions.push(session);
+    } catch {
+      // A record being rewritten or removed as it is read is no session.
+    }
+  }
+  return sessions;
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function canonicalPathOf(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+function holdsWorkflowRun(homeDirectory: string, session: LiveSession, runId: string): boolean {
+  const slug = resolve(session.cwd).replace(CHARACTER_THE_SLUG_REPLACES, '-');
+  return isDirectory(join(homeDirectory, '.claude', 'projects', slug, session.sessionId, 'subagents', 'workflows', runId));
+}
+
+async function reachable(sessions: LiveSession[], socketAccepts: OrchestratorSearch['socketAccepts']): Promise<LiveSession[]> {
+  const accepting = await Promise.all(sessions.map((session) => socketAccepts(session.messagingSocketPath)));
+  return sessions.filter((_session, index) => accepting[index] === true);
+}
+
+function pidsOf(sessions: LiveSession[]): string {
+  return sessions.map((session) => session.pid).join(', ');
+}
+
+export async function findOrchestratorSession(search: OrchestratorSearch): Promise<OrchestratorSessionVerdict> {
+  const liveSessions = recordedSessions(search.homeDirectory).filter((session) => processIsAlive(session.pid));
+
+  const runId = search.dispatcherRunId;
+  if (runId !== null && RUN_ID_PATTERN.test(runId)) {
+    const runHolders = await reachable(liveSessions.filter((session) => holdsWorkflowRun(search.homeDirectory, session, runId)), search.socketAccepts);
+    const [onlyRunHolder] = runHolders;
+    if (runHolders.length === 1 && onlyRunHolder !== undefined) return { kind: 'found', session: onlyRunHolder };
+    if (runHolders.length > 1) {
+      return { kind: 'refused', reason: `Several live Claude Code sessions (pids ${pidsOf(runHolders)}) hold dispatcher run ${runId}; none was chosen` };
+    }
+  }
+
+  const projectRoot = canonicalPathOf(search.projectRoot);
+  const rootSessions = await reachable(liveSessions.filter((session) => canonicalPathOf(session.cwd) === projectRoot), search.socketAccepts);
+  const [onlyRootSession] = rootSessions;
+  if (rootSessions.length === 1 && onlyRootSession !== undefined) return { kind: 'found', session: onlyRootSession };
+  if (rootSessions.length > 1) {
+    return {
+      kind:   'refused',
+      reason: `Several live Claude Code sessions (pids ${pidsOf(rootSessions)}) run in ${search.projectRoot} and none holds the board's dispatcher run; none was chosen`,
+    };
+  }
+  return { kind: 'refused', reason: `No live Claude Code session orchestrates ${search.projectRoot}: none holds its dispatcher run or runs in its root` };
+}

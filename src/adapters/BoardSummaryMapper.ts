@@ -8,7 +8,8 @@ import {
   type BoardSummary,
   type DispatcherState,
   type LogLine,
-  type TicketStatus
+  type TicketStatus,
+  type WaitingTicket
 } from '../shared/DashboardContract.ts';
 import { UnknownValueUtil } from '../shared/UnknownValueUtil.ts';
 import { DASHBOARD_LIMITS } from '../shared/constants/DashboardLimits.ts';
@@ -24,6 +25,10 @@ const DISPATCHER_STATES: readonly DispatcherState[] = ['running', 'finished', 's
 const TICKET_STATUSES: readonly TicketStatus[] = ['pending', 'in-progress', 'in-review', 'reviewed', 'delivered', 'abandoned'];
 
 const IN_PROGRESS_ROW_STATUS = 'in-progress';
+
+const LOW_PRIORITY = 'low';
+
+const PENDING_STATUS: TicketStatus = 'pending';
 
 function fieldOf(record: JsonObject, field: string): unknown {
   return Object.hasOwn(record, field) ? record[field] : undefined;
@@ -122,6 +127,19 @@ function withoutHeld(ticketIds: string[], heldTicketIds: string[]): string[] {
   return ticketIds.filter((ticketId) => !heldTicketIds.includes(ticketId));
 }
 
+/** Priority `low`, status `pending` and no `hold`: what the user may clear an orchestrator to run. */
+function lowPriorityWaitingTicketsOf(tickets: JsonObject[]): WaitingTicket[] {
+  const waitingTickets: WaitingTicket[] = [];
+  for (const ticket of tickets) {
+    const ticketId = stringOrNull(fieldOf(ticket, 'id'));
+    const title = stringOrNull(fieldOf(ticket, 'title'));
+    const isLowAndWaiting = fieldOf(ticket, 'priority') === LOW_PRIORITY && fieldOf(ticket, 'status') === PENDING_STATUS
+      && fieldOf(ticket, 'hold') === undefined;
+    if (ticketId !== null && title !== null && isLowAndWaiting) waitingTickets.push({ ticketId, title });
+  }
+  return waitingTickets.sort((a, b) => a.ticketId.localeCompare(b.ticketId, 'en', { numeric: true }));
+}
+
 function tokensTotalOf(tokensByOwner: unknown): number {
   if (!UnknownValueUtil.isJsonObject(tokensByOwner)) return 0;
   const ownerTokens = objectsIn(fieldOf(tokensByOwner, 'owners')).map((owner) => finiteNumberOrNull(fieldOf(owner, 'tokens')) ?? 0);
@@ -172,14 +190,16 @@ export function boardSummaryOf(document: unknown): BoardSummaryVerdict {
       agentsInFlight,
       freeSlots,
       ticketCountByStatus,
-      ticketTotal:            Object.values(ticketCountByStatus).reduce((sum, count) => sum + count, 0),
+      ticketTotal:               Object.values(ticketCountByStatus).reduce((sum, count) => sum + count, 0),
       activeRows,
-      readyTicketIds:         withoutHeld(stringsIn(fieldOf(concurrency, 'readyTicketIds')), heldTicketIds),
+      readyTicketIds:            withoutHeld(stringsIn(fieldOf(concurrency, 'readyTicketIds')), heldTicketIds),
       heldTicketIds,
-      reviewWaitingTicketIds: withoutHeld(listedReviewWaitingTicketIds, heldTicketIds),
-      pausedBuildCount:       objectsIn(fieldOf(document, 'pausedBuilds')).length,
-      recentLog:              recentLogOf(objectsIn(fieldOf(document, 'log'))),
-      tokensTotal:            tokensTotalOf(fieldOf(document, 'tokensByOwner')),
+      reviewWaitingTicketIds:    withoutHeld(listedReviewWaitingTicketIds, heldTicketIds),
+      pausedBuildCount:          objectsIn(fieldOf(document, 'pausedBuilds')).length,
+      recentLog:                 recentLogOf(objectsIn(fieldOf(document, 'log'))),
+      tokensTotal:               tokensTotalOf(fieldOf(document, 'tokensByOwner')),
+      dispatcherRunId:           stringOrNull(fieldOf(concurrency, 'dispatcherRunId')),
+      lowPriorityWaitingTickets: lowPriorityWaitingTicketsOf(tickets),
     },
   };
 }

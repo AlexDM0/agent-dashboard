@@ -1,7 +1,7 @@
 /**
  * The dashboard's HTTP server, bound to 127.0.0.1 only: the React app, the server identity, the snapshot and its event
- * stream, each project's page folder, a project's concurrency limit set through its agent-progress CLI, and a shutdown
- * the CLI's `stop` asks for. Every route but the app shell refuses a
+ * stream, each project's page folder, a project's concurrency limit set through its agent-progress CLI, a message to a
+ * board's orchestrator Claude Code session, and a shutdown the CLI's `stop` asks for. Every route but the app shell refuses a
  * request whose Host is not this server's own, against DNS rebinding; Bun answers the shell before `fetch`, and it holds
  * no data.
  */
@@ -9,15 +9,18 @@ import { normalize } from 'node:path';
 
 import dashboardApplication from '../../web/index.html';
 
-import { readBoardStatus }                             from '../adapters/BoardStatusReader.ts';
-import { writeConcurrencyLimit }                       from '../adapters/ConcurrencyLimitWriter.ts';
-import { resolveContainedPath }                        from '../lib/contained-path/ContainedPath.ts';
-import { type DashboardSnapshot, type ServerIdentity } from '../shared/DashboardContract.ts';
-import { UnknownValueUtil }                            from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_FILES }                             from '../shared/constants/DashboardFiles.ts';
-import { DASHBOARD_LIMITS }                            from '../shared/constants/DashboardLimits.ts';
-import { DASHBOARD_PROTOCOL }                          from '../shared/constants/DashboardProtocol.ts';
-import { type ProjectMonitor, createProjectMonitor }   from './ProjectMonitor.ts';
+import { readBoardStatus }                                                                     from '../adapters/BoardStatusReader.ts';
+import { writeConcurrencyLimit }                                                               from '../adapters/ConcurrencyLimitWriter.ts';
+import { findOrchestratorSession }                                                             from '../adapters/OrchestratorSessionFinder.ts';
+import { sessionSocketAccepts, writeSessionMessage }                                           from '../adapters/SessionMessageWriter.ts';
+import { resolveContainedPath }                                                                from '../lib/contained-path/ContainedPath.ts';
+import { type DashboardSnapshot, type ServerIdentity }                                         from '../shared/DashboardContract.ts';
+import { UnknownValueUtil }                                                                    from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_FILES }                                                                     from '../shared/constants/DashboardFiles.ts';
+import { DASHBOARD_LIMITS }                                                                    from '../shared/constants/DashboardLimits.ts';
+import { DASHBOARD_PROTOCOL }                                                                  from '../shared/constants/DashboardProtocol.ts';
+import { ORCHESTRATOR_REQUEST_BODY_REFUSAL, orchestratorMessageTextOf, orchestratorRequestOf } from './OrchestratorRequestMessage.ts';
+import { type ProjectMonitor, createProjectMonitor }                                           from './ProjectMonitor.ts';
 
 export interface DashboardServerOptions {
   port:                      number;
@@ -70,6 +73,8 @@ const SANDBOXED_FILE_POLICY = 'sandbox';
 const PAGE_ROUTE_PATTERN = /^\/projects\/([^/]+)\/page\/(.+)$/;
 
 const CONCURRENCY_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.CONCURRENCY_PATH_SUFFIX}$`);
+
+const ORCHESTRATOR_REQUESTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_REQUESTS_PATH_SUFFIX}$`);
 
 const HTTP_STATUS = {
   NO_CONTENT:         204,
@@ -264,6 +269,40 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
+  /** Writes nothing to the board or the repository: the message to the orchestrator session is the whole effect. */
+  async function orchestratorRequestResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const orchestratorRequest = orchestratorRequestOf(await request.text().catch(() => ''));
+    if (orchestratorRequest === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_REQUEST_BODY_REFUSAL);
+
+    const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
+    const board = project?.health.kind === 'ready' ? project.health.board : null;
+    if (orchestratorRequest.kind === 'clear-low-tickets') {
+      if (board === null) return plainResponse(HTTP_STATUS.CONFLICT, 'The board cannot be read, so its low-priority tickets cannot be checked');
+      const waitingTicketIds = new Set(board.lowPriorityWaitingTickets.map((ticket) => ticket.ticketId));
+      const unknownTicketIds = orchestratorRequest.ticketIds.filter((ticketId) => !waitingTicketIds.has(ticketId));
+      if (unknownTicketIds.length > 0) {
+        return plainResponse(HTTP_STATUS.CONFLICT, `Not low-priority waiting tickets on this board: ${unknownTicketIds.join(', ')}`);
+      }
+    }
+
+    const search = await findOrchestratorSession({
+      homeDirectory:   options.homeDirectory,
+      projectRoot:     root,
+      dispatcherRunId: board?.dispatcherRunId ?? null,
+      socketAccepts:   (socketPath) => sessionSocketAccepts(socketPath, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS),
+    });
+    if (search.kind === 'refused') return plainResponse(HTTP_STATUS.CONFLICT, search.reason);
+    const messageText = orchestratorMessageTextOf(orchestratorRequest, project?.project ?? trackerId);
+    const delivery = await writeSessionMessage(search.session.messagingSocketPath, messageText, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS);
+    if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+  }
+
   async function pageFileResponse(pathname: string): Promise<Response> {
     const notFound = plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const match = PAGE_ROUTE_PATTERN.exec(pathname);
@@ -300,6 +339,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const concurrencyRouteMatch = CONCURRENCY_ROUTE_PATTERN.exec(pathname);
     if (concurrencyRouteMatch?.[1] !== undefined) {
       return request.method === 'POST' ? concurrencyLimitResponse(request, concurrencyRouteMatch[1]) : methodNotAllowed('POST');
+    }
+    const orchestratorRouteMatch = ORCHESTRATOR_REQUESTS_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? orchestratorRequestResponse(request, orchestratorRouteMatch[1]) : methodNotAllowed('POST');
     }
     if (pathname === '/api/snapshot' || pathname === '/api/events' || pathname.startsWith('/projects/')) {
       if (!isRead) return methodNotAllowed('GET, HEAD');

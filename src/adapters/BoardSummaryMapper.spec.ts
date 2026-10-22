@@ -86,8 +86,47 @@ test('the captured scratch tracker maps to the summary its board shows', () => {
       { at: '2026-10-21T20:26:19+02:00', text: 'Ticket #004 filed: Polish the example footer' },
       { at: '2026-10-21T20:26:10+02:00', text: 'Example milestone reached' },
     ],
-    tokensTotal: 1200,
+    tokensTotal:               1200,
+    dispatcherRunId:           null,
+    lowPriorityWaitingTickets: [],
   });
+});
+
+/**
+ * The route clearing low-priority tickets validates against this list, so a held, started or normal-priority ticket
+ * must never be in it, and a damaged ticket without an id or title is skipped rather than shown blank.
+ */
+test('the low-priority waiting tickets are the pending low ones not held, lowest id first, and the run id is read as printed', () => {
+  const board = readyBoardOf(minimalDocument({
+    concurrency: {
+      limit: 2, agentsInFlight: 0, freeSlots: 2, readyTicketIds: [], dispatcherState: 'finished', heldTicketIds: [], dispatcherRunId: 'example-run-7'
+    },
+    tickets: [
+      {
+        id: '014', title: 'Example later chore', status: 'pending', priority: 'low'
+      },
+      {
+        id: '009', title: 'Example earlier chore', status: 'pending', priority: 'low'
+      },
+      {
+        id: '010', title: 'Example held chore', status: 'pending', priority: 'low', hold: 'waiting on Example Agency'
+      },
+      {
+        id: '011', title: 'Example started chore', status: 'in-progress', priority: 'low'
+      },
+      {
+        id: '012', title: 'Example normal ticket', status: 'pending', priority: 'normal'
+      },
+      { id: '013', status: 'pending', priority: 'low' },
+      { title: 'Example ticket without an id', status: 'pending', priority: 'low' },
+    ],
+  }));
+  expect(board.lowPriorityWaitingTickets).toEqual([
+    { ticketId: '009', title: 'Example earlier chore' },
+    { ticketId: '014', title: 'Example later chore' },
+  ]);
+  expect(board.dispatcherRunId).toBe('example-run-7');
+  expect(readyBoardOf(minimalDocument()).dispatcherRunId).toBeNull();
 });
 
 test('the recent log is newest stamp first as agent-progress orders it, a backfill below the later stamp, ties by append', () => {

@@ -14,14 +14,16 @@ export function exampleBoardSummary(overrides: Partial<BoardSummary> = {}): Boar
     ticketCountByStatus: {
       'pending': 1, 'in-progress': 0, 'in-review': 0, 'reviewed': 0, 'delivered': 0, 'abandoned': 0
     },
-    ticketTotal:            1,
-    activeRows:             [],
-    readyTicketIds:         ['001'],
-    heldTicketIds:          [],
-    reviewWaitingTicketIds: [],
-    pausedBuildCount:       0,
-    recentLog:              [],
-    tokensTotal:            0,
+    ticketTotal:               1,
+    activeRows:                [],
+    readyTicketIds:            ['001'],
+    heldTicketIds:             [],
+    reviewWaitingTicketIds:    [],
+    pausedBuildCount:          0,
+    recentLog:                 [],
+    tokensTotal:               0,
+    dispatcherRunId:           null,
+    lowPriorityWaitingTickets: [],
     ...overrides,
   };
 }

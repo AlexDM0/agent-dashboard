@@ -9,14 +9,16 @@ export function boardSummaryWith(overrides: Partial<BoardSummary> = {}): BoardSu
     ticketCountByStatus: {
       'pending': 0, 'in-progress': 0, 'in-review': 0, 'reviewed': 0, 'delivered': 0, 'abandoned': 0
     },
-    ticketTotal:            0,
-    activeRows:             [],
-    readyTicketIds:         [],
-    heldTicketIds:          [],
-    reviewWaitingTicketIds: [],
-    pausedBuildCount:       0,
-    recentLog:              [],
-    tokensTotal:            0,
+    ticketTotal:               0,
+    activeRows:                [],
+    readyTicketIds:            [],
+    heldTicketIds:             [],
+    reviewWaitingTicketIds:    [],
+    pausedBuildCount:          0,
+    recentLog:                 [],
+    tokensTotal:               0,
+    dispatcherRunId:           null,
+    lowPriorityWaitingTickets: [],
     ...overrides,
   };
 }

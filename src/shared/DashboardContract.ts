@@ -15,20 +15,31 @@ export interface ActiveRow {
 
 export interface LogLine { at: string; text: string }
 
+export interface WaitingTicket { ticketId: string; title: string }
+
+export type OrchestratorRequestKind = 'start-building' | 'clear-low-tickets';
+
+/** The body of `POST /api/projects/<trackerId>/orchestrator-requests`. */
+export type OrchestratorRequest =
+  | { kind: 'start-building' }
+  | { kind: 'clear-low-tickets'; ticketIds: string[] };
+
 export interface BoardSummary {
-  dispatcherState:        DispatcherState;
-  concurrencyLimit:       number;
-  agentsInFlight:         number;
-  freeSlots:              number;
-  ticketCountByStatus:    Record<TicketStatus, number>;  // over every ticket (--full)
-  ticketTotal:            number;
-  activeRows:             ActiveRow[];                   // rows in-progress, oldest start first
-  readyTicketIds:         string[];                      // startable: held ones left out
-  heldTicketIds:          string[];                      // every held ticket, as the CLI lists them
-  reviewWaitingTicketIds: string[];                      // held ones left out
-  pausedBuildCount:       number;
-  recentLog:              LogLine[];                     // newest stamp first (append order on a tie), at most 5
-  tokensTotal:            number;                        // sum of tokensByOwner
+  dispatcherState:           DispatcherState;
+  concurrencyLimit:          number;
+  agentsInFlight:            number;
+  freeSlots:                 number;
+  ticketCountByStatus:       Record<TicketStatus, number>;  // over every ticket (--full)
+  ticketTotal:               number;
+  activeRows:                ActiveRow[];                   // rows in-progress, oldest start first
+  readyTicketIds:            string[];                      // startable: held ones left out
+  heldTicketIds:             string[];                      // every held ticket, as the CLI lists them
+  reviewWaitingTicketIds:    string[];                      // held ones left out
+  pausedBuildCount:          number;
+  recentLog:                 LogLine[];                     // newest stamp first (append order on a tie), at most 5
+  tokensTotal:               number;                        // sum of tokensByOwner
+  dispatcherRunId:           string | null;                 // the latest dispatcher run's workflow id, null before any
+  lowPriorityWaitingTickets: WaitingTicket[];               // priority low, pending, not held; lowest id first
 }
 
 export type ProjectHealth =

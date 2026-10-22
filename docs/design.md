@@ -4,7 +4,11 @@ A governing dashboard over every repository the agent-progress CLI tracks on thi
 (or reuses) a local Bun server and opens it in the browser: an overview of every project's agentic work in flight,
 and each project's own `progress.html` opened inside the dashboard in an iframe. It reads the files on disk live and
 never writes to a tracked repository itself: the one change it makes there is running `agent-progress concurrency <n>`
-in the project's root when the user clicks for it, so the CLI takes its lock and writes its own tracker.
+in the project's root when the user clicks for it, so the CLI takes its lock and writes its own tracker. The second
+effect a click can have writes nothing at all: a message to the board's live orchestrator Claude Code session, asking
+it to start building or telling it which low-priority tickets the user cleared to run. The server finds that session
+by reading `~/.claude/sessions/` (one record per live session) and `~/.claude/projects/` (each session's workflow
+transcripts), and the orchestrator decides what to do with the message.
 
 ## Sources of truth
 
@@ -85,6 +89,7 @@ holding no data. Routes:
 | `GET /api/events` | Server-Sent Events: `event: snapshot` with the whole snapshot on connect and on every change; a `: heartbeat` comment every 25 s |
 | `GET /projects/<trackerId>/page/<path>` | a file from that project's page folder: 404 for an unknown tracker, a missing file, or any path that resolves (after `realpath`) outside the folder; `Cache-Control: no-store`. `progress.html` and `progress.stamp.js` carry a CSP limiting them to this origin (inline script and style allowed, `frame-ancestors 'self'`); every other file carries `Content-Security-Policy: sandbox`, so a script in a ticket's linked SVG or HTML runs in an opaque origin |
 | `POST /api/projects/<trackerId>/concurrency` | body `{ "limit": <n> }`, an absolute whole number from 1 to 10: runs `agent-progress concurrency <n>` in that project's root (the one change the dashboard makes to a tracked repository, on the user's click), re-reads the board at once so the next snapshot carries the new limit, and answers 204. Same Host guard; 403 for an `Origin` that is present and not this server's own, 404 for an unknown tracker, 400 for any other body (no CLI run), 409 with the CLI's message on its exit 1, 502 for any other failure |
+| `POST /api/projects/<trackerId>/orchestrator-requests` | body `{ "kind": "start-building" }` or `{ "kind": "clear-low-tickets", "ticketIds": [...] }` (1 to 50 non-empty ids, each among the board's `lowPriorityWaitingTickets`): writes one NDJSON line `{"type":"user","message":{"role":"user","content":<text>}}` to the board's orchestrator session's `messagingSocketPath` and answers 204. The text relays the user's click, names the project and says what to do: run the board through the agent-progress dispatcher, leaving a run in flight running; or triage the named tickets and launch with `includeLowPriority: true` once no run is in flight, never stopping a running dispatcher. The orchestrator is the one live session (pid alive, socket accepting) whose `~/.claude/projects/<slug of its cwd>/<sessionId>/subagents/workflows/` holds the board's `dispatcherRunId`, else the one live session whose `cwd` is the project root. Nothing is written to the board or the repository. Same Host guard; 403 for a foreign `Origin`, 404 for an unknown tracker, 400 for any other body, 409 for an id that is not low-priority waiting or for zero or several candidate sessions, 502 when the chosen socket fails; none of these writes to a socket |
 | `POST /api/shutdown` | stops the server (used by `agent-dashboard stop`; same Host guard) |
 
 ### The command line
@@ -135,7 +140,11 @@ export interface BoardSummary {
   pausedBuildCount: number;
   recentLog: LogLine[];                                 // newest stamp first (append order on a tie), at most 5
   tokensTotal: number;                                  // sum of tokensByOwner
+  dispatcherRunId: string | null;                       // concurrency.dispatcherRunId, null before any run
+  lowPriorityWaitingTickets: WaitingTicket[];           // priority low, pending, not held; lowest id first
 }
+
+export interface WaitingTicket { ticketId: string; title: string }
 
 export type ProjectHealth =
   | { kind: 'ready'; board: BoardSummary }
