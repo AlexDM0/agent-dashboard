@@ -11,8 +11,8 @@ export interface TicketBar {
   caption:  string;
 }
 
-/** Done first, waiting last: the bar reads left to right as the work moves. */
-const SEGMENT_ORDER: readonly TicketStatus[] = ['delivered', 'reviewed', 'in-review', 'in-progress', 'pending', 'abandoned'];
+/** Done first, waiting last: the bar reads left to right as the work moves. Abandoned tickets are not shown. */
+const SEGMENT_ORDER: readonly TicketStatus[] = ['delivered', 'reviewed', 'in-review', 'in-progress', 'pending'];
 
 /** Only the statuses whose caption word differs from the value. */
 const CAPTION_WORDS: Partial<Record<TicketStatus, string>> = {
@@ -20,7 +20,8 @@ const CAPTION_WORDS: Partial<Record<TicketStatus, string>> = {
   'in-progress': 'in progress',
 };
 
-export function ticketBarOf(ticketCountByStatus: Record<TicketStatus, number>, ticketTotal: number): TicketBar {
+export function ticketBarOf(ticketCountByStatus: Record<TicketStatus, number>, ticketTotalWithAbandoned: number): TicketBar {
+  const ticketTotal = Math.max(0, ticketTotalWithAbandoned - ticketCountByStatus.abandoned);
   const segments = SEGMENT_ORDER
     .filter((status) => ticketCountByStatus[status] > 0)
     .map((status) => ({ status, count: ticketCountByStatus[status], widthPercent: ticketTotal > 0 ? (ticketCountByStatus[status] / ticketTotal) * 100 : 0 }));
