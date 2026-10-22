@@ -3,5 +3,5 @@ node_modules/
 *.log
 .claude/worktrees/
 .agent-progress/
-.claude/skills/agent-progress/
 .claude/skills/agent-progress-orchestrate/
+.claude/skills/agent-po/
