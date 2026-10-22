@@ -17,8 +17,6 @@ export interface LogLine { at: string; text: string }
 
 export interface WaitingTicket { ticketId: string; title: string }
 
-export type OrchestratorRequestKind = 'start-building' | 'clear-low-tickets';
-
 /** The body of `POST /api/projects/<trackerId>/orchestrator-requests`. */
 export type OrchestratorRequest =
   | { kind: 'start-building' }
