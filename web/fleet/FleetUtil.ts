@@ -6,7 +6,7 @@ import { ProjectOrdering }                    from '../overview/ProjectOrdering.
 
 export type FleetFilter = 'all' | 'running' | 'needs-you';
 
-/** One card of the Needs you column: a question the inbox holds, or a dashboard-owned session due a hand-off. */
+/** One card of the Needs you column: a question the inbox holds, or a dashboard-owned session due a refresh. */
 export type AttentionCard =
   | { kind: 'question'; trackerId: string; project: string; requestId: string; firstLine: string; askedAt: string }
   | { kind: 'handoff'; trackerId: string; project: string; contextCaption: string; measuredAt: string };
@@ -27,7 +27,7 @@ function isRunning(project: ProjectSnapshot): boolean {
   return project.health.kind === 'ready' && project.health.board.dispatcherState === 'running';
 }
 
-/** Only a live dashboard-owned session is offered Hand off, so only its context can be critical here. */
+/** Only a live dashboard-owned session is offered Refresh orchestrator, so only its context can be critical here. */
 function isContextCritical(project: ProjectSnapshot): boolean {
   const session = project.orchestrator;
   return session !== null && session.state !== 'ended' && ContextUsageUtil.suggestsHandoff(session.context);
@@ -48,7 +48,7 @@ function firstLineOf(text: string): string {
   return text.split('\n', 1)[0]?.trim() ?? '';
 }
 
-/** The inbox's entries in the inbox's order, then a hand-off card per critical session in the fleet's order. */
+/** The inbox's entries in the inbox's order, then a refresh card per critical session in the fleet's order. */
 function attentionCardsOf(inboxEntries: InboxEntry[], projects: ProjectSnapshot[]): AttentionCard[] {
   const questionCards: AttentionCard[] = inboxEntries.map((entry) => ({
     kind:      'question',

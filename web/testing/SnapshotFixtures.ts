@@ -138,7 +138,7 @@ export const MARKUP_INJECTION_LINE = 'Checking the build <img src=x onerror=aler
 
 /**
  * An inbox fleet: a question with every context row, its last line holding markup that must stay text, a question with
- * an empty context, an idle orchestrator at 84% (a Hand off it would take) and one waiting at 85% (a refused one).
+ * an empty context, an idle orchestrator at 84% (a refresh it would take) and one waiting at 85% (a refused one).
  */
 export function inboxSnapshotWith(): DashboardSnapshot {
   const stoppedBoard = (): ProjectHealth => ({ kind: 'ready', board: boardSummaryWith({ dispatcherState: 'stopped' }) });

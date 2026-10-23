@@ -89,9 +89,9 @@ test('the alert carries the refusal the server would give: a pending question, a
   });
   const refusals = InboxUtil.alertsOf([asking, projectAt('example-busy', 90_000, 'busy'), running]).map((alert) => alert.handoffRefusal);
   expect(refusals).toEqual([
-    'A question of the orchestrator is pending; answer it before handing off',
-    'The orchestrator is busy; hand off once it is idle',
-    'The board\'s dispatcher is running; hand off once it has stopped or finished',
+    'A question of the orchestrator is pending; answer it before refreshing',
+    'The orchestrator is busy; refresh once it is idle',
+    'The board\'s dispatcher is running; refresh once it has stopped or finished',
   ]);
 });
 

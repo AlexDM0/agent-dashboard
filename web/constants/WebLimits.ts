@@ -13,7 +13,7 @@ export const WEB_LIMITS = {
   JUST_NOW_THRESHOLD_SECONDS:             30,
   /**
    * The context shares, of the model's window, from which the meter turns amber and then the error colour; from the
-   * second a dashboard-owned session's panel warns and offers Hand off loudly. It never acts by itself.
+   * second a dashboard-owned session's panel warns and highlights Refresh orchestrator. It never acts by itself.
    */
   CONTEXT_WARNING_SHARE:                  0.5,
   CONTEXT_CRITICAL_SHARE:                 0.8,

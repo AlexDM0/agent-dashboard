@@ -40,7 +40,7 @@ function AttentionCardButton({ card, now, onOpenHandoff }: { card: AttentionCard
         <span className="mono muted ap-attention-age">{TimeUtil.relativeAgeOfStamp(card.measuredAt, now)}</span>
       </span>
       <span className="muted ap-attention-who">Orchestrator context {card.contextCaption}</span>
-      <span className="ap-attention-text">Hand off to a fresh session</span>
+      <span className="ap-attention-text">Refresh the orchestrator</span>
     </button>
   );
 }

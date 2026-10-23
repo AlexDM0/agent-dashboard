@@ -64,7 +64,7 @@ export function Inbox({ entries, alerts, now }: InboxProperties) {
               </div>
             </div>
             {shownEntries.length + shownAlerts.length === 0
-              ? <p className="muted ap-inbox-empty">No orchestrator is waiting for an answer or a handoff.</p>
+              ? <p className="muted ap-inbox-empty">No orchestrator is waiting for an answer or a refresh.</p>
               : (
                 <ol className="ap-inbox-list">
                   {shownAlerts.map((alert) => <InboxAlertCard key={`alert:${alert.trackerId}`} alert={alert} onLeave={close} />)}

@@ -389,7 +389,7 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | Route | Answer |
 | --- | --- |
 | `POST /api/projects/<trackerId>/orchestrator` | body `{ "startBuilding": <boolean> }`: starts the supervisor in the project's root and answers 201 with the `OrchestratorSession` once its socket accepts (at most 10 s). With `startBuilding` true its first message is the `start-building` text of `orchestrator-requests`, carrying the user's go that `Workflow` needs; with it false the first message has it load the `agent-progress-orchestrate` skill and read the board, launching no dispatcher run until the user asks to start building. 400 for any other body, 409 while a dashboard-owned orchestrator of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
-| `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204. 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
+| `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204 (the orchestrator menu's confirmed Stop). 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }` or `{ "text": <string>, "sessionId": <string> }`, the text 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. The text is sent trimmed. With `sessionId` it goes to that session alone: the project's dashboard-owned one, or one of its watched sessions; without it, to the live dashboard-owned session, else the one the finder names. 400 for any other body, 409 for a `sessionId` that names neither a live dashboard-owned session nor a live watched one of the project (a session that is gone), or, without one, when no dashboard-owned session lives and the finder refuses (no or several sessions), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<answer>" } }`, one non-empty answer for every question of that pending request (a label it offered, labels joined for a multi-select, or free text for an "Other" choice): sent as `answer`, 204; the request is no longer pending from then on, so a second answer is 409 and the supervisor ignores an answer to a request it no longer holds. 400 for any other body, 404 when no dashboard-owned orchestrator ran since this server started, 409 for one that has ended, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/handoff` | no body; the launch token and this server's own `Origin` as for a start. Hands the board to a fresh session (see "Handing off") and answers 201 with `OrchestratorHandoffResult` `{ session, notePath }`. 404 when no dashboard-owned orchestrator ran since this server started; 409, changing nothing and saying which, for an ended session, a pending question, a session not `idle`, a dispatcher `running` or a board that cannot be read, or a handoff of the project already under way; 502 when the session ends, asks a question or gives no reply in time (the old session left running, nothing started), or when the stop or the fresh start fails after the note was kept (the text names the note's path) |
@@ -402,7 +402,8 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 
 ### Handing off
 
-A handoff (`src/services/OrchestratorHandoff.ts`) replaces a dashboard-owned orchestrator whose context fills up with a
+A handoff (`src/services/OrchestratorHandoff.ts`, "Refresh orchestrator" on the page, which words its refusals as a
+refresh too) replaces a dashboard-owned orchestrator whose context fills up with a
 fresh one, instead of letting it compact and forget what it was weighing. In order: the running session gets one fixed
 chat (`HANDOFF_NOTE_REQUEST`), and the assistant text of the turn it opens, once the session is idle again, is the note;
 the note is written atomically to `~/.agent-progress-monitor/agent-dashboard/handoffs/<trackerId>-<stamp>.md` (the
@@ -508,7 +509,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   and the ready, awaiting-review and held counts, all as `web/shell/HeaderTotals.ts` sums them. The notification
   control, the Inbox control and the theme toggle come last.
 - **Dashboard menu** (before the title on every view, its panel opening along the header's left edge): a hamburger toggle named "Dashboard menu" opening a panel with
-  one item, "Restart server". Choosing it asks "Restart the dashboard server?" with Restart and Cancel in the panel;
+  one item, "Restart server", its explanation as a `title` tooltip. Choosing it asks "Restart the dashboard server?" with Restart and Cancel in the panel;
   Cancel returns to the item without a request, Restart sends `POST /api/restart` and closes the menu, after which the
   reconnecting banner shows until the successor answers. A refusal is shown in the panel. The menu closes as the
   Inbox does: Escape (focus back on the toggle), an outside pointerdown, the window's blur.
@@ -528,7 +529,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   `#/projects/<trackerId>/crew`: the board opens its crew drawer on the orchestrator and drops `/crew` from the hash.
   Beside the questions the panel lists an alert for every live dashboard-owned orchestrator at or past
   `CONTEXT_CRITICAL_SHARE` of a known window (`InboxUtil.alertsOf`, computed from the snapshot, never stored, never
-  dismissed): "Context at n%: hand off to a fresh orchestrator", the drawer's handoff explanation and a Hand off
+  dismissed): "Context at n%: refresh the orchestrator", the drawer's refresh explanation and a "Refresh…"
   button sending the drawer's handoff request after a confirm. It is disabled, its reason beside it in the server's
   words, while the server would refuse: a pending question, a session not idle, an unreadable board or a running
   dispatcher. All / Questions / Alerts buttons filter the panel. While a question or an alert waits, the tab title
@@ -576,7 +577,7 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
 
 - **Filters** All / Running / Needs you over the table, and "n of m projects". Running keeps the projects whose
   dispatcher is `running`; Needs you those whose live dashboard-owned session has a pending question or a context at
-  or past `CONTEXT_CRITICAL_SHARE` (a watched session is offered no hand-off, so it never counts).
+  or past `CONTEXT_CRITICAL_SHARE` (a watched session is offered no refresh, so it never counts).
 - **Table**, one row per project in the overview's order (the Active group, then the Idle one): **Project** (status
   dot, ringed while a question waits; the name linking to its board, ellipsis with the full name in `title`; the
   dispatcher pill, or the health kind for a board that cannot be read); **Crew** (the leading session's `OR` glyph,
@@ -590,8 +591,9 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   under 600 px they stack. Nothing scrolls sideways.
 - **Needs you** column (320 to 360 px beside the table; under it below 1100 px): the inbox's entries as compact
   cards in the inbox's order (project, "Orchestrator asks", the question's first line, its age), each opening the
-  header's inbox; then a "hand off" card per live dashboard-owned session at or past `CONTEXT_CRITICAL_SHARE` (its
-  context caption and the age of the measure), opening the project's crew drawer where Hand off lives.
+  header's inbox; then a "Refresh the orchestrator" card per live dashboard-owned session at or past
+  `CONTEXT_CRITICAL_SHARE` (its context caption and the age of the measure), opening the project's crew drawer where
+  the orchestrator menu's Refresh orchestrator lives.
 
 ### Board (`#/projects/<trackerId>`)
 
@@ -643,12 +645,20 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   between two turns one closed `<details>` line in a small rounded box reading "Used N tools", listing each call as a
   closed row (tool name and input summary) that opens to its result, "Running…" before it arrives, "No result
   recorded" for a call without fields (`web/orchestrator/ConversationItemUtil.ts` folds a result into its call by
-  `callId`), Stop and a
-  quiet "Hand off…" (`web/orchestrator/HandoffControl.tsx`). From 80% of a known window (`CONTEXT_CRITICAL_SHARE`,
-  `web/constants/WebLimits.ts`) the session warns in `--err-ink` and the button turns loud; it never acts by itself. A
-  click asks to confirm inline: "Hand off asks for a note, stops this session, starts a fresh one with the note." A
-  watched session offers neither Stop, Hand off nor answers. Every request carries the launch token; a refusal shows the server's
-  text inline as `--err-ink`.
+  `callId`). A live
+  dashboard-owned session's head starts, left of its name, with a hamburger toggle named "Orchestrator menu"
+  (`web/orchestrator/OrchestratorMenu.tsx`, on the header's `web/menu/PopoverMenu.tsx`, closing as the header's menu
+  does) whose panel holds "Refresh orchestrator" (the handoff, see "Handing off") and "Stop". Each item carries a
+  one-sentence explanation as its `title` tooltip and its accessible description (`web/orchestrator/OrchestratorMenuUtil.ts`),
+  and each confirms in the panel before its request: "Refresh this orchestrator? Refresh asks for a note, stops this
+  session, starts a fresh one with the note." with Refresh / Cancel, "Stop this orchestrator?" with Stop / Cancel;
+  Cancel sends nothing, a confirm sends and closes the panel. From 80% of a known window (`CONTEXT_CRITICAL_SHARE`,
+  `web/constants/WebLimits.ts`) the toggle carries an `--err-ink` warning dot, "Refresh orchestrator" is highlighted in
+  the panel, and the session warns "Context …: refresh this orchestrator before it compacts." in `--err-ink`; it never
+  acts by itself. "Refreshing…" or "Stopping…" shows beside the session while its request is out. A watched session
+  offers neither the menu nor answers. Every request carries the launch token; a refusal shows the server's text beside
+  the session as `--err-ink`. Every user-facing word for the handoff is "refresh"; the route, types and files keep
+  "handoff".
 - The **context meter**: an 8 px bar (6 px compact) and "62% of 200k", green (`reviewed`) under 50%, amber
   (`in-progress`) from 50%, the bar `--err-ink` from 80%; a window not known reads "48k tokens" over an empty bar.
 - Every overview card of a project with a session has a one-line "Session" row over the slots: the leading session's

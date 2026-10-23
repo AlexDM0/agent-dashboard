@@ -69,11 +69,11 @@ function entriesOf(projects: ProjectSnapshot[]): InboxEntry[] {
 /** The server's handoff refusals, in its order and words, so the button is disabled exactly while a click would be refused. */
 function handoffRefusalOf(project: ProjectSnapshot, session: OrchestratorSession): string | null {
   if (session.pendingQuestions.length > 0 || session.state === 'waiting-for-answer') {
-    return 'A question of the orchestrator is pending; answer it before handing off';
+    return 'A question of the orchestrator is pending; answer it before refreshing';
   }
-  if (session.state !== 'idle') return `The orchestrator is ${session.state}; hand off once it is idle`;
+  if (session.state !== 'idle') return `The orchestrator is ${session.state}; refresh once it is idle`;
   if (project.health.kind !== 'ready') return 'The board cannot be read, so whether its dispatcher runs is unknown';
-  if (project.health.board.dispatcherState === 'running') return 'The board\'s dispatcher is running; hand off once it has stopped or finished';
+  if (project.health.board.dispatcherState === 'running') return 'The board\'s dispatcher is running; refresh once it has stopped or finished';
   return null;
 }
 

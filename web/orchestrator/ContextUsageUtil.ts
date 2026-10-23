@@ -36,7 +36,7 @@ function fullnessOf(context: ContextUsage | null): ContextFullness {
   return share >= WEB_LIMITS.CONTEXT_WARNING_SHARE ? 'filling' : 'roomy';
 }
 
-/** At or past the critical share the panel warns and offers Hand off; an unknown window never does. */
+/** At or past the critical share the panel warns and highlights Refresh orchestrator; an unknown window never does. */
 function suggestsHandoff(context: ContextUsage | null): boolean {
   return fullnessOf(context) === 'critical';
 }

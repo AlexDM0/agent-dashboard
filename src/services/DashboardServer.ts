@@ -894,13 +894,13 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   function handoffRefusalOf(trackerId: string, session: OrchestratorSession): string | null {
     if (session.state === 'ended') return 'The dashboard-owned orchestrator of this project has ended';
     if (session.pendingQuestions.length > 0 || session.state === 'waiting-for-answer') {
-      return 'A question of the orchestrator is pending; answer it before handing off';
+      return 'A question of the orchestrator is pending; answer it before refreshing';
     }
-    if (session.state !== 'idle') return `The orchestrator is ${session.state}; hand off once it is idle`;
+    if (session.state !== 'idle') return `The orchestrator is ${session.state}; refresh once it is idle`;
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
     if (project?.health.kind !== 'ready') return 'The board cannot be read, so whether its dispatcher runs is unknown';
     // A fresh session is not proven to resume a Workflow run another session launched.
-    if (project.health.board.dispatcherState === 'running') return 'The board\'s dispatcher is running; hand off once it has stopped or finished';
+    if (project.health.board.dispatcherState === 'running') return 'The board\'s dispatcher is running; refresh once it has stopped or finished';
     return null;
   }
 
@@ -912,7 +912,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (trackerId === null || monitor.rootOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     if (orchestratorSessions.sessionOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
-    if (trackersBeingHandedOff.has(trackerId)) return plainResponse(HTTP_STATUS.CONFLICT, 'A handoff of this project\'s orchestrator is already under way');
+    if (trackersBeingHandedOff.has(trackerId)) return plainResponse(HTTP_STATUS.CONFLICT, 'A refresh of this project\'s orchestrator is already under way');
     trackersBeingHandedOff.add(trackerId);
     try {
       // The dispatcher state is read afresh, so a run launched since the last snapshot still refuses.

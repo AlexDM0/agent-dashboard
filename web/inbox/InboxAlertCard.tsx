@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 
-import { HANDOFF_CONFIRMATION_TEXT } from '../orchestrator/HandoffControl.tsx';
+import { HANDOFF_CONFIRMATION_TEXT } from '../orchestrator/OrchestratorMenuUtil.ts';
 import { handOffOrchestrator }       from '../orchestrator/OrchestratorSessionDelivery.ts';
 import { SessionGlyph }              from '../orchestrator/SessionGlyph.tsx';
 import { useSessionRequest }         from '../orchestrator/UseSessionRequest.ts';
@@ -32,13 +32,13 @@ export function InboxAlertCard({ alert, onLeave }: InboxAlertCardProperties) {
         <span className="muted">orchestrator</span>
         <span className="ap-inbox-hosted">hosted</span>
       </div>
-      <p className="ap-inbox-alert-title">Context at {alert.contextPercent}%: hand off to a fresh orchestrator</p>
+      <p className="ap-inbox-alert-title">Context at {alert.contextPercent}%: refresh the orchestrator</p>
       <p className="muted ap-inbox-alert-explanation">{HANDOFF_CONFIRMATION_TEXT}</p>
       <div className="ap-question-actions">
         {isConfirming
           ? (
-            <div className="ap-handoff-confirm" role="group" aria-label="Confirm hand off">
-              <button type="button" className="ap-control" onClick={() => void confirmHandoff()}>Hand off</button>
+            <div className="ap-handoff-confirm" role="group" aria-label="Confirm refresh">
+              <button type="button" className="ap-control" onClick={() => void confirmHandoff()}>Refresh</button>
               <button type="button" className="ap-control is-quiet" onClick={() => setIsConfirming(false)}>Cancel</button>
             </div>
           )
@@ -50,7 +50,7 @@ export function InboxAlertCard({ alert, onLeave }: InboxAlertCardProperties) {
               aria-describedby={isRefused ? refusalId : undefined}
               onClick={() => setIsConfirming(true)}
             >
-              {handoffRequest.isSending ? 'Handing off…' : 'Hand off…'}
+              {handoffRequest.isSending ? 'Refreshing…' : 'Refresh…'}
             </button>
           )}
         {isRefused ? <span id={refusalId} className="muted ap-inbox-refusal">{alert.handoffRefusal}</span> : null}
