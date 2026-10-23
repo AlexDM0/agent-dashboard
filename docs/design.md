@@ -657,6 +657,32 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   `/product-owner/messages` only, and a menu ("Product owner menu") holding End session alone (`DELETE
   /product-owner`), never a refresh or a context warning. Every request of a role goes to that role's routes
   (`OrchestratorSessionDelivery.ts`), so nothing meant for the product owner can reach the orchestrator.
+- The **chat overlay** (`web/chat/`): the header's Chat button, or `C` while focus is not in a text field, opens a
+  large dialog over any route (`web/chat/UseChatOverlay.ts`); Esc, captured on the window before the drawer's and the
+  board's own Esc, closes it from anywhere in it, the route unchanged and focus back on the Chat button. It holds no
+  conversation of its own, only which one is shown: each session is read from its own event stream, so closing and
+  reopening loses nothing while the session lives. Three columns, stacking into one scrolling column below 768 px:
+  - **Conversations**: every project's dashboard-owned orchestrator and product owner (live or ended, as the snapshot
+    keeps them for this server's run) and every watched desktop orchestrator, "desktop app · send-only", ordered by
+    `ChatConversationListUtil.conversationsOf`: live sessions with a pending question first, then by `lastAction.at`
+    newest first (none last), then the ended ones ("ended · <last action>"). Above the list a project picker, "New
+    spar" (`POST /product-owner` with `{ "mode": "spar" }`, then selects that project's product owner) and "Talk to
+    orchestrator" (its live session, else a fresh one with `startBuilding` false).
+  - **Conversation**: the session's glyph, a title (the first line of the user's first message after the dashboard's
+    brief, else the session's name), a `sparring · files nothing` pill when its brief holds the spar instruction
+    (`ConversationHeadingUtil.isSparring`), its state, project and context meter; Minimise (a dock chip at the bottom
+    right reopening the same session), Dock beside the board (`#/projects/<trackerId>/crew/<role>`: the board opens
+    its crew drawer on that role's tab), End session (confirmed in place, `DELETE` on the role's route), Close. Then
+    its pending questions answered in place, the conversation (`ConversationLog`, plain text, tool calls collapsed to
+    one line, the `spar-table` blocks taken out), and the composer: quick prompts "Challenge this", "What am I
+    missing?", "Summarise the table" and "Wrap up into tickets", each sending exactly its text through the session's
+    messages route, and the chat box. A desktop session's transcript is not tailed: it offers the composer alone.
+  - **On the table**: the board's dispatcher pill and slots, then the newest valid table any assistant reply ends with
+    as a ```` ```spar-table ```` JSON block in the shape `.agent-progress/evidence/043-table-protocol.md` recommends
+    (`SparTableUtil`): points grouped Agreed / Open / Parked, the tickets it would file at wrap-up, and each referenced
+    ticket with its status on the snapshot's board (building, in review, waiting for review, ready, held, low priority,
+    not in flight). A block with any wrong entry is ignored, keeping the last good table; none reads "Nothing on the
+    table yet". The table is read in the web from the conversation; the product owner's brief does not yet ask for it.
 - The **frame**: `progress.html` from the board origin in an iframe sandboxed to `allow-scripts allow-same-origin`
   (see "The bridge") filling the rest of the viewport, no border, requested as `progress.html?embedded=dashboard`
   (added to the page URL's query beside any it has; "Open board in a new tab" keeps the plain page) so the board drops

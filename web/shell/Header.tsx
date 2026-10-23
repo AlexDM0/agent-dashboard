@@ -1,3 +1,4 @@
+import type { ChatOverlay }              from '../chat/UseChatOverlay.ts';
 import { Inbox }                         from '../inbox/Inbox.tsx';
 import type { InboxAlert, InboxEntry }   from '../inbox/InboxUtil.ts';
 import { NotificationToggle }            from '../notifications/NotificationToggle.tsx';
@@ -21,11 +22,12 @@ interface HeaderProperties {
   inboxAlerts:       InboxAlert[];
   notifications:     DesktopNotifications;
   theme:             ThemePreference;
+  chatOverlay:       ChatOverlay;
   now:               number;
 }
 
 export function Header({
-  stream, route, totals, orchestratorCount, inboxEntries, inboxAlerts, notifications, theme, now
+  stream, route, totals, orchestratorCount, inboxEntries, inboxAlerts, notifications, theme, chatOverlay, now
 }: HeaderProperties) {
   return (
     <header className="ap-header">
@@ -38,6 +40,18 @@ export function Header({
       <HeaderStatistics totals={totals} machineParallelAgentLimit={stream.snapshot?.machineParallelAgentLimit ?? null} orchestratorCount={orchestratorCount} />
       <div className="ap-header-tools">
         <NotificationToggle notifications={notifications} />
+        <button
+          ref={chatOverlay.chatButtonReference}
+          type="button"
+          className="ap-control ap-chat-toggle"
+          aria-haspopup="dialog"
+          aria-expanded={chatOverlay.visibility === 'open'}
+          aria-keyshortcuts="C"
+          title="Chat (C)"
+          onClick={chatOverlay.open}
+        >
+          Chat
+        </button>
         <Inbox entries={inboxEntries} alerts={inboxAlerts} now={now} />
         <ThemeToggle choice={theme.choice} resolvedTheme={theme.resolvedTheme} onChoose={theme.chooseTheme} />
       </div>

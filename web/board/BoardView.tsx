@@ -22,9 +22,12 @@ interface BoardViewProperties {
   snapshot:        DashboardSnapshot | null;
   trackerId:       string;
   opensCrewDrawer: boolean;
+  crewDrawerTab?:  SessionRole;
 }
 
-export function BoardView({ snapshot, trackerId, opensCrewDrawer }: BoardViewProperties) {
+export function BoardView({
+  snapshot, trackerId, opensCrewDrawer, crewDrawerTab
+}: BoardViewProperties) {
   const frameReference = useRef<HTMLIFrameElement | null>(null);
   const crewStripReference = useRef<HTMLButtonElement | null>(null);
   const drawerId = useId();
@@ -48,10 +51,10 @@ export function BoardView({ snapshot, trackerId, opensCrewDrawer }: BoardViewPro
   useEffect(() => {
     if (!opensCrewDrawer) return;
     // No tab named: the drawer opens on the role whose questions alone wait.
-    setOpenDrawer({ focus: 'chat' });
+    setOpenDrawer({ focus: 'chat', ...(crewDrawerTab === undefined ? {} : { tab: crewDrawerTab }) });
     // Dropping the request from the hash lets the same link open the drawer again after it was closed.
     window.location.replace(boardHashOf(trackerId));
-  }, [trackerId, opensCrewDrawer]);
+  }, [trackerId, opensCrewDrawer, crewDrawerTab]);
 
   const closeDrawer = useCallback(() => {
     setOpenDrawer(null);

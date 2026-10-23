@@ -1,5 +1,7 @@
 import { useEffect, useState }     from 'react';
 import { BoardView }               from './board/BoardView.tsx';
+import { ChatOverlayDialog }       from './chat/ChatOverlayDialog.tsx';
+import { useChatOverlay }          from './chat/UseChatOverlay.ts';
 import { FleetView }               from './fleet/FleetView.tsx';
 import { InboxUtil }               from './inbox/InboxUtil.ts';
 import { useAppBadge }             from './notifications/UseAppBadge.ts';
@@ -36,6 +38,7 @@ export function App() {
   const pendingQuestionCount = inboxEntries.length;
   const inboxWaitingCount = pendingQuestionCount + inboxAlerts.length;
   const notifications = useDesktopNotifications(stream);
+  const chatOverlay = useChatOverlay();
   useAppBadge(pendingQuestionCount);
 
   useEffect(() => {
@@ -55,10 +58,20 @@ export function App() {
           inboxAlerts={inboxAlerts}
           notifications={notifications}
           theme={theme}
+          chatOverlay={chatOverlay}
           now={now}
         />
         <ConnectionBanner connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
-        {route.kind === 'board' ? <BoardView snapshot={stream.snapshot} trackerId={route.trackerId} opensCrewDrawer={route.opensCrewDrawer} /> : null}
+        {route.kind === 'board'
+          ? (
+            <BoardView
+              snapshot={stream.snapshot}
+              trackerId={route.trackerId}
+              opensCrewDrawer={route.opensCrewDrawer}
+              {...(route.crewDrawerTab === undefined ? {} : { crewDrawerTab: route.crewDrawerTab })}
+            />
+          )
+          : null}
         {route.kind === 'fleet' ? <FleetView snapshot={stream.snapshot} inboxEntries={inboxEntries} now={now} /> : null}
         {route.kind === 'overview'
           ? (
@@ -74,6 +87,7 @@ export function App() {
           )
           : null}
       </div>
+      <ChatOverlayDialog snapshot={stream.snapshot} overlay={chatOverlay} />
     </div>
   );
 }

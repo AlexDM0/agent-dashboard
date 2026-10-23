@@ -32,6 +32,14 @@ test('a crew drawer hash is its board asked to open the drawer; any other suffix
   expect(hashRouteOf(`${boardHashOf('example')}/other`)).toEqual({ kind: 'board', trackerId: 'example', opensCrewDrawer: false });
 });
 
+test('a crew drawer hash naming a role opens the drawer on that tab; an unknown tab names none', () => {
+  expect(hashRouteOf(crewDrawerHashOf('example', 'product-owner'))).toStrictEqual({
+    kind: 'board', trackerId: 'example', opensCrewDrawer: true, crewDrawerTab: 'product-owner'
+  });
+  expect(hashRouteOf(`${crewDrawerHashOf('example')}/other`)).toStrictEqual({ kind: 'board', trackerId: 'example', opensCrewDrawer: true });
+  expect(hashRouteOf(`${boardHashOf('example')}/other/orchestrator`)).toStrictEqual({ kind: 'board', trackerId: 'example', opensCrewDrawer: false });
+});
+
 test('a board hash without an id or with broken encoding is the overview', () => {
   expect(hashRouteOf('#/projects/')).toEqual({ kind: 'overview' });
   expect(hashRouteOf('#/projects/%E0%A4%A')).toEqual({ kind: 'overview' });

@@ -1,4 +1,5 @@
 import type {
+  ActiveRow,
   BoardSummary,
   ContextUsage,
   DashboardSnapshot,
@@ -152,6 +153,27 @@ export function productOwnerSnapshotWith(): DashboardSnapshot {
   };
   const projects = fleet.projects.map((project) => (Object.hasOwn(productOwnersByProject, project.project)
     ? { ...project, productOwner: productOwnersByProject[project.project] ?? null }
+    : project));
+  return { ...fleet, projects };
+}
+
+/**
+ * The chat overlay's fleet: the product owners' fleet plus an ended product owner on the notes project, whose board
+ * has #043 building, #040 in review and #047 held, the tickets the fixture table references.
+ */
+export function chatSnapshotWith(): DashboardSnapshot {
+  const fleet = productOwnerSnapshotWith();
+  const endedProductOwner = orchestratorSessionWith({
+    sessionId: 'product-owner-ended', pid: 4345, state: 'ended', lastAction: { at: '2026-10-21T09:59:30+02:00', text: 'Filed #131 and #134' }
+  });
+  const activeRowOf = (rowId: number, kind: 'build' | 'review', ticketId: string): ActiveRow => ({
+    rowId, kind, ticketId, reviewRound: null, title: `Example ticket ${ticketId}`, owner: 'opus', startedAt: null, note: ''
+  });
+  const notesBoard = boardSummaryWith({
+    dispatcherState: 'running', agentsInFlight: 2, freeSlots: 0, activeRows: [activeRowOf(1, 'build', '043'), activeRowOf(2, 'review', '040')], heldTicketIds: ['047']
+  });
+  const projects = fleet.projects.map((project) => (project.project === 'example-notes'
+    ? { ...project, health: { kind: 'ready', board: notesBoard } as const, productOwner: endedProductOwner }
     : project));
   return { ...fleet, projects };
 }
