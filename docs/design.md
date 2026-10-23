@@ -516,6 +516,16 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   history before its live messages. A reopen for a subscription change keeps the connection number the notifications
   baseline on; a retry after the browser gave up starts a new one. The page closes its stream on `pagehide` and opens
   it again on a `pageshow` from the back-forward cache, so a reload never queues behind its own old connection.
+- **Width** (`web/styles/Dashboard.css`, the `:root` block under "page"): the page spans the window inside its gutter
+  (`--page-gutter-inline`, `clamp(16px, 3vw, 40px)`; 24 px on a board, 16 px on a phone), with no centring
+  `max-width`. Each region grows with the window until width stops helping it: the board frame takes everything
+  beside the 288 px rail; the overview's card grid adds a column per `--card-width-min` (560 px) plus
+  `--card-grid-gap`, and no card passes `--card-width-max`, the width at which a second column fits beside it; the
+  Fleet table's two text columns take what the 320–360 px "Needs you" column leaves; the header keeps its identity
+  left and its tools right. Running text stays within `--reading-measure` (72ch): the chat overlay's conversation is
+  centred at that measure in its column; the crew drawer (480 px), the "Needs you" column and the cards are narrower
+  than it already. The board page inside the frame lays itself out; its width is agent-progress's. No width from
+  375 px up scrolls the page sideways.
 
 ### Overview (`#/`)
 
@@ -568,7 +578,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   as a web app in Chrome or Edge) the icon carries the inbox count, cleared at zero.
 - **Filter bar**: a search field (project name or path) and a segmented toggle `All | Active`.
 - **Two groups**: "Active" (agents in flight, or the dispatcher `running`), a responsive grid of project cards
-  (`repeat(auto-fill, minmax(560px, 1fr))`: two per row at 1440 px, one on a phone), and "Idle", one panel of one-line
+  (`repeat(auto-fill, minmax(560px, 1fr))`: two per row at 1440 px, three at 2000 px, one on a phone), and "Idle", one panel of one-line
   rows; within a group, A–Z by project name, ignoring case (ties by tracker id), whenever it last changed. The Idle
   heading reads "Idle n", with "· all delivered, nothing ready" when every idle board has every live ticket delivered
   and none ready. Neither group collapses on a phone.
