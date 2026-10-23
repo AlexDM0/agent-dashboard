@@ -550,8 +550,8 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   session described below.
 - The **frame**: `progress.html` from the board origin in an iframe sandboxed to `allow-scripts allow-same-origin`
   (see "The bridge") filling the rest of the viewport, no border, requested as `progress.html?embedded=dashboard`
-  (added to the page URL's query beside any it has; "Open in new tab" keeps the plain page) so the board drops its own
-  header, which repeats this toolbar, keeping its theme radio hidden for the bridge; a board without that mode ignores
+  (added to the page URL's query beside any it has; "Open board in a new tab" keeps the plain page) so the board drops
+  its own header, which repeats the command bar, keeping its theme radio hidden for the bridge; a board without that mode ignores
   the parameter,
   `--bg` behind it, hidden until it loads and again from the bridge's `board-unloading` to the next load; beside it the
   hidden bridge frame. Esc inside it arrives as the bridge's `leave-board`; Reload sends the frame to its page again,
