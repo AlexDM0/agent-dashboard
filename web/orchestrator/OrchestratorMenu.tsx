@@ -21,9 +21,9 @@ export function OrchestratorMenu({
   };
   const actions: PopoverMenuAction[] = OrchestratorMenuUtil.entriesOf(session.context).map((entry) => ({
     ...entry,
-    run: async () => {
-      await requestsByAction[entry.id]();
-      return { kind: 'done' };
+    run: () => {
+      void requestsByAction[entry.id]();
+      return Promise.resolve({ kind: 'done' });
     },
   }));
   return <PopoverMenu label="Orchestrator menu" actions={actions} hasWarning={OrchestratorMenuUtil.hasWarningOf(session.context)} />;
