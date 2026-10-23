@@ -45,12 +45,18 @@ export function useChatOverlay(): ChatOverlay {
   const [composerSeed, setComposerSeed] = useState<ComposerSeed | null>(null);
   const chatButtonReference = useRef<HTMLButtonElement | null>(null);
 
-  const open = useCallback((key?: string | null) => {
-    if (typeof key === 'string') setSelectedKey(key);
-    setVisibility('open');
+  // A seed is spent once its session is left or the window closes, so coming back never refills the composer with it.
+  const select = useCallback((key: string) => {
+    setSelectedKey(key);
+    setComposerSeed((previous) => (previous === null || previous.key === key ? previous : null));
   }, []);
+  const open = useCallback((key?: string | null) => {
+    if (typeof key === 'string') select(key);
+    setVisibility('open');
+  }, [select]);
   const close = useCallback(() => {
     setVisibility('closed');
+    setComposerSeed(null);
     chatButtonReference.current?.focus();
   }, []);
   const selectWithComposerText = useCallback((key: string, text: string) => {
@@ -82,6 +88,6 @@ export function useChatOverlay(): ChatOverlay {
   }, [visibility, close]);
 
   return {
-    visibility, selectedKey, composerSeed, chatButtonReference, open, close, select: setSelectedKey, selectWithComposerText
+    visibility, selectedKey, composerSeed, chatButtonReference, open, close, select, selectWithComposerText
   };
 }
