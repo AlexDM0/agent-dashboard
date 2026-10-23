@@ -73,7 +73,9 @@ ul { padding: 0; list-style: none; }
 .ap-notification-toggle[data-muted="true"] { color: var(--ink-muted); }
 
 /* ------------------------------------------------------------------ inbox -- */
-.ap-inbox { position: relative; }
+/* The panel is anchored to the header, not its button, so it stays inside the window when the header wraps. */
+.ap-header { position: relative; }
+.ap-inbox { position: static; }
 .ap-inbox-toggle { gap: 6px; }
 .ap-inbox-count {
   min-width: 18px; padding: 0 5px; font: 600 var(--fs-micro)/18px var(--font-mono); text-align: center;
@@ -81,9 +83,9 @@ ul { padding: 0; list-style: none; }
 }
 .ap-inbox-toggle[data-pending="true"] .ap-inbox-count { color: var(--surface); background: var(--link); }
 .ap-inbox-panel {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20;
+  position: absolute; top: auto; right: 0; z-index: 20; margin-top: 6px;
   display: flex; flex-direction: column; gap: var(--sp-3);
-  width: min(440px, calc(100vw - 32px)); max-height: 70vh; max-height: 70dvh; padding: var(--sp-3); overflow-y: auto;
+  width: min(440px, 100%); max-height: 70vh; max-height: 70dvh; padding: var(--sp-3); overflow-y: auto;
   background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-3);
   box-shadow: 0 4px 16px var(--shadow-card-lift);
 }
@@ -441,10 +443,7 @@ ul { padding: 0; list-style: none; }
   .ap-theme { display: none; }
   .ap-header-tools { grid-row: 1; grid-column: 2; gap: 8px; }
   .ap-inbox-toggle, .ap-notification-toggle { min-height: 44px; }
-  /* The panel spans the header's width, still opening just under its button. */
-  .ap-header { position: relative; }
-  .ap-inbox { position: static; }
-  .ap-inbox-panel { top: auto; left: 0; right: 0; width: auto; margin-top: 6px; }
+  .ap-inbox-panel { left: 0; width: auto; }
   .ap-theme-icon { display: inline-flex; }
   .ap-head-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .ap-head-stats .ap-stat { padding: var(--sp-2) 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); min-width: 0; }
