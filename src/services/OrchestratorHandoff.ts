@@ -65,7 +65,7 @@ export async function handOffOrchestrator(request: OrchestratorHandoffRequest): 
   try {
     writeFileAtomically(notePath, `${reply.text}\n`);
   } catch (error) {
-    return { kind: 'failed', reason: `The refresh note could not be kept:${UnknownValueUtil.errorMessageOf(error)}`, oldSessionRuns: true };
+    return { kind: 'failed', reason: `The refresh note could not be kept: ${UnknownValueUtil.errorMessageOf(error)}`, oldSessionRuns: true };
   }
 
   const end = await orchestratorSessions.stopAndAwaitEnd(trackerId, request.endTimeoutMilliseconds);
