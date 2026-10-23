@@ -36,10 +36,4 @@ function documentTitleOf(pendingCount: number, pageTitle: string): string {
   return pendingCount > 0 ? `(${String(pendingCount)}) ${pageTitle}` : pageTitle;
 }
 
-/** A press lands outside the inbox unless the inbox holds its target; a press with no target node counts as outside. */
-function isPressOutside<Target>(inbox: { contains(target: Target): boolean } | null, target: Target | null): boolean {
-  if (inbox === null || target === null) return true;
-  return !inbox.contains(target);
-}
-
-export const InboxUtil = Object.freeze({ entriesOf, documentTitleOf, isPressOutside });
+export const InboxUtil = Object.freeze({ entriesOf, documentTitleOf });

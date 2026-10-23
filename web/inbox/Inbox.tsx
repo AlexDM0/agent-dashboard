@@ -4,10 +4,10 @@ import {
   useRef,
   useState
 } from 'react';
+import { isPressOutside }      from '../popover/PressOutside.ts';
 import { PendingQuestionForm } from '../questions/PendingQuestionForm.tsx';
 import { boardHashOf }         from '../shell/HashRoute.ts';
 import { TimeUtil }            from '../time/TimeUtil.ts';
-import { InboxUtil }           from './InboxUtil.ts';
 import type { InboxEntry }     from './InboxUtil.ts';
 
 interface InboxProperties {
@@ -50,7 +50,7 @@ export function Inbox({ entries, now }: InboxProperties) {
     const closeOnLeave = (): void => setIsOpen(false);
     const closeOnPressOutside = (event: PointerEvent): void => {
       const target = event.target instanceof Node ? event.target : null;
-      if (InboxUtil.isPressOutside(inboxReference.current, target)) setIsOpen(false);
+      if (isPressOutside(inboxReference.current, target)) setIsOpen(false);
     };
     window.addEventListener('keydown', closeOnEscape, true);
     window.addEventListener('blur', closeOnLeave);

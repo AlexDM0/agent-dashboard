@@ -4,7 +4,7 @@ import {
   useRef,
   useState
 } from 'react';
-import { InboxUtil }            from '../inbox/InboxUtil.ts';
+import { isPressOutside }       from '../popover/PressOutside.ts';
 import { requestServerRestart } from './ServerRestartRequest.ts';
 
 type DashboardMenuStep = { kind: 'choosing' } | { kind: 'confirming-restart' } | { kind: 'sending-restart' } | { kind: 'restart-refused'; reason: string };
@@ -37,7 +37,7 @@ export function DashboardMenu() {
     const closeOnLeave = (): void => close();
     const closeOnPressOutside = (event: PointerEvent): void => {
       const target = event.target instanceof Node ? event.target : null;
-      if (InboxUtil.isPressOutside(menuReference.current, target)) close();
+      if (isPressOutside(menuReference.current, target)) close();
     };
     window.addEventListener('keydown', closeOnEscape, true);
     window.addEventListener('blur', closeOnLeave);
