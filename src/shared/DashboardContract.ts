@@ -93,7 +93,13 @@ export interface OrchestratorSession {
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
-export interface ChatMessage { at: string; role: ChatRole; text: string }
+/** A tool call as the session made it; `result` is null until its `tool_result` arrives. */
+export interface ToolCall { callId: string; toolName: string; inputSummary: string; result: string | null }
+/**
+ * A `tool` message's `text` is its call line (`<tool name> <input>`); `toolCall` is absent from history written
+ * before calls carried fields. A call's result arrives as a later `tool` message with the same `callId`.
+ */
+export interface ChatMessage { at: string; role: ChatRole; text: string; toolCall?: ToolCall }
 
 /** What a dashboard-owned session is briefed as; a project runs at most one live session per role. */
 export type SessionRole = 'orchestrator' | 'product-owner';

@@ -10,10 +10,10 @@ import { type Server, type Socket, createServer } from 'node:net';
 import { dirname }                                from 'node:path';
 import { createInterface }                        from 'node:readline';
 
-import type { OrchestratorRecord }   from '../adapters/OrchestratorRecordReader.ts';
-import { chatMessagesOfSessionLine } from '../adapters/SessionChatMessageMapper.ts';
-import { sessionMessageLineOf }      from '../adapters/SessionMessageWriter.ts';
-import { sessionStreamEventOf }      from '../adapters/SessionStreamEventMapper.ts';
+import type { OrchestratorRecord }        from '../adapters/OrchestratorRecordReader.ts';
+import { createSessionChatMessageMapper } from '../adapters/SessionChatMessageMapper.ts';
+import { sessionMessageLineOf }           from '../adapters/SessionMessageWriter.ts';
+import { sessionStreamEventOf }           from '../adapters/SessionStreamEventMapper.ts';
 import {
   type CapturedQuestion,
   type ConversationEntry,
@@ -116,6 +116,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
   const clients = new Set<Socket>();
   const heldQuestions = new Map<string, HeldQuestion>();
   const conversation: ConversationEntry[] = [];
+  const chatMessageMapper = createSessionChatMessageMapper();
   let latestSequence = 0;
   const contextWindowTokensByModel: Record<string, number> = {};
   let context: ContextUsage | null = null;
@@ -204,7 +205,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
 
   function handleSessionLine(line: string): void {
     appendHistory('session', line);
-    for (const message of chatMessagesOfSessionLine(line, options.clock().toISOString())) addToConversation(message);
+    for (const message of chatMessageMapper.chatMessagesOfSessionLine(line, options.clock().toISOString())) addToConversation(message);
     const event = sessionStreamEventOf(line);
     switch (event.kind) {
       case 'init':

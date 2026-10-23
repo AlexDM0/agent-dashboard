@@ -23,6 +23,21 @@ test('a history and a message line read with their sequences, and a damaged entr
   expect(supervisorConversationOf(JSON.stringify({ kind: 'state' }))).toBeNull();
 });
 
+test('a tool message keeps its call fields, and one in the shape before calls carried fields still reads', () => {
+  const toolCall = {
+    callId: 'call-1', toolName: 'Bash', inputSummary: '{"command":"ls"}', result: 'notes.md'
+  };
+  const toolEntry: ConversationEntry = {
+    sequence: 2,
+    message:  {
+      at: '2026-10-22T10:00:01.000Z', role: 'tool', text: 'Bash {"command":"ls"}', toolCall
+    }
+  };
+  const earlierShapeEntry: ConversationEntry = { sequence: 3, message: { at: '2026-10-22T10:00:02.000Z', role: 'tool', text: 'Bash {"command":"pwd"}' } };
+  const entries = [toolEntry, earlierShapeEntry];
+  expect(supervisorConversationOf(JSON.stringify({ kind: 'history', entries }))).toEqual({ kind: 'history', entries });
+});
+
 const EXAMPLE_RECORD = {
   trackerId:         'example-tracker',
   role:              'orchestrator' as const,

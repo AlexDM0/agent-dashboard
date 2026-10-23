@@ -474,9 +474,28 @@ ul { padding: 0; list-style: none; }
 .ap-conversation-empty { font-size: var(--fs-small); }
 .ap-turn { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ap-turn-role { font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
-.ap-turn-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ap-turn-text { overflow-wrap: anywhere; }
+.ap-markdown > :first-child { margin-top: 0; }
+.ap-markdown > :last-child { margin-bottom: 0; }
+.ap-markdown :is(p, ul, ol, pre, table, blockquote) { margin: 0 0 6px; }
+.ap-markdown :is(ul, ol) { padding-left: 20px; }
+.ap-markdown li:has(> input[type="checkbox"]) { list-style: none; margin-left: -18px; }
+.ap-markdown code { font-family: var(--font-mono); font-size: 0.92em; padding: 0 3px; background: var(--surface-2); border-radius: var(--r-1); }
+.ap-markdown pre { padding: 6px 8px; overflow-x: auto; background: var(--surface-2); border-radius: var(--r-1); }
+.ap-markdown pre code { padding: 0; background: none; }
+.ap-markdown table { border-collapse: collapse; font-size: var(--fs-small); }
+.ap-markdown :is(th, td) { padding: 2px 8px; text-align: left; border: 1px solid var(--line); }
+.ap-markdown blockquote { padding-left: 8px; color: var(--ink-muted); border-left: 2px solid var(--line-strong); }
+.ap-markdown a { color: var(--link); }
 .ap-turn[data-role="user"] .ap-turn-text { padding: 4px 8px; background: var(--surface-selected); border-radius: var(--r-2); }
 .ap-turn[data-role="system"] .ap-turn-text { font-size: var(--fs-small); color: var(--ink-muted); }
+.ap-tool-group { align-self: flex-start; max-width: 100%; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--r-2); }
+.ap-tool-group[open] { align-self: stretch; }
+.ap-tool-group-summary { font-size: var(--fs-small); color: var(--ink-muted); cursor: pointer; }
+.ap-tool-calls { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 2px; padding: 0; list-style: none; }
+.ap-tool-call { min-width: 0; }
+.ap-tool-name { font-weight: 600; color: var(--ink); }
+.ap-tool-status { margin: 4px 0 0; font-size: var(--fs-micro); }
 .ap-tool-summary { font-size: var(--fs-micro); color: var(--ink-muted); cursor: pointer; overflow-wrap: anywhere; }
 .ap-tool-text { margin: 4px 0 0; padding: 6px 8px; font-size: var(--fs-micro); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border-radius: var(--r-1); }
 

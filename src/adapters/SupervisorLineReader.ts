@@ -8,7 +8,8 @@ import type {
   ChatRole,
   ContextUsage,
   OrchestratorState,
-  PendingQuestion
+  PendingQuestion,
+  ToolCall
 } from '../shared/DashboardContract.ts';
 import { UnknownValueUtil }                              from '../shared/UnknownValueUtil.ts';
 import { type OrchestratorRecord, orchestratorRecordOf } from './OrchestratorRecordReader.ts';
@@ -82,11 +83,29 @@ export function supervisorStateOf(lineText: string): SupervisorState | null {
   };
 }
 
+function toolCallOf(value: unknown): ToolCall | null {
+  if (!UnknownValueUtil.isJsonObject(value)) return null;
+  const {
+    callId, toolName, inputSummary, result
+  } = value;
+  if (typeof callId !== 'string' || typeof toolName !== 'string' || typeof inputSummary !== 'string') return null;
+  return {
+    callId, toolName, inputSummary, result: typeof result === 'string' ? result : null
+  };
+}
+
+/** A message without a readable `toolCall` reads as one from before calls carried fields. */
 function conversationEntryOf(value: unknown): ConversationEntry | null {
   if (!UnknownValueUtil.isJsonObject(value) || typeof value['sequence'] !== 'number' || !UnknownValueUtil.isJsonObject(value['message'])) return null;
   const { at, role, text } = value['message'];
   if (typeof at !== 'string' || typeof text !== 'string' || !CHAT_ROLES.includes(role as ChatRole)) return null;
-  return { sequence: value['sequence'], message: { at, role: role as ChatRole, text } };
+  const toolCall = role === 'tool' ? toolCallOf(value['message']['toolCall']) : null;
+  return {
+    sequence: value['sequence'],
+    message:  {
+      at, role: role as ChatRole, text, ...(toolCall === null ? {} : { toolCall })
+    }
+  };
 }
 
 export function supervisorConversationOf(lineText: string): SupervisorConversation | null {

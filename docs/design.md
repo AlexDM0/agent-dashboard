@@ -291,9 +291,15 @@ and removes its record and socket then.
   and the conversation: on connect, before the state line, `{"kind":"history","entries":[…]}` with the last 200
   entries it holds, then `{"kind":"message","entry":…}` per new one, each entry `{ sequence, message: ChatMessage }`
   numbered from 1, so a reconnecting server takes only the entries past the last sequence it holds. A chat is a `user`
-  message; an `assistant` line's text blocks are `assistant` messages and its `tool_use` blocks `tool` messages (the tool
-  name and its input as JSON, cut at 2000 characters), in block order
-  (`src/adapters/SessionChatMessageMapper.ts`); tool results and other lines show nothing. A server takes the session's
+  message; an `assistant` line's text blocks are `assistant` messages and its `tool_use` blocks `tool` messages, in block
+  order, each carrying `toolCall: { callId, toolName, inputSummary, result: null }` (the `tool_use` id, the name, the
+  input as JSON cut at 2000 characters) and `text` its call line `<name> <input>`. A `user` line's `tool_result` block
+  joins its call by `tool_use_id`: the supervisor's mapper (`src/adapters/SessionChatMessageMapper.ts`, one per
+  session, holding each call until its result) adds the call again as a new `tool` message with the same `callId` and
+  `result` its text blocks joined, cut at 4000 characters with "…"; a result for an unknown or already answered call
+  and every other line show nothing. Entries stay append-only, so a client folds the later message into its call. A
+  `tool` message without `toolCall` is one from a supervisor started before calls carried fields and still reads
+  (`src/adapters/SupervisorLineReader.ts`). A server takes the session's
   state from state lines alone. The state is `busy` from a `chat` until the next `result`, `waiting-for-answer` while a question is held, else
   `idle`; `starting` is the server's own, from reading a record until its first state line.
   Writes to a client are buffered per client and drained (`drain`), since one `write` of a 20 kB `init` line was cut
@@ -322,7 +328,7 @@ macOS; a longer path is a refusal):
 | --- | --- |
 | `<key>.json` | the record, written atomically: `{ trackerId, role, root, supervisorPid, sessionPid, sessionId, socketPath, claudeCodeVersion, startedAt }` |
 | `<key>.sock` | the supervisor's Unix socket |
-| `<key>.ndjson` | every session stdout line and every client line, stamped, so chat history survives a server restart |
+| `<key>.ndjson` | every session stdout line (its `tool_result` lines among them) and every client line, stamped, so chat history survives a server restart; the supervisor's held conversation, `tool` messages with their `toolCall` fields, is what a restarted server replays |
 | `<key>.log` | the supervisor's own stdout and stderr |
 
 ### Peer messages and the user's go
@@ -387,7 +393,7 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }` or `{ "text": <string>, "sessionId": <string> }`, the text 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. The text is sent trimmed. With `sessionId` it goes to that session alone: the project's dashboard-owned one, or one of its watched sessions; without it, to the live dashboard-owned session, else the one the finder names. 400 for any other body, 409 for a `sessionId` that names neither a live dashboard-owned session nor a live watched one of the project (a session that is gone), or, without one, when no dashboard-owned session lives and the finder refuses (no or several sessions), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<answer>" } }`, one non-empty answer for every question of that pending request (a label it offered, labels joined for a multi-select, or free text for an "Other" choice): sent as `answer`, 204; the request is no longer pending from then on, so a second answer is 409 and the supervisor ignores an answer to a request it no longer holds. 400 for any other body, 404 when no dashboard-owned orchestrator ran since this server started, 409 for one that has ended, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/handoff` | no body; the launch token and this server's own `Origin` as for a start. Hands the board to a fresh session (see "Handing off") and answers 201 with `OrchestratorHandoffResult` `{ session, notePath }`. 404 when no dashboard-owned orchestrator ran since this server started; 409, changing nothing and saying which, for an ended session, a pending question, a session not `idle`, a dispatcher `running` or a board that cannot be read, or a handoff of the project already under way; 502 when the session ends, asks a question or gives no reply in time (the old session left running, nothing started), or when the stop or the fresh start fails after the note was kept (the text names the note's path) |
-| `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the project's dashboard-owned conversation (the last 200 `ChatMessage`s, from the session's start) on connect, then `event: session` with the `OrchestratorSession` (null for none), then `event: message` per new message and `event: session` on every change of it; a `: heartbeat` comment every 25 s. A project with no dashboard-owned session streams an empty history and waits for one. A watched session's messages are to be tailed from its transcript (not built yet) |
+| `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the project's dashboard-owned conversation (the last 200 `ChatMessage`s, from the session's start) on connect, then `event: session` with the `OrchestratorSession` (null for none), then `event: message` per new message (a call's result is a new `tool` message carrying the call's `callId`, which the web folds into the call) and `event: session` on every change of it; a `: heartbeat` comment every 25 s. A project with no dashboard-owned session streams an empty history and waits for one. A watched session's messages are to be tailed from its transcript (not built yet) |
 | `POST /api/projects/<trackerId>/product-owner` | body `{ "mode": "spar" }` or `{ "mode": "file" }`: starts a product owner's supervisor in the project's root, beside a live orchestrator, its first message the brief for the mode, and answers 201 with the `OrchestratorSession`. 400 for any other body, 409 while a dashboard-owned product owner of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
 | `DELETE /api/projects/<trackerId>/product-owner` | sends `stop` to the product owner's supervisor, 204; 404 when none lives, 502 when the socket fails. The orchestrator is left running |
 | `POST /api/projects/<trackerId>/product-owner/messages` | body as the orchestrator's: sent to the product owner as `chat`, 204, never to the orchestrator or a watched session. 400 for any other body, 404 when no product owner ran since this server started, 409 for one that has ended or a `sessionId` that is not the product owner's, 502 when the socket fails |
@@ -453,7 +459,8 @@ export interface OrchestratorSession {
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
-export interface ChatMessage { at: string; role: ChatRole; text: string }
+export interface ToolCall { callId: string; toolName: string; inputSummary: string; result: string | null }
+export interface ChatMessage { at: string; role: ChatRole; text: string; toolCall?: ToolCall }
 
 export type SessionRole = 'orchestrator' | 'product-owner';
 export interface OrchestratorStartRequest { startBuilding: boolean }
@@ -629,8 +636,14 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   state pill (`busy` in-progress, `idle` pending, `waiting` in-review, `starting` paused, `ended` abandoned, plus a
   `watched` pill), the context meter, and a chat box (Enter sends, Shift+Enter a newline, disabled for an ended session).
   A dashboard-owned session adds its pending questions as forms (a radio group, or checkboxes for a multi-select, each
-  with a free-text "Other"; typing into "Other" chooses it; one Answer for the whole request), its conversation (user
-  and assistant turns as plain text, a tool call as one collapsed `<details>` line, scrolled to the newest), Stop and a
+  with a free-text "Other"; typing into "Other" chooses it; one Answer for the whole request), its conversation
+  (`web/orchestrator/ConversationLog.tsx`, scrolled to the newest): user and assistant turns as Markdown through
+  `react-markdown` with `remark-gfm` (tables, task lists, fenced code), raw HTML shown as text (no `rehype-raw`), links
+  opening in a new tab with `rel="noopener noreferrer"`, images shown as their alt text; every run of tool calls
+  between two turns one closed `<details>` line in a small rounded box reading "Used N tools", listing each call as a
+  closed row (tool name and input summary) that opens to its result, "Running…" before it arrives, "No result
+  recorded" for a call without fields (`web/orchestrator/ConversationItemUtil.ts` folds a result into its call by
+  `callId`), Stop and a
   quiet "Hand off…" (`web/orchestrator/HandoffControl.tsx`). From 80% of a known window (`CONTEXT_CRITICAL_SHARE`,
   `web/constants/WebLimits.ts`) the session warns in `--err-ink` and the button turns loud; it never acts by itself. A
   click asks to confirm inline: "Hand off asks for a note, stops this session, starts a fresh one with the note." A
