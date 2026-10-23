@@ -35,8 +35,8 @@ function splitOf<Item>(items: Item[], sessionOf: (item: Item) => OrchestratorSes
 /** An ended session's one line under its name: when it started, when it last acted, and that last action. */
 function endedLineOf(session: OrchestratorSession): string {
   const parts = [
-    session.startedAt === null ? null : `started ${TimeUtil.clockOfStamp(session.startedAt)}`,
-    session.lastAction === null ? null : `ended after ${TimeUtil.clockOfStamp(session.lastAction.at)}`,
+    session.startedAt === null ? null : `started ${TimeUtil.clockOfInstant(Date.parse(session.startedAt))}`,
+    session.lastAction === null ? null : `ended after ${TimeUtil.clockOfInstant(Date.parse(session.lastAction.at))}`,
     session.lastAction?.text ?? null,
   ];
   return parts.filter((part) => part !== null).join(' · ') || 'ended';

@@ -6,6 +6,7 @@ import { expect, test } from 'bun:test';
 
 import type { OrchestratorSession } from '../../src/shared/DashboardContract.ts';
 import { orchestratorSessionWith }  from '../testing/SnapshotFixtures.ts';
+import { TimeUtil }                 from '../time/TimeUtil.ts';
 import { EndedSessionSplitUtil }    from './EndedSessionSplitUtil.ts';
 
 function sessionItself(session: OrchestratorSession): OrchestratorSession {
@@ -45,6 +46,14 @@ test('an ended session without an action sorts by its start, and one with neithe
   const neither = orchestratorSessionWith({ sessionId: 'neither', state: 'ended', startedAt: null });
   const { ended } = EndedSessionSplitUtil.splitOf([neither, OLDER_ENDED, startedOnly], sessionItself);
   expect(sessionIdsOf(ended)).toEqual(['started-only', 'older-ended', 'neither']);
+});
+
+test('an ended line reads its clocks in the viewer\'s time zone, as the session card beside it does', () => {
+  const startedAt = '2026-10-21T08:00:00+14:00';
+  const lastActionAt = '2026-10-21T09:00:00+14:00';
+  const session = orchestratorSessionWith({ state: 'ended', startedAt, lastAction: { at: lastActionAt, text: 'wrapped up' } });
+  expect(EndedSessionSplitUtil.endedLineOf(session))
+    .toBe(`started ${TimeUtil.clockOfInstant(Date.parse(startedAt))} · ended after ${TimeUtil.clockOfInstant(Date.parse(lastActionAt))} · wrapped up`);
 });
 
 test('an ended line names its start, its end bound and its last action, and says ended when it knows none', () => {
