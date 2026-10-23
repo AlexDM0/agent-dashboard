@@ -56,6 +56,7 @@ interface CrewCellProperties {
 function CrewCell({
   project, session, now, onOpenProductOwner
 }: CrewCellProperties) {
+  const productOwner = OrchestratorSessionUtil.shownProductOwnerOf(project);
   return (
     <div className="ap-fleet-cell ap-fleet-crew" role="cell">
       {session === null
@@ -66,13 +67,13 @@ function CrewCell({
           </div>
         )
         : <SessionLine role="orchestrator" session={session} now={now} />}
-      {project.productOwner === null || OrchestratorSessionUtil.canStart(project, 'product-owner')
+      {productOwner === null
         ? (
           <div className="ap-fleet-crew-line" data-role="product-owner">
             <StartProductOwnerButton project={project} label="+ Ask PO for a ticket" onOpened={onOpenProductOwner} />
           </div>
         )
-        : <SessionLine role="product-owner" session={project.productOwner} now={now} />}
+        : <SessionLine role="product-owner" session={productOwner} now={now} />}
     </div>
   );
 }

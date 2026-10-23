@@ -84,6 +84,7 @@ export function CrewStrip({
 }: CrewStripProperties) {
   const now = useNow();
   const leadingSession = OrchestratorSessionUtil.sessionsOf(project, watchedSessions)[0] ?? null;
+  const productOwner = OrchestratorSessionUtil.shownProductOwnerOf(project);
   return (
     <section className="ap-crew-strip" aria-label="Crew" onClick={() => onOpenDrawer('close', 'orchestrator')}>
       <CrewMember
@@ -109,15 +110,19 @@ export function CrewStrip({
         {OrchestratorSessionUtil.canStart(project) ? <StartOrchestratorButton key={project.trackerId} project={project} /> : null}
       </span>
       <span className="ap-crew-strip-divider" aria-hidden="true" />
-      <CrewMember
-        role="product-owner"
-        session={project.productOwner}
-        isDrawerOpen={isDrawerOpen}
-        drawerId={drawerId}
-        now={now}
-        onOpen={() => onOpenDrawer('close', 'product-owner')}
-      />
-      <span className="ap-crew-strip-actions">
+      {productOwner === null
+        ? null
+        : (
+          <CrewMember
+            role="product-owner"
+            session={productOwner}
+            isDrawerOpen={isDrawerOpen}
+            drawerId={drawerId}
+            now={now}
+            onOpen={() => onOpenDrawer('close', 'product-owner')}
+          />
+        )}
+      <span className="ap-crew-strip-actions" data-role="product-owner" data-alone={productOwner === null}>
         <StartProductOwnerButton key={project.trackerId} project={project} label="+ New ticket" onOpened={() => onOpenDrawer('chat', 'product-owner')} />
       </span>
     </section>

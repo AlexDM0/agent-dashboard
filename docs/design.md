@@ -630,7 +630,7 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   its state pill, the compact context meter with its share, or "n tokens" for an unknown window, then the
   `lastAction`'s age and text on the same line; "No orchestrator" and "Start orchestrator" when no session lives; under
   it a second line for the product owner, its `PO` glyph, state pill, meter and last action, or "+ Ask PO for a
-  ticket" when none lives, which starts one with `{ "mode": "file" }` and opens its drawer tab over the Fleet view);
+  ticket" when none lives (an ended product owner is not shown), which starts one with `{ "mode": "file" }` and opens its drawer tab over the Fleet view);
   **Agents** (`n/m` and the − / + stepper); **Queue** (`n ready`, then `n low · n review · n held` muted, the zero
   ones left out); **Run** (the board command bar's actions for the dispatcher state, from the same
   `BoardCommandUtil.commandsOf`, then a Chat icon opening that project's crew drawer over the Fleet view on its chat
@@ -651,7 +651,7 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   `[data-state]` palette of `OrchestratorSessionUtil.statePaletteOf`, a dashed border for a watched desktop session,
   an empty slot for none; hover names the session, its state and its `lastAction`), the product owner's `PO` glyph
   (`project.productOwner`, purple, the `delivered` palette, while idle and the session-state palette otherwise; an
-  empty slot for none), agents `2/2` in mono, and a question-count badge counting the orchestrator's and the product
+  empty slot for none or for an ended one, which is not shown), agents `2/2` in mono, and a question-count badge counting the orchestrator's and the product
   owner's pending questions together, hidden at zero but keeping its width. The selected
   row is `--surface-selected`; the rows sit under an "Active" and an "Idle" heading, split and ordered as the
   overview's groups, an empty group without its heading (the top strip drops the headings).
@@ -668,8 +668,9 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   "Orchestrator", its state pill and compact context meter, and on a second line its `lastAction` text and age ("No
   action yet" before one); then Chat (opens the drawer on the session's chat box) and, while no dashboard-owned
   orchestrator lives, "Start orchestrator" (`startBuilding` false). Beside it, after a divider, the Product owner
-  half: the `PO` glyph, "Product owner", its state pill and meter, its `lastAction` and age ("No product owner runs in
-  this project" for none), and "+ New ticket" (`web/orchestrator/StartProductOwnerButton.tsx`), which, unconfirmed
+  half: while a product owner lives, the `PO` glyph, "Product owner", its state pill and meter, its `lastAction` and
+  age; an ended or absent product owner is not shown, the half shrinking to "+ New ticket" alone (kept under 768 px
+  too). "+ New ticket" (`web/orchestrator/StartProductOwnerButton.tsx`), which, unconfirmed
   as Start orchestrator is, starts a product owner with `{ "mode": "file" }` when none lives and then opens the
   drawer's Product owner tab, or only opens the tab when one lives. A click on either half opens the drawer on that
   role's tab, anywhere else on the strip on the Orchestrator tab. Under 768 px it shrinks to its glyphs and Chat.

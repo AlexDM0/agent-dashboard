@@ -38,7 +38,7 @@ function RailRow({ project, watchedSessions, isSelected }: RailRowProperties) {
       <ProjectDot activity={projectActivityOf(project)} isQuestionWaiting={questionCount > 0} />
       <span className="ap-rail-name" title={project.project}>{project.project}</span>
       <SessionGlyph role="orchestrator" session={leadingSession} />
-      <SessionGlyph role="product-owner" session={project.productOwner} />
+      <SessionGlyph role="product-owner" session={OrchestratorSessionUtil.shownProductOwnerOf(project)} />
       <span className="ap-rail-agents">
         {project.health.kind === 'ready' ? `${String(project.health.board.agentsInFlight)}/${String(project.health.board.concurrencyLimit)}` : ''}
       </span>

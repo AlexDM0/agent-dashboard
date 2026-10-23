@@ -1,7 +1,8 @@
 /**
  * What the drawer, the cards and the rail say about a project's sessions: the dashboard-owned one first, a name for
  * every session (a watched one without a record name by its short id), the state words and colours, a glyph's hover
- * text, how many questions wait, and when a Start is offered; an ended session neither waits nor blocks a new start.
+ * text, how many questions wait, and when a Start is offered; an ended session neither waits nor blocks a new start,
+ * and is not shown at all.
  */
 import { expect, test }                                 from 'bun:test';
 import { orchestratorSessionWith, projectSnapshotWith } from '../testing/SnapshotFixtures.ts';
@@ -94,4 +95,18 @@ test('a Start is offered with no dashboard-owned session or an ended one', () =>
   expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example'))).toBe(true);
   expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example', { orchestrator: orchestratorSessionWith({ state: 'ended' }) }))).toBe(true);
   expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example', { orchestrator: orchestratorSessionWith() }))).toBe(false);
+});
+
+test('only a live session is shown: every state but ended, and no session at all', () => {
+  const liveStates = ['starting', 'busy', 'idle', 'waiting-for-answer'] as const;
+  for (const state of liveStates) expect(OrchestratorSessionUtil.isShown(orchestratorSessionWith({ state }))).toBe(true);
+  expect(OrchestratorSessionUtil.isShown(orchestratorSessionWith({ state: 'ended' }))).toBe(false);
+  expect(OrchestratorSessionUtil.isShown(null)).toBe(false);
+});
+
+test('an ended or absent product owner is not shown, a live one is', () => {
+  const live = orchestratorSessionWith({ state: 'idle' });
+  expect(OrchestratorSessionUtil.shownProductOwnerOf(projectSnapshotWith('example', { productOwner: live }))).toBe(live);
+  expect(OrchestratorSessionUtil.shownProductOwnerOf(projectSnapshotWith('example', { productOwner: orchestratorSessionWith({ state: 'ended' }) }))).toBeNull();
+  expect(OrchestratorSessionUtil.shownProductOwnerOf(projectSnapshotWith('example', { productOwner: null }))).toBeNull();
 });

@@ -646,7 +646,7 @@ ul { padding: 0; list-style: none; }
   .ap-chat-list-column, .ap-chat-conversation-column { border-right: 0; border-bottom: 1px solid var(--line); }
 }
 
-/* The rail becomes a strip of chips over the frame, the command bar wraps, and the crew strip keeps its glyph and Chat. */
+/* The rail becomes a strip of chips over the frame, the command bar wraps, and the crew strip keeps its glyphs, Chat and a lone "+ New ticket". */
 @media (max-width: 767px) {
   .ap-app[data-route="board"] .ap-page { padding: 12px 16px; }
   .ap-board { flex-direction: column; gap: 10px; }
@@ -659,7 +659,7 @@ ul { padding: 0; list-style: none; }
   .ap-toolbar { flex-wrap: wrap; }
   .ap-toolbar-actions { flex-wrap: wrap; margin-left: 0; }
   .ap-toolbar-divider, .ap-back .ap-kbd { display: none; }
-  .ap-crew-role, .ap-crew-member .ap-pill, .ap-crew-member .ap-context-meter, .ap-crew-action, .ap-crew-strip-actions .ap-orchestrator-request { display: none; }
+  .ap-crew-role, .ap-crew-member .ap-pill, .ap-crew-member .ap-context-meter, .ap-crew-action, .ap-crew-strip-actions:not([data-alone="true"]) .ap-orchestrator-request { display: none; }
   .ap-crew-strip { align-self: flex-start; }
   .ap-crew-strip-divider { display: none; }
   .ap-crew-member { flex: none; }

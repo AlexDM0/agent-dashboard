@@ -91,7 +91,19 @@ function canStart(project: ProjectSnapshot, role: SessionRole = 'orchestrator'):
   return session === null || session.state === 'ended';
 }
 
+/** A session shows of itself (glyph, name, state, meter, last action) only while it lives; an ended one is not shown. */
+function isShown(session: OrchestratorSession | null): session is OrchestratorSession {
+  return session !== null && session.state !== 'ended';
+}
+
+/** The project's product owner as the strip, the rail and the Fleet row show it: the live one, else null. */
+function shownProductOwnerOf(project: ProjectSnapshot): OrchestratorSession | null {
+  return isShown(project.productOwner) ? project.productOwner : null;
+}
+
 export const OrchestratorSessionUtil = Object.freeze({
+  isShown,
+  shownProductOwnerOf,
   sessionsOf,
   watchedSessionsOf,
   dashboardSessionOf,
