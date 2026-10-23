@@ -318,7 +318,7 @@ ul { padding: 0; list-style: none; }
 .ap-idle-slots { grid-column: 3; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .ap-idle-slot-count { font-size: var(--fs-small); padding: 0 4px; }
 .ap-idle-log { grid-column: 4; display: flex; align-items: baseline; gap: 10px; }
-.ap-idle-ready { grid-column: 5; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ap-idle-ready { grid-column: 5; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .ap-idle-actions { grid-column: 6; display: inline-flex; align-items: center; gap: 6px; }
 .ap-idle-changed { grid-column: 7; white-space: nowrap; }
 .ap-idle-open { grid-column: 8; }
