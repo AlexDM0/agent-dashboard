@@ -18,12 +18,15 @@ export type SupervisorRequest =
   | { kind: 'answer'; requestId: string; answers: Record<string, string> }
   | { kind: 'stop' };
 
+/** A question as the supervisor holds it; the server adds its context, since only the server reads the board. */
+export type CapturedQuestion = Omit<PendingQuestion, 'context'>;
+
 export interface SupervisorState {
   kind:             'state';
   record:           OrchestratorRecord;
   state:            OrchestratorState;
   context:          ContextUsage | null;
-  pendingQuestions: PendingQuestion[];
+  pendingQuestions: CapturedQuestion[];
 }
 
 /** A chat message numbered by the supervisor from 1, so a client reconnecting takes only those it has not seen. */
@@ -75,7 +78,7 @@ export function supervisorStateOf(lineText: string): SupervisorState | null {
     record,
     state:            state as OrchestratorState,
     context:          UnknownValueUtil.isJsonObject(context) ? context as unknown as ContextUsage : null,
-    pendingQuestions: Array.isArray(pendingQuestions) ? pendingQuestions as PendingQuestion[] : [],
+    pendingQuestions: Array.isArray(pendingQuestions) ? pendingQuestions as CapturedQuestion[] : [],
   };
 }
 

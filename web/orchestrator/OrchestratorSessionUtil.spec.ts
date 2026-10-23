@@ -7,7 +7,9 @@ import { expect, test }                                 from 'bun:test';
 import { orchestratorSessionWith, projectSnapshotWith } from '../testing/SnapshotFixtures.ts';
 import { OrchestratorSessionUtil }                      from './OrchestratorSessionUtil.ts';
 
-const PENDING_QUESTION = { requestId: 'request-example', askedAt: '2026-10-21T10:00:00+02:00', questions: [] };
+const PENDING_QUESTION = {
+  requestId: 'request-example', askedAt: '2026-10-21T10:00:00+02:00', questions: [], context: { dispatcherRunId: null, mentionedTicketIds: [], lastAssistantLine: null }
+};
 
 test('the dashboard-owned session comes before the watched ones', () => {
   const owned = orchestratorSessionWith({ sessionId: 'owned' });

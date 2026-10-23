@@ -14,17 +14,24 @@ import { type Socket, createConnection } from 'node:net';
 
 import { type OrchestratorRecord, readOrchestratorRecord, readOrchestratorRecords } from '../adapters/OrchestratorRecordReader.ts';
 import {
+  type CapturedQuestion,
   type ConversationEntry,
   type SupervisorRequest,
   supervisorConversationOf,
   supervisorStateOf
 } from '../adapters/SupervisorLineReader.ts';
-import { processIsAlive }                                         from '../lib/process-liveness/ProcessIsAlive.ts';
-import type { ChatMessage, OrchestratorSession, PendingQuestion } from '../shared/DashboardContract.ts';
-import { orchestratorFilePathsOf }                                from '../shared/OrchestratorFilePaths.ts';
-import { UnknownValueUtil }                                       from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_LIMITS }                                       from '../shared/constants/DashboardLimits.ts';
-import { DASHBOARD_PROTOCOL }                                     from '../shared/constants/DashboardProtocol.ts';
+import { processIsAlive } from '../lib/process-liveness/ProcessIsAlive.ts';
+import type {
+  ChatMessage,
+  OrchestratorSession,
+  PendingQuestion,
+  QuestionContext,
+  SessionAction
+} from '../shared/DashboardContract.ts';
+import { orchestratorFilePathsOf } from '../shared/OrchestratorFilePaths.ts';
+import { UnknownValueUtil }        from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_LIMITS }        from '../shared/constants/DashboardLimits.ts';
+import { DASHBOARD_PROTOCOL }      from '../shared/constants/DashboardProtocol.ts';
 
 export interface OrchestratorSessionsOptions {
   orchestratorDirectory:    string;
@@ -52,8 +59,11 @@ export type SessionReply = { kind: 'replied'; text: string } | { kind: 'failed';
 export type SessionEnd = { kind: 'ended' } | { kind: 'failed'; reason: string };
 
 export interface OrchestratorSessions {
-  /** Connects to every supervisor whose record lives and removes the records of those gone. */
-  start(): void;
+  /**
+   * Connects to every supervisor whose record lives and removes the records of those gone; `dispatcherRunIdOf` reads
+   * the board's run when a question is first seen, for its context.
+   */
+  start(dispatcherRunIdOf: (trackerId: string) => string | null): void;
   /** The project's dashboard-owned session, live or ended since this server started, or null. */
   sessionOf(trackerId: string): OrchestratorSession | null;
   isLive(trackerId: string): boolean;
@@ -83,28 +93,61 @@ export interface OrchestratorSessions {
 }
 
 interface Supervised {
-  trackerId:      string;
-  recordPath:     string;
-  socketPath:     string;
-  supervisorPid:  number;
-  session:        OrchestratorSession;
-  connection:     Socket | null;
-  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  trackerId:                  string;
+  recordPath:                 string;
+  socketPath:                 string;
+  supervisorPid:              number;
+  session:                    OrchestratorSession;
+  connection:                 Socket | null;
+  reconnectTimer:             ReturnType<typeof setTimeout> | null;
+  /** Fixed on a question's first state line, so a later one or a reconnect never changes it. */
+  questionContextByRequestId: Map<string, QuestionContext>;
 }
 
 function supervisedOf(recordPath: string, record: OrchestratorRecord, previousSessionId: string | null = null): Supervised {
   return {
-    trackerId:      record.trackerId,
+    trackerId:                  record.trackerId,
     recordPath,
-    socketPath:     record.socketPath,
-    supervisorPid:  record.supervisorPid,
-    session:        sessionFromRecord(record.sessionId, record.sessionPid, record.startedAt, previousSessionId),
-    connection:     null,
-    reconnectTimer: null,
+    socketPath:                 record.socketPath,
+    supervisorPid:              record.supervisorPid,
+    session:                    sessionFromRecord(record.sessionId, record.sessionPid, record.startedAt, previousSessionId),
+    connection:                 null,
+    reconnectTimer:             null,
+    questionContextByRequestId: new Map(),
   };
 }
 
 const START_POLL_MILLISECONDS = 50;
+const SESSION_LINE_MAXIMUM_CHARACTERS = 160;
+const QUESTION_CONTEXT_ASSISTANT_MESSAGE_COUNT = 5;
+/** The board's ticket id format: `#` and exactly three digits. */
+const TICKET_MENTION_PATTERN = /#(\d{3})(?!\d)/gu;
+
+function sessionLineOf(line: string): string {
+  return line.trim().slice(0, SESSION_LINE_MAXIMUM_CHARACTERS);
+}
+
+function lastActionOf(message: ChatMessage): SessionAction | null {
+  if (message.role === 'tool') return { at: message.at, text: message.text };
+  if (message.role !== 'assistant') return null;
+  return { at: message.at, text: sessionLineOf(message.text.trim().split('\n')[0] ?? '') };
+}
+
+function mentionedTicketIdsOf(texts: string[]): string[] {
+  const ticketIds = texts.flatMap((text) => [...text.matchAll(TICKET_MENTION_PATTERN)].map((match) => match[1] ?? ''));
+  return [...new Set(ticketIds)];
+}
+
+/** Mentions are read from the question texts first, then from the last five assistant messages oldest first. */
+function questionContextOf(captured: CapturedQuestion, conversation: ChatMessage[], dispatcherRunId: string | null): QuestionContext {
+  const assistantTexts = conversation.filter((message) => message.role === 'assistant').slice(-QUESTION_CONTEXT_ASSISTANT_MESSAGE_COUNT).map((message) => message.text);
+  const lastAssistantLine = assistantTexts.at(-1)?.split('\n').findLast((line) => line.trim().length > 0);
+  return {
+    dispatcherRunId,
+    mentionedTicketIds: mentionedTicketIdsOf([...captured.questions.map((question) => question.question), ...assistantTexts]),
+    lastAssistantLine:  lastAssistantLine === undefined ? null : sessionLineOf(lastAssistantLine),
+  };
+}
 
 /** Null when the answers name exactly the questions of the pending request, else why not. */
 function answerMismatchOf(pending: PendingQuestion, answers: Record<string, string>): string | null {
@@ -117,7 +160,7 @@ function answerMismatchOf(pending: PendingQuestion, answers: Record<string, stri
 
 function sessionFromRecord(sessionId: string, sessionPid: number, startedAt: string, previousSessionId: string | null): OrchestratorSession {
   return {
-    ownership: 'dashboard', sessionId, pid: sessionPid, name: null, state: 'starting', startedAt, context: null, pendingQuestions: [], previousSessionId
+    ownership: 'dashboard', sessionId, pid: sessionPid, name: null, state: 'starting', startedAt, context: null, pendingQuestions: [], lastAction: null, previousSessionId
   };
 }
 
@@ -128,14 +171,23 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
   const conversationByTracker = new Map<string, { sessionId: string; entries: ConversationEntry[] }>();
   const conversationListenersByTracker = new Map<string, Set<(message: ChatMessage) => void>>();
   const trackersBeingLaunched = new Set<string>();
+  let dispatcherRunIdOf: (trackerId: string) => string | null = () => null;
   let closed = false;
 
   function notify(): void {
     for (const listener of [...listeners]) listener();
   }
 
-  /** A supervisor replays its history on every connect, so an entry already held is skipped by its sequence. */
-  function takeConversationEntries(trackerId: string, sessionId: string, entries: ConversationEntry[]): void {
+  function conversationOf(trackerId: string): ChatMessage[] {
+    return (conversationByTracker.get(trackerId)?.entries ?? []).map((entry) => entry.message);
+  }
+
+  /**
+   * A supervisor replays its history on every connect, so an entry already held is skipped by its sequence. The last
+   * action changes without a notify: the supervisor sends a state line after every session line and every replay.
+   */
+  function takeConversationEntries(supervised: Supervised, entries: ConversationEntry[]): void {
+    const { trackerId, session: { sessionId } } = supervised;
     const held = conversationByTracker.get(trackerId);
     const conversation = held?.sessionId === sessionId ? held.entries : [];
     conversationByTracker.set(trackerId, { sessionId, entries: conversation });
@@ -145,8 +197,19 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
       latestHeldSequence = entry.sequence;
       conversation.push(entry);
       if (conversation.length > DASHBOARD_LIMITS.CONVERSATION_HISTORY_MESSAGE_COUNT) conversation.shift();
+      const lastAction = lastActionOf(entry.message);
+      if (lastAction !== null) supervised.session = { ...supervised.session, lastAction };
       for (const listener of [...(conversationListenersByTracker.get(trackerId) ?? [])]) listener(entry.message);
     }
+  }
+
+  function pendingQuestionOf(supervised: Supervised, captured: CapturedQuestion): PendingQuestion {
+    let context = supervised.questionContextByRequestId.get(captured.requestId);
+    if (context === undefined) {
+      context = questionContextOf(captured, conversationOf(supervised.trackerId), dispatcherRunIdOf(supervised.trackerId));
+      supervised.questionContextByRequestId.set(captured.requestId, context);
+    }
+    return { ...captured, context };
   }
 
   function supervisorIsGone(supervised: Supervised): boolean {
@@ -168,13 +231,14 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
           const conversation = supervisorConversationOf(line);
           if (conversation !== null) {
             const entries = conversation.kind === 'history' ? conversation.entries : [conversation.entry];
-            takeConversationEntries(supervised.trackerId, supervised.session.sessionId, entries);
+            takeConversationEntries(supervised, entries);
             continue;
           }
           const state = supervisorStateOf(line);
           if (state === null) continue;
+          const pendingQuestions = state.pendingQuestions.map((captured) => pendingQuestionOf(supervised, captured));
           supervised.session = {
-            ...supervised.session, state: state.state, context: state.context, pendingQuestions: state.pendingQuestions
+            ...supervised.session, state: state.state, context: state.context, pendingQuestions
           };
           if (!reported) {
             reported = true;
@@ -202,7 +266,8 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     });
   }
 
-  function start(): void {
+  function start(boardDispatcherRunIdOf: (trackerId: string) => string | null): void {
+    dispatcherRunIdOf = boardDispatcherRunIdOf;
     for (const reading of readOrchestratorRecords(options.orchestratorDirectory)) {
       if (reading.kind !== 'present') continue;
       const { record } = reading;
@@ -402,15 +467,15 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
 
   return {
     start,
-    sessionOf:      (trackerId) => supervisedByTracker.get(trackerId)?.session ?? null,
+    sessionOf: (trackerId) => supervisedByTracker.get(trackerId)?.session ?? null,
     isLive,
     launch,
-    stop:           (trackerId) => send(trackerId, { kind: 'stop' }),
+    stop:      (trackerId) => send(trackerId, { kind: 'stop' }),
     stopAndAwaitEnd,
     chat,
     replyTo,
     answer,
-    conversationOf: (trackerId) => (conversationByTracker.get(trackerId)?.entries ?? []).map((entry) => entry.message),
+    conversationOf,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

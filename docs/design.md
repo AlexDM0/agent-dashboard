@@ -409,7 +409,12 @@ export interface ContextUsage {
 
 export interface QuestionOption { label: string; description: string }
 export interface Question { question: string; header: string; multiSelect: boolean; options: QuestionOption[] }
-export interface PendingQuestion { requestId: string; askedAt: string; questions: Question[] }
+// Fixed by the server when it first sees the question: the board's run then, the `#` + three-digit ids named in the
+// question texts and then in the last five assistant messages oldest first (unique, first mention), the last line said.
+export interface QuestionContext { dispatcherRunId: string | null; mentionedTicketIds: string[]; lastAssistantLine: string | null }
+export interface PendingQuestion { requestId: string; askedAt: string; questions: Question[]; context: QuestionContext }
+// The newest assistant text (first line, 160 characters) or tool call (its conversation line).
+export interface SessionAction { at: string; text: string }
 
 export interface OrchestratorSession {
   ownership: OrchestratorOwnership;
@@ -420,6 +425,7 @@ export interface OrchestratorSession {
   startedAt: string | null;
   context: ContextUsage | null;
   pendingQuestions: PendingQuestion[];  // always empty for a watched session
+  lastAction: SessionAction | null;     // null before any, and always for a watched session
   previousSessionId: string | null;     // the session a handoff took the board from, while this server runs
 }
 

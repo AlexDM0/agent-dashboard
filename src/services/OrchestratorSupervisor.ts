@@ -15,22 +15,18 @@ import { chatMessagesOfSessionLine } from '../adapters/SessionChatMessageMapper.
 import { sessionMessageLineOf }      from '../adapters/SessionMessageWriter.ts';
 import { sessionStreamEventOf }      from '../adapters/SessionStreamEventMapper.ts';
 import {
+  type CapturedQuestion,
   type ConversationEntry,
   type SupervisorConversation,
   type SupervisorRequest,
   type SupervisorState,
   supervisorRequestOf
 } from '../adapters/SupervisorLineReader.ts';
-import { writeFileAtomically } from '../lib/atomic-file/AtomicFile.ts';
-import type {
-  ChatMessage,
-  ContextUsage,
-  OrchestratorState,
-  PendingQuestion
-} from '../shared/DashboardContract.ts';
-import { orchestratorFilePathsOf } from '../shared/OrchestratorFilePaths.ts';
-import { UnknownValueUtil }        from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_LIMITS }        from '../shared/constants/DashboardLimits.ts';
+import { writeFileAtomically }                               from '../lib/atomic-file/AtomicFile.ts';
+import type { ChatMessage, ContextUsage, OrchestratorState } from '../shared/DashboardContract.ts';
+import { orchestratorFilePathsOf }                           from '../shared/OrchestratorFilePaths.ts';
+import { UnknownValueUtil }                                  from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_LIMITS }                                  from '../shared/constants/DashboardLimits.ts';
 
 export interface OrchestratorSupervisorOptions {
   trackerId:             string;
@@ -60,7 +56,7 @@ export const CLAUDE_SESSION_ARGUMENTS = [
   'stdio',
 ] as const;
 
-interface HeldQuestion { pending: PendingQuestion; input: Record<string, unknown> }
+interface HeldQuestion { pending: CapturedQuestion; input: Record<string, unknown> }
 
 function listening(listener: Server, socketPath: string): Promise<void> {
   return new Promise((resolve, reject) => {

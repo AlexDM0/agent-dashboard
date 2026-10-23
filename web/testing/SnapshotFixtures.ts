@@ -16,6 +16,7 @@ export function orchestratorSessionWith(overrides: Partial<OrchestratorSession> 
     startedAt:         '2026-10-21T09:30:00+02:00',
     context:           null,
     pendingQuestions:  [],
+    lastAction:        null,
     previousSessionId: null,
     ...overrides,
   };
@@ -28,6 +29,7 @@ export function pendingQuestionWith(requestId: string, askedAt: string): Pending
     questions: [{
       question: `Example question ${requestId}?`, header: '', multiSelect: false, options: [{ label: 'Yes', description: '' }]
     }],
+    context: { dispatcherRunId: null, mentionedTicketIds: [], lastAssistantLine: null },
   };
 }
 

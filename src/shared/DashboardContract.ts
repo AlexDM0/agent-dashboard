@@ -63,7 +63,19 @@ export interface ContextUsage {
 
 export interface QuestionOption { label: string; description: string }
 export interface Question { question: string; header: string; multiSelect: boolean; options: QuestionOption[] }
-export interface PendingQuestion { requestId: string; askedAt: string; questions: Question[] }
+/** What a user needs to answer a question without opening the conversation, fixed when the server first sees it. */
+export interface QuestionContext {
+  /** The board's `dispatcherRunId` when the question was asked; null for a board with none or unreadable. */
+  dispatcherRunId:    string | null;
+  /** The ids (`#133` → `133`) named in the question texts, then in the last five assistant messages, oldest first. */
+  mentionedTicketIds: string[];
+  /** The last line of assistant text said before the question, trimmed to 160 characters; null for none. */
+  lastAssistantLine:  string | null;
+}
+export interface PendingQuestion { requestId: string; askedAt: string; questions: Question[]; context: QuestionContext }
+
+/** A session's newest assistant text (its first line, trimmed to 160 characters) or tool call (as its conversation line reads). */
+export interface SessionAction { at: string; text: string }
 
 export interface OrchestratorSession {
   ownership:         OrchestratorOwnership;
@@ -75,6 +87,7 @@ export interface OrchestratorSession {
   startedAt:         string | null;
   context:           ContextUsage | null;
   pendingQuestions:  PendingQuestion[];  // always empty for a watched session
+  lastAction:        SessionAction | null;  // null before any, and always for a watched session
   /** The dashboard-owned session this one took the board over from by a handoff, while this server runs; else null. */
   previousSessionId: string | null;
 }

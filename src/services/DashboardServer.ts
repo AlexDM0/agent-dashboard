@@ -328,6 +328,7 @@ function watchedOrchestratorOf(homeDirectory: string, session: LiveSession, cont
     startedAt:         session.startedAt,
     context,
     pendingQuestions:  [],
+    lastAction:        null,
     previousSessionId: null,
   };
 }
@@ -460,7 +461,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   const boardPagePolicy = boardPagePolicyOf(dashboardSources);
   let bridgeScript: Promise<string> | null = null;
   const monitorStarted = monitor.start();
-  orchestratorSessions.start();
+  orchestratorSessions.start((trackerId) => dispatcherRunIdOf(monitor.snapshot().projects.find((project) => project.trackerId === trackerId)));
 
   const orchestratorSources: OrchestratorSources = { homeDirectory: options.homeDirectory, orchestratorOf: orchestratorSessions.sessionOf };
 

@@ -19,7 +19,12 @@ const MULTI_QUESTION: Question = {
   multiSelect: true,
   options:     [{ label: 'Small', description: '' }, { label: 'Medium', description: '' }, { label: 'Large', description: '' }],
 };
-const PENDING: PendingQuestion = { requestId: 'request-example', askedAt: '2026-10-21T10:00:00+02:00', questions: [SINGLE_QUESTION, MULTI_QUESTION] };
+const PENDING: PendingQuestion = {
+  requestId: 'request-example',
+  askedAt:   '2026-10-21T10:00:00+02:00',
+  questions: [SINGLE_QUESTION, MULTI_QUESTION],
+  context:   { dispatcherRunId: null, mentionedTicketIds: [], lastAssistantLine: null },
+};
 const EMPTY: QuestionDraft = { chosenLabels: [], isOtherChosen: false, otherText: '' };
 
 test('a single-select choice replaces the one before, "Other" included', () => {

@@ -19,7 +19,7 @@ export const FAKE_REPLY_PREFIX = 'Example reply to: ';
 export const FAKE_ASK_MARKER = 'ask-example-question';
 export const FAKE_QUESTION_REQUEST_ID = 'example-question-request';
 export const FAKE_QUESTION = {
-  question:    'Which example colour should the board use?',
+  question:    'Which example colour should the board use for #135?',
   header:      'Colour',
   multiSelect: false,
   options:     [{ label: 'Red', description: 'An example red' }, { label: 'Blue', description: 'An example blue' }],

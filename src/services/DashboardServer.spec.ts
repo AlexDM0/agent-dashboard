@@ -1097,6 +1097,7 @@ test('the snapshot lists only the live sessions holding the run as watched, with
           usedTokens: 55, contextWindowTokens: null, model: 'claude-example-1', measuredAt: '2026-10-22T10:01:00.000Z'
         },
         pendingQuestions:  [],
+        lastAction:        null,
         previousSessionId: null,
       },
       {
@@ -1108,6 +1109,7 @@ test('the snapshot lists only the live sessions holding the run as watched, with
         startedAt:         EXAMPLE_SESSION_STARTED_AT,
         context:           null,
         pendingQuestions:  [],
+        lastAction:        null,
         previousSessionId: null,
       },
     ],
