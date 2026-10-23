@@ -329,6 +329,12 @@ function contextWindowsByModelOf(dashboardOwnedSessions: OrchestratorSession[]):
   return contextWindowByModel;
 }
 
+interface RegisteredProjectRequest {
+  trackerId: string;
+  root:      string;
+  bodyText:  string;
+}
+
 type OrchestratorDelivery = { kind: 'delivered'; recipient: OrchestratorRecipient } | { kind: 'refused'; response: Response };
 
 interface OrchestratorSources {
@@ -564,13 +570,22 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return origin !== null && !ownOrigins.has(origin);
   }
 
-  async function concurrencyLimitResponse(request: Request, encodedTrackerId: string): Promise<Response> {
-    if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+  /** The root is looked up only once the body is read, so a project unregistered during that read is a 404, never acted on. */
+  async function registeredProjectRequestOf(request: Request, encodedTrackerId: string): Promise<RegisteredProjectRequest | null> {
     await monitorStarted;
     const trackerId = decodedOrNull(encodedTrackerId);
-    const root = trackerId === null ? null : monitor.rootOf(trackerId);
-    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const limit = requestedConcurrencyLimitOf(await request.text().catch(() => ''));
+    if (trackerId === null) return null;
+    const bodyText = await request.text().catch(() => '');
+    const root = monitor.rootOf(trackerId);
+    return root === null ? null : { trackerId, root, bodyText };
+  }
+
+  async function concurrencyLimitResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, root, bodyText } = projectRequest;
+    const limit = requestedConcurrencyLimitOf(bodyText);
     if (limit === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, CONCURRENCY_BODY_REFUSAL);
     const verdict = await writeConcurrencyLimit({
       executable:          options.agentProgressExecutable,
@@ -587,11 +602,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
 
   async function dispatcherStopResponse(request: Request, encodedTrackerId: string): Promise<Response> {
     if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
-    await monitorStarted;
-    const trackerId = decodedOrNull(encodedTrackerId);
-    const root = trackerId === null ? null : monitor.rootOf(trackerId);
-    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    if (!isDispatcherStopBody(await request.text().catch(() => ''))) return plainResponse(HTTP_STATUS.BAD_REQUEST, DISPATCHER_BODY_REFUSAL);
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, root, bodyText } = projectRequest;
+    if (!isDispatcherStopBody(bodyText)) return plainResponse(HTTP_STATUS.BAD_REQUEST, DISPATCHER_BODY_REFUSAL);
     const verdict = await writeDispatcherStopped({
       executable:          options.agentProgressExecutable,
       runtimeExecutable:   options.runtimeExecutablePath,
@@ -607,11 +621,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   /** Writes nothing to the board or the repository: the message to the orchestrator session is the whole effect. */
   async function orchestratorRequestResponse(request: Request, encodedTrackerId: string): Promise<Response> {
     if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
-    await monitorStarted;
-    const trackerId = decodedOrNull(encodedTrackerId);
-    const root = trackerId === null ? null : monitor.rootOf(trackerId);
-    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const orchestratorRequest = orchestratorRequestOf(await request.text().catch(() => ''));
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, root, bodyText } = projectRequest;
+    const orchestratorRequest = orchestratorRequestOf(bodyText);
     if (orchestratorRequest === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_REQUEST_BODY_REFUSAL);
 
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
@@ -663,11 +676,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
 
   async function orchestratorChatResponse(request: Request, encodedTrackerId: string): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
-    await monitorStarted;
-    const trackerId = decodedOrNull(encodedTrackerId);
-    const root = trackerId === null ? null : monitor.rootOf(trackerId);
-    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const chat = requestedChatOf(await request.text().catch(() => ''));
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, root, bodyText } = projectRequest;
+    const chat = requestedChatOf(bodyText);
     if (chat === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
     if (chat.sessionId !== undefined) return deliveredToNamedSessionResponse(trackerId, root, chat.sessionId, chat.text);
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
@@ -698,10 +710,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   /** Only a dashboard-owned session's questions are answered here; a watched one answers in its own app. */
   async function orchestratorAnswerResponse(request: Request, encodedTrackerId: string): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
-    await monitorStarted;
-    const trackerId = decodedOrNull(encodedTrackerId);
-    if (trackerId === null || monitor.rootOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const requestedAnswer = requestedAnswerOf(await request.text().catch(() => ''));
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, bodyText } = projectRequest;
+    const requestedAnswer = requestedAnswerOf(bodyText);
     if (requestedAnswer === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_ANSWER_BODY_REFUSAL);
     const session = orchestratorSessions.sessionOf(trackerId);
     if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
@@ -732,11 +744,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   /** Starts the supervisor in the project's root; the session, not the dashboard, writes the tracker from then on. */
   async function orchestratorStartResponse(request: Request, encodedTrackerId: string): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
-    await monitorStarted;
-    const trackerId = decodedOrNull(encodedTrackerId);
-    const root = trackerId === null ? null : monitor.rootOf(trackerId);
-    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const startBuilding = requestedStartBuildingOf(await request.text().catch(() => ''));
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, root, bodyText } = projectRequest;
+    const startBuilding = requestedStartBuildingOf(bodyText);
     if (startBuilding === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_START_BODY_REFUSAL);
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
@@ -785,8 +796,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     await monitorStarted;
     const trackerId = decodedOrNull(encodedTrackerId);
-    const root = trackerId === null ? null : monitor.rootOf(trackerId);
-    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    if (trackerId === null || monitor.rootOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     if (orchestratorSessions.sessionOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     if (trackersBeingHandedOff.has(trackerId)) return plainResponse(HTTP_STATUS.CONFLICT, 'A handoff of this project\'s orchestrator is already under way');
@@ -794,6 +804,8 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     try {
       // The dispatcher state is read afresh, so a run launched since the last snapshot still refuses.
       await monitor.refreshProjectNow(trackerId);
+      const refreshedRoot = monitor.rootOf(trackerId);
+      if (refreshedRoot === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
       const session = orchestratorSessions.sessionOf(trackerId);
       if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
       const refusal = handoffRefusalOf(trackerId, session);
@@ -802,7 +814,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
         orchestratorSessions,
         handoffDirectory:         handoffDirectoryOf(options.homeDirectory),
         trackerId,
-        root,
+        root:                     refreshedRoot,
         previousSession:          session,
         now:                      options.clock(),
         replyTimeoutMilliseconds: dependencies.handoffReplyTimeoutMilliseconds,

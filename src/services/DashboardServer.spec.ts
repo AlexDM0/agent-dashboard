@@ -10,7 +10,8 @@
  * identity before the first board read ends, since the CLI writes the server record as soon as the start resolves.
  * The concurrency route, the one write, is proven against a fake CLI that keeps a limit and logs its calls: a foreign
  * Origin, an unknown tracker and an out-of-range limit never reach the CLI, a CLI refusal and failure map to 409 and
- * 502, and a 204 is followed by a snapshot carrying the new limit without any change in the watched folder. The
+ * 502, and a 204 is followed by a snapshot carrying the new limit without any change in the watched folder; a project
+ * unregistered while its body still arrives is 404, since every project route looks the root up after the body. The
  * dispatcher route is proven the same way against a fake keeping a dispatcher state: only `{ "state": "stopped" }`
  * reaches the CLI, and its 204 is followed by a snapshot showing the dispatcher stopped.
  * The orchestrator-request route is proven against scratch Unix-socket listeners standing in for Claude Code sessions
@@ -631,6 +632,52 @@ test('a CLI exit 1 answers 409 with the CLI\'s message, and any other failure an
   expect(missing.status).toBe(502);
   expect(await missing.text()).toBe('agent-progress is not on PATH');
   expect((await fetch(`${missingServer.url}/api/identity`)).status).toBe(200);
+});
+
+async function waitUntilProjectCountIs(runningServer: RunningDashboardServer, expectedCount: number): Promise<void> {
+  for (const deadline = performance.now() + 5_000; performance.now() < deadline;) {
+    const projectCount = (await (await fetch(`${runningServer.url}/api/snapshot`)).json() as DashboardSnapshot).projects.length;
+    if (projectCount === expectedCount) return;
+    await Bun.sleep(20);
+  }
+  throw new Error(`Timed out waiting until the snapshot holds ${expectedCount} projects`);
+}
+
+test('a project unregistered while its concurrency body is still arriving is 404 and never reaches the CLI', async () => {
+  const homeDirectory = join(scratchDirectory, 'unregistering-home');
+  mkdirSync(homeDirectory);
+  writeExampleRegistry(homeDirectory, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, 'example-storefront') });
+  const callLogPath = join(scratchDirectory, 'unregistering-calls');
+  const unregisteringServer = startedOrThrow(await startDashboardServer({
+    ...serverOptions,
+    homeDirectory,
+    agentProgressExecutable: fakeExecutableKeepingAConcurrencyLimit(scratchDirectory, statusDocumentPath(), join(scratchDirectory, 'unregistering-limit'), callLogPath),
+  }));
+  extraServers.push(unregisteringServer);
+  await waitUntilProjectCountIs(unregisteringServer, 1);
+
+  let finishBody = (): void => undefined;
+  const bodyFinished = new Promise<void>((resolve) => { finishBody = resolve; });
+  const encoder = new TextEncoder();
+  const slowBody = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      controller.enqueue(encoder.encode('{ "limit"'));
+      await bodyFinished;
+      controller.enqueue(encoder.encode(': 3 }'));
+      controller.close();
+    },
+  });
+  const answer = fetch(`${unregisteringServer.url}/api/projects/${TRACKER_ID}/concurrency`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    slowBody,
+  });
+  writeExampleRegistry(homeDirectory, {});
+  await waitUntilProjectCountIs(unregisteringServer, 0);
+  finishBody();
+
+  expect((await answer).status).toBe(404);
+  expect(callsLogged(callLogPath)).toEqual([]);
 });
 
 async function startDispatcherServer(name: string): Promise<CallLoggingServer> {
