@@ -311,7 +311,8 @@ and removes its record and socket then.
 - **The finder**: the session writes its own `~/.claude/sessions/<pid>.json` (`kind: "interactive"`, `entrypoint`
   inherited from the environment, a `messagingSocketPath`), so `src/adapters/OrchestratorSessionFinder.ts` sees it.
   A project with a live dashboard-owned orchestrator takes it as its orchestrator, matched by the record's
-  `sessionPid`, and `orchestrator-requests` reaches it through the supervisor's `chat`.
+  `sessionPid`, and `orchestrator-requests` reaches it through the supervisor's `chat`. A dashboard-owned product
+  owner is never a candidate for the orchestrator, though it runs in the project root.
 
 Files under `~/.agent-progress-monitor/agent-dashboard/orchestrators/`, each named for the first 16 hex digits of the
 SHA-256 of `<role>\n<trackerId>`, so the role costs the name no length (a Unix socket path is limited to 104 bytes on
