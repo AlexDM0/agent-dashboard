@@ -133,8 +133,8 @@ export interface DashboardSnapshot {
   /** The page on the board origin that carries the theme and Esc between the dashboard and the framed board. */
   boardBridgeUrl:                string;
   /**
-   * Per tracked project, every live Claude Code session in its root the dashboard did not start, `ownership: 'watched'`;
-   * every project of `projects` is a key, its list empty for none.
+   * Per tracked project, every live Claude Code session holding its board's `dispatcherRunId` run that the dashboard did
+   * not start, `ownership: 'watched'`; every project of `projects` is a key, its list empty for none or no run.
    */
   watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
 }

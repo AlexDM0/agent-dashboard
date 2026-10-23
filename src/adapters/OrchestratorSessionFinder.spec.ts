@@ -2,8 +2,9 @@
  * The lookup decides whose session a click reaches, so it must never guess: the session holding the board's dispatcher
  * run wins even beside others in the root, the root's only live session is the fallback, and zero or several candidates
  * are refusals. A record whose pid is gone or whose socket refuses is no candidate, and a run id that is not a plain
- * folder name never steers the lookup. The watched list leaves out the dashboard-owned session, a gone pid and any other
- * folder. Everything lives under a scratch home with scratch socket listeners.
+ * folder name never steers the lookup. The watched list is the live holders of the run alone, wherever their folder:
+ * never the dashboard-owned session, a gone pid, a root session without the run, nor anyone without a valid run id.
+ * Everything lives under a scratch home with scratch socket listeners.
  */
 import { mkdirSync } from 'node:fs';
 import { join }      from 'node:path';
@@ -139,15 +140,41 @@ test('a missing sessions folder or a damaged record is no session, never a throw
   expect(foundSessionId(await find(null))).toBe('in-root');
 });
 
-test('the watched sessions are every live one in the root but the dashboard-owned, with the name, status and start their records carry', async () => {
+function watchedSessionIds(dispatcherRunId: string | null, dashboardOwnedSessionId = ''): string[] {
+  return findWatchedSessions({ homeDirectory, dispatcherRunId, isDashboardOwned: (session) => session.sessionId === dashboardOwnedSessionId })
+    .map((session) => session.sessionId);
+}
+
+test('the watched sessions are every live run holder but the dashboard-owned, from any folder, with the name, status and start their records carry', async () => {
   const named = liveSession('watched-b', projectRoot);
   writeExampleSessionRecord(homeDirectory, named, { name: 'Example orchestrator', status: 'busy' });
-  liveSession('watched-a', projectRoot, process.ppid);
-  liveSession('dashboard-owned', projectRoot);
-  liveSession('elsewhere', scratchDirectory);
-  liveSession('gone', projectRoot, await exitedProcessId());
+  createExampleWorkflowRun(homeDirectory, named, EXAMPLE_RUN_ID);
+  createExampleWorkflowRun(homeDirectory, liveSession('watched-a', join(projectRoot, '.claude', 'worktrees', 'example'), process.ppid), EXAMPLE_RUN_ID);
+  createExampleWorkflowRun(homeDirectory, liveSession('dashboard-owned', projectRoot), EXAMPLE_RUN_ID);
+  createExampleWorkflowRun(homeDirectory, liveSession('gone', projectRoot, await exitedProcessId()), EXAMPLE_RUN_ID);
+  liveSession('root-without-run', projectRoot);
 
-  const watched = findWatchedSessions({ homeDirectory, projectRoot, isDashboardOwned: (session) => session.sessionId === 'dashboard-owned' });
+  const watched = findWatchedSessions({ homeDirectory, dispatcherRunId: EXAMPLE_RUN_ID, isDashboardOwned: (session) => session.sessionId === 'dashboard-owned' });
   expect(watched.map((session) => session.sessionId)).toEqual(['watched-a', 'watched-b']);
   expect(watched[1]).toMatchObject({ name: 'Example orchestrator', status: 'busy', startedAt: EXAMPLE_SESSION_STARTED_AT });
+});
+
+test('of two live sessions in the root only the one holding the run is watched', () => {
+  createExampleWorkflowRun(homeDirectory, liveSession('orchestrator', projectRoot), EXAMPLE_RUN_ID);
+  createExampleWorkflowRun(homeDirectory, liveSession('other-run', projectRoot), 'example-run-older');
+  liveSession('ordinary', projectRoot);
+  expect(watchedSessionIds(EXAMPLE_RUN_ID)).toEqual(['orchestrator']);
+});
+
+test('without a dispatcher run no session is watched, however many live in the root', () => {
+  liveSession('root-a', projectRoot);
+  createExampleWorkflowRun(homeDirectory, liveSession('root-b', projectRoot), EXAMPLE_RUN_ID);
+  expect(watchedSessionIds(null)).toEqual([]);
+});
+
+test('a run id that is not a plain folder name watches no session, even one whose run folder it would reach', () => {
+  createExampleWorkflowRun(homeDirectory, liveSession('holder', projectRoot), EXAMPLE_RUN_ID);
+  expect(watchedSessionIds(EXAMPLE_RUN_ID)).toEqual(['holder']);
+  expect(watchedSessionIds(`../workflows/${EXAMPLE_RUN_ID}`)).toEqual([]);
+  expect(watchedSessionIds(`./${EXAMPLE_RUN_ID}`)).toEqual([]);
 });

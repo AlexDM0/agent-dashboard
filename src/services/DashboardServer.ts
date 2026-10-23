@@ -29,6 +29,7 @@ import {
   type OrchestratorRecipient,
   type OrchestratorRequestReceipt,
   type OrchestratorSession,
+  type ProjectSnapshot,
   type ServerIdentity
 } from '../shared/DashboardContract.ts';
 import { environmentCopy }                                                                     from '../shared/Environment.ts';
@@ -295,13 +296,21 @@ function serverSentEventOf(eventName: string, data: unknown): string {
   return `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-/** Every live session in `root` the dashboard did not start, matched against the dashboard-owned ones by pid and session id. */
-function watchedSessionsIn(homeDirectory: string, root: string, dashboardOwnedSessions: OrchestratorSession[]): LiveSession[] {
+/** A project whose board cannot be read has no dispatcher run, so it watches no session. */
+function dispatcherRunIdOf(project: Pick<ProjectSnapshot, 'health'> | undefined): string | null {
+  return project?.health.kind === 'ready' ? project.health.board.dispatcherRunId : null;
+}
+
+/**
+ * Every live session holding the project's dispatcher run that the dashboard did not start, matched against the
+ * dashboard-owned ones by pid and session id.
+ */
+function watchedSessionsOf(homeDirectory: string, project: Pick<ProjectSnapshot, 'health'> | undefined, dashboardOwnedSessions: OrchestratorSession[]): LiveSession[] {
   const ownedPids = new Set(dashboardOwnedSessions.map((session) => session.pid));
   const ownedSessionIds = new Set(dashboardOwnedSessions.map((session) => session.sessionId));
   return findWatchedSessions({
     homeDirectory,
-    projectRoot:      root,
+    dispatcherRunId:  dispatcherRunIdOf(project),
     isDashboardOwned: (session) => ownedPids.has(session.pid) || ownedSessionIds.has(session.sessionId),
   });
 }
@@ -346,7 +355,7 @@ interface OrchestratorSources {
 
 /**
  * The monitor's snapshot with every page addressed on the board origin, each project's dashboard-owned orchestrator,
- * and the sessions watched in each project's root, read afresh from `~/.claude/` for every snapshot served.
+ * and the sessions holding each project's dispatcher run, read afresh from `~/.claude/` for every snapshot served.
  */
 function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orchestratorSources: OrchestratorSources): DashboardSnapshot {
   const { homeDirectory, orchestratorOf } = orchestratorSources;
@@ -364,7 +373,7 @@ function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orc
     boardBridgeUrl:                `${boardOrigin}${DASHBOARD_PROTOCOL.BOARD_BRIDGE_PATH}`,
     watchedOrchestratorsByTracker: Object.fromEntries(monitored.projects.map((project) => [
       project.trackerId,
-      watchedSessionsIn(homeDirectory, project.root, dashboardOwnedSessions).map((session) => watchedOrchestratorOf(homeDirectory, session, contextWindowByModel)),
+      watchedSessionsOf(homeDirectory, project, dashboardOwnedSessions).map((session) => watchedOrchestratorOf(homeDirectory, session, contextWindowByModel)),
     ])),
   };
 }
@@ -692,7 +701,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const { trackerId, root, bodyText } = projectRequest;
     const chat = requestedChatOf(bodyText);
     if (chat === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
-    if (chat.sessionId !== undefined) return deliveredToNamedSessionResponse(trackerId, root, chat.sessionId, chat.text);
+    if (chat.sessionId !== undefined) return deliveredToNamedSessionResponse(trackerId, chat.sessionId, chat.text);
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
     const delivery = await orchestratorDeliveryOf(trackerId, root, project?.health.kind === 'ready' ? project.health.board : null, () => chat.text);
     if (delivery.kind === 'refused') return delivery.response;
@@ -700,7 +709,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   }
 
   /** The dashboard-owned session takes the text as its user's turn; a watched one through its inbox, as a peer's request. */
-  async function deliveredToNamedSessionResponse(trackerId: string, root: string, sessionId: string, text: string): Promise<Response> {
+  async function deliveredToNamedSessionResponse(trackerId: string, sessionId: string, text: string): Promise<Response> {
     const dashboardOwned = orchestratorSessions.sessionOf(trackerId);
     if (dashboardOwned?.sessionId === sessionId) {
       const delivery = await orchestratorSessions.chat(trackerId, text);
@@ -708,11 +717,13 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
       return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
     }
-    const dashboardOwnedSessions = monitor.snapshot().projects
+    const { projects } = monitor.snapshot();
+    const dashboardOwnedSessions = projects
       .map((project) => orchestratorSessions.sessionOf(project.trackerId))
       .filter((session): session is OrchestratorSession => session !== null);
-    const watched = watchedSessionsIn(options.homeDirectory, root, dashboardOwnedSessions).find((session) => session.sessionId === sessionId);
-    if (watched === undefined) return plainResponse(HTTP_STATUS.CONFLICT, `No live session ${sessionId} runs in this project's root`);
+    const project = projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
+    const watched = watchedSessionsOf(options.homeDirectory, project, dashboardOwnedSessions).find((session) => session.sessionId === sessionId);
+    if (watched === undefined) return plainResponse(HTTP_STATUS.CONFLICT, `No live session ${sessionId} holds this project's dispatcher run`);
     const delivery = await writeSessionMessage(watched.messagingSocketPath, text, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS);
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });

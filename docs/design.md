@@ -228,7 +228,7 @@ export interface DashboardSnapshot {
   machineParallelAgentLimit: number;
   boardOrigin: string;             // http://127.0.0.1:<port + 1>
   boardBridgeUrl: string;          // <boardOrigin>/bridge
-  watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;  // see "Watched sessions"
+  watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;  // the run's holders; see "Watched sessions"
 }
 
 export interface ServerIdentity { application: 'agent-dashboard'; version: string; pid: number }
@@ -337,10 +337,14 @@ size costs one bounded read; a missing or unreadable transcript, or a tail with 
 
 ### Watched sessions
 
-A watched session is a live Claude Code session in a project's root the dashboard did not start: every record in
-`~/.claude/sessions/` whose `cwd` resolves to the root and whose pid is alive
-(`findWatchedSessions` in `src/adapters/OrchestratorSessionFinder.ts`), less every dashboard-owned session, matched by
-its session pid or its session id, so a dashboard-owned session is never also watched. No socket is probed for the list.
+A watched session is the board's orchestrator running outside the dashboard: every record in `~/.claude/sessions/`
+whose pid is alive and whose transcript folder holds the board's latest dispatcher run,
+`~/.claude/projects/<slug of its cwd>/<sessionId>/subagents/workflows/<dispatcherRunId>/`, whatever its `cwd`
+(`findWatchedSessions` in `src/adapters/OrchestratorSessionFinder.ts`, the finder's first test). Other sessions in the
+project's root are not listed. With `dispatcherRunId` null (no run yet, or a board that cannot be read), or a run id
+that is not a plain folder name, no session is watched; when several hold the run, all are listed. Every dashboard-owned
+session is left out, matched by its session pid or its session id, so a dashboard-owned session is never also watched;
+it is listed as the dashboard's own whether or not it holds the run. No socket is probed for the list.
 Each is an `OrchestratorSession` with `ownership: "watched"`, its record's `sessionId`, `pid`, `name` and `startedAt`
 (null when absent), `state` `busy` when the record's `status` is `busy`, else `idle`, its context usage from its
 transcript, and no pending questions: its questions are answered in its own app. Its conversation is not streamed;
@@ -429,7 +433,7 @@ export interface LaunchToken { token: string }
 export interface OrchestratorHandoffResult { session: OrchestratorSession; notePath: string }
 
 // ProjectSnapshot gains: orchestrator: OrchestratorSession | null;
-// DashboardSnapshot gains: watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;
+// DashboardSnapshot gains: watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;  // dispatcher run holders
 ```
 
 ## Visual design

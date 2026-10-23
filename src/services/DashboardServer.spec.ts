@@ -18,9 +18,10 @@
  * under a scratch home: the exact line a session receives, no write on any refusal (guards, a bad body, an id that is
  * not low-priority waiting, zero or several candidates), and 502 when the chosen session's socket fails; a live
  * dashboard-owned session (stubbed) takes the text as its chat instead, and the answer names which of the two it reached.
- * Watched sessions: the snapshot lists every live one in the root with its record's name and status and its
- * transcript's usage (unknown without one) and never probes their sockets; a chat naming one reaches it alone, and a
- * gone session is 409, a malformed body 400 and a missing launch grant 403, none writing.
+ * Watched sessions: the snapshot lists only the live holders of the board's dispatcher run, none without a run, with its
+ * record's name and status and its transcript's usage (unknown without one) and never probes their sockets; a chat
+ * naming one reaches it alone, and a gone session or a root session without the run is 409, a malformed body 400 and a
+ * missing launch grant 403, none writing.
  */
 import {
   existsSync,
@@ -824,11 +825,11 @@ interface OrchestratorFixture {
 }
 
 /** The captured board plus two low-priority waiting tickets and a dispatcher run id, behind its own fake CLI. */
-function orchestratorStatusExecutable(): string {
-  const fakeDirectory = join(scratchDirectory, 'orchestrator-fake');
+function orchestratorStatusExecutable(dispatcherRunId: string | null): string {
+  const fakeDirectory = join(scratchDirectory, `orchestrator-fake-${dispatcherRunId ?? 'without-run'}`);
   mkdirSync(fakeDirectory, { recursive: true });
   const document = JSON.parse(readFileSync(statusDocumentPath(), 'utf8')) as { concurrency: Record<string, unknown>; tickets: unknown[] };
-  document.concurrency['dispatcherRunId'] = ORCHESTRATOR_RUN_ID;
+  document.concurrency['dispatcherRunId'] = dispatcherRunId;
   document.tickets.push(
     {
       id: '012', title: 'Example low chore', status: 'pending', priority: 'low'
@@ -842,11 +843,12 @@ function orchestratorStatusExecutable(): string {
   return fakeExecutablePrinting(fakeDirectory, documentPath);
 }
 
-async function startOrchestratorServer(name: string): Promise<OrchestratorFixture> {
+async function startOrchestratorServer(name: string, dispatcherRunId: string | null = ORCHESTRATOR_RUN_ID): Promise<OrchestratorFixture> {
   const homeDirectory = join(scratchDirectory, `${name}-home`);
   mkdirSync(homeDirectory);
   writeExampleRegistry(homeDirectory, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, 'example-storefront') });
-  const orchestratorServer = startedOrThrow(await startDashboardServer({ ...serverOptions, homeDirectory, agentProgressExecutable: orchestratorStatusExecutable() }));
+  const agentProgressExecutable = orchestratorStatusExecutable(dispatcherRunId);
+  const orchestratorServer = startedOrThrow(await startDashboardServer({ ...serverOptions, homeDirectory, agentProgressExecutable }));
   extraServers.push(orchestratorServer);
   return { server: orchestratorServer, homeDirectory };
 }
@@ -857,6 +859,14 @@ function liveExampleSession(fixture: OrchestratorFixture, sessionId: string, soc
   writeExampleSessionRecord(fixture.homeDirectory, {
     pid, sessionId, cwd: projectRoot, messagingSocketPath: listener.socketPath
   });
+  return listener;
+}
+
+function liveRunHolder(fixture: OrchestratorFixture, sessionId: string, socketDirectory: string, pid = process.pid): ExampleSessionListener {
+  const listener = liveExampleSession(fixture, sessionId, socketDirectory, pid);
+  createExampleWorkflowRun(fixture.homeDirectory, {
+    pid, sessionId, cwd: projectRoot, messagingSocketPath: listener.socketPath
+  }, ORCHESTRATOR_RUN_ID);
   return listener;
 }
 
@@ -1036,9 +1046,9 @@ async function watchedChatRequest(runningServer: RunningDashboardServer, body: s
   });
 }
 
-test('the snapshot lists every live session in the root as watched, with name, status and usage', () => withSocketDirectory(async (socketDirectory, listeners) => {
+test('the snapshot lists only the live sessions holding the run as watched, with name, status and usage', () => withSocketDirectory(async (socketDirectory, listeners) => {
   const fixture = await startOrchestratorServer('watched-snapshot');
-  const named = liveExampleSession(fixture, 'h', socketDirectory);
+  const named = liveRunHolder(fixture, 'h', socketDirectory);
   listeners.push(named);
   writeExampleSessionRecord(fixture.homeDirectory, {
     pid: process.pid, sessionId: 'h', cwd: projectRoot, messagingSocketPath: named.socketPath
@@ -1046,8 +1056,9 @@ test('the snapshot lists every live session in the root as watched, with name, s
   writeExampleTranscript(fixture.homeDirectory, {
     pid: process.pid, sessionId: 'h', cwd: projectRoot, messagingSocketPath: named.socketPath
   }, [exampleAssistantLine('claude-example-1', { input_tokens: 5, cache_read_input_tokens: 50 }, '2026-10-22T10:01:00.000Z')]);
-  const unmeasured = liveExampleSession(fixture, 'i', socketDirectory, process.ppid);
-  listeners.push(unmeasured);
+  const unmeasured = liveRunHolder(fixture, 'i', socketDirectory, process.ppid);
+  const ordinary = liveExampleSession(fixture, 'h-ordinary', socketDirectory);
+  listeners.push(unmeasured, ordinary);
 
   const snapshot = await (await fetch(`${fixture.server.url}/api/snapshot`)).json() as DashboardSnapshot;
   expect(snapshot.watchedOrchestratorsByTracker).toEqual({
@@ -1079,13 +1090,25 @@ test('the snapshot lists every live session in the root as watched, with name, s
     ],
   });
   expect(snapshot.projects[0]?.orchestrator).toBeNull();
-  expect(named.connectionCount() + unmeasured.connectionCount()).toBe(0);
+  expect(named.connectionCount() + unmeasured.connectionCount() + ordinary.connectionCount()).toBe(0);
+}));
+
+test('of two live sessions in the root only the run holder is watched, and without a run neither is', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const fixture = await startOrchestratorServer('watched-one-holder');
+  listeners.push(liveRunHolder(fixture, 'o', socketDirectory), liveExampleSession(fixture, 'p', socketDirectory, process.ppid));
+  const snapshot = await (await fetch(`${fixture.server.url}/api/snapshot`)).json() as DashboardSnapshot;
+  expect(snapshot.watchedOrchestratorsByTracker[TRACKER_ID]?.map((session) => session.sessionId)).toEqual(['o']);
+
+  const fixtureWithoutRun = await startOrchestratorServer('watched-without-run', null);
+  listeners.push(liveRunHolder(fixtureWithoutRun, 'q', socketDirectory), liveExampleSession(fixtureWithoutRun, 'r', socketDirectory, process.ppid));
+  const snapshotWithoutRun = await (await fetch(`${fixtureWithoutRun.server.url}/api/snapshot`)).json() as DashboardSnapshot;
+  expect(snapshotWithoutRun.watchedOrchestratorsByTracker).toEqual({ [TRACKER_ID]: [] });
 }));
 
 test('a chat naming a watched session writes one user line to its socket alone, beside another in the root', () => withSocketDirectory(async (socketDirectory, listeners) => {
   const fixture = await startOrchestratorServer('watched-chat');
-  const chosen = liveExampleSession(fixture, 'j', socketDirectory);
-  const other = liveExampleSession(fixture, 'k', socketDirectory, process.ppid);
+  const chosen = liveRunHolder(fixture, 'j', socketDirectory);
+  const other = liveRunHolder(fixture, 'k', socketDirectory, process.ppid);
   listeners.push(chosen, other);
 
   const answer = await watchedChatRequest(fixture.server, JSON.stringify({ text: '  Example question?  ', sessionId: 'j' }));
@@ -1095,14 +1118,19 @@ test('a chat naming a watched session writes one user line to its socket alone, 
   expect(other.connectionCount()).toBe(0);
 }));
 
-test('a chat naming a gone session is 409, a malformed one 400, one without the grant 403, none writing', () => withSocketDirectory(async (socketDirectory, listeners) => {
+test('a chat naming a gone or runless session is 409, a malformed one 400, a grantless one 403, none writing', () => withSocketDirectory(async (socketDirectory, listeners) => {
   const fixture = await startOrchestratorServer('watched-refusals');
-  const live = liveExampleSession(fixture, 'l', socketDirectory);
+  const live = liveRunHolder(fixture, 'l', socketDirectory);
   listeners.push(live);
-  const gone = liveExampleSession(fixture, 'm', socketDirectory, await exitedProcessId());
+  const gone = liveRunHolder(fixture, 'm', socketDirectory, await exitedProcessId());
   listeners.push(gone);
+  const withoutRun = liveExampleSession(fixture, 'n', socketDirectory);
+  listeners.push(withoutRun);
 
   expect((await watchedChatRequest(fixture.server, JSON.stringify({ text: 'Example', sessionId: 'm' }))).status).toBe(409);
+  const notWatched = await watchedChatRequest(fixture.server, JSON.stringify({ text: 'Example', sessionId: 'n' }));
+  expect(notWatched.status).toBe(409);
+  expect(await notWatched.text()).toContain('holds this project\'s dispatcher run');
   expect((await watchedChatRequest(fixture.server, JSON.stringify({ text: 'Example', sessionId: 'no-such-session' }))).status).toBe(409);
   const malformedBodies = [{ text: 'Example', sessionId: 7 }, { text: 'Example', sessionId: '' }, { text: 'Example', sessionId: 'l', extra: true }]
     .map((body) => JSON.stringify(body));
@@ -1113,5 +1141,5 @@ test('a chat naming a gone session is 409, a malformed one 400, one without the 
   const withoutToken = await watchedChatRequest(fixture.server, JSON.stringify({ text: 'Example', sessionId: 'l' }), wrongToken);
   expect(withoutToken.status).toBe(403);
   await Bun.sleep(50);
-  expect(live.connectionCount() + gone.connectionCount()).toBe(0);
+  expect(live.connectionCount() + gone.connectionCount() + withoutRun.connectionCount()).toBe(0);
 }));

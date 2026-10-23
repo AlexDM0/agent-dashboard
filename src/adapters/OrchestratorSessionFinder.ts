@@ -37,7 +37,8 @@ export interface OrchestratorSearch {
 
 export interface WatchedSessionSearch {
   homeDirectory:    string;
-  projectRoot:      string;
+  /** The board's latest dispatcher run; null, or a run id that is no plain folder name, watches no session. */
+  dispatcherRunId:  string | null;
   /** Whether the dashboard started the session, by its pid or its session id; such a session is never also watched. */
   isDashboardOwned: (session: LiveSession) => boolean;
 }
@@ -140,10 +141,14 @@ export async function findOrchestratorSession(search: OrchestratorSearch): Promi
   return { kind: 'refused', reason: `No live Claude Code session orchestrates ${search.projectRoot}: none holds its dispatcher run or runs in its root` };
 }
 
-/** Every live session in the project root but the dashboard-owned ones, by session id; no socket is probed. */
+/**
+ * Every live session holding the board's dispatcher run, wherever its cwd, but the dashboard-owned ones, by session id;
+ * no socket is probed.
+ */
 export function findWatchedSessions(search: WatchedSessionSearch): LiveSession[] {
-  const projectRoot = canonicalPathOf(search.projectRoot);
+  const runId = search.dispatcherRunId;
+  if (runId === null || !RUN_ID_PATTERN.test(runId)) return [];
   return recordedSessions(search.homeDirectory)
-    .filter((session) => !search.isDashboardOwned(session) && canonicalPathOf(session.cwd) === projectRoot && processIsAlive(session.pid))
+    .filter((session) => !search.isDashboardOwned(session) && holdsWorkflowRun(search.homeDirectory, session, runId) && processIsAlive(session.pid))
     .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
 }
