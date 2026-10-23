@@ -464,12 +464,13 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 
 ### Overview (`#/`)
 
-- **Header** (one line, wraps on a phone): the name `agent-dashboard` with the dashboard menu beside it, the live status, then header stats in the
+- **Header** (one line, wraps on a phone): the dashboard menu first, at the header's left edge, then the name
+  `agent-dashboard` and the live status, then header stats in the
   template's `.ap-head-stats` manner: Projects, Agents (in flight across every board / the machine's parallel
   maximum, `availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
   the projects' concurrency limits are not summed here), Ready, Awaiting review, Held; the
   notification control, the Inbox control and the theme toggle at the end.
-- **Dashboard menu** (beside the title on every view): a hamburger toggle named "Dashboard menu" opening a panel with
+- **Dashboard menu** (before the title on every view, its panel opening along the header's left edge): a hamburger toggle named "Dashboard menu" opening a panel with
   one item, "Restart server". Choosing it asks "Restart the dashboard server?" with Restart and Cancel in the panel;
   Cancel returns to the item without a request, Restart sends `POST /api/restart` and closes the menu, after which the
   reconnecting banner shows until the successor answers. A refusal is shown in the panel. The menu closes as the

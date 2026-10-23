@@ -6,7 +6,7 @@ type DashboardMenuStep = { kind: 'choosing' } | { kind: 'confirming-restart' } |
 
 const CHOOSING: DashboardMenuStep = { kind: 'choosing' };
 
-/** The header's menu beside the title: one action, a confirmed restart of the dashboard server. */
+/** The header's menu at its left edge, before the title:one action, a confirmed restart of the dashboard server. */
 export function DashboardMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<DashboardMenuStep>(CHOOSING);

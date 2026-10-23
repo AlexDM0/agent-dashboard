@@ -40,9 +40,9 @@ ul { padding: 0; list-style: none; }
 .ap-header-name { font: 700 var(--fs-page)/1.2 var(--font-ui); letter-spacing: -0.02em; }
 .ap-header-name a { color: var(--ink); }
 .ap-header-name a:hover { text-decoration: none; }
-.ap-header-title { display: flex; align-items: center; gap: var(--sp-2); }
 
 .ap-menu { position: relative; }
+.ap-header > .ap-menu { margin-right: -16px; }
 .ap-menu-toggle { padding: 0 6px; }
 .ap-menu-toggle svg { width: 16px; height: 16px; }
 .ap-menu-panel {
@@ -460,10 +460,11 @@ ul { padding: 0; list-style: none; }
 @media (max-width: 640px) {
   .ap-page { padding: 20px 16px 32px; }
 
-  .ap-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 12px; padding-bottom: 0; border-bottom: 0; }
-  .ap-header-identity { flex-direction: column; align-items: flex-start; gap: 4px; margin-right: 0; }
+  .ap-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px 12px; padding-bottom: 0; border-bottom: 0; }
+  .ap-header > .ap-menu { grid-row: 1; grid-column: 1; align-self: start; margin-right: 0; }
+  .ap-header-identity { grid-row: 1; grid-column: 2; flex-direction: column; align-items: flex-start; gap: 4px; margin-right: 0; }
   .ap-theme { display: none; }
-  .ap-header-tools { grid-row: 1; grid-column: 2; gap: 8px; }
+  .ap-header-tools { grid-row: 1; grid-column: 3; gap: 8px; }
   .ap-inbox-toggle, .ap-notification-toggle, .ap-menu-toggle { min-height: 44px; }
   .ap-inbox-panel { left: 0; width: auto; }
   .ap-menu-toggle { min-width: 44px; justify-content: center; }

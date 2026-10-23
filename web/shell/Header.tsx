@@ -25,11 +25,9 @@ export function Header({
 }: HeaderProperties) {
   return (
     <header className="ap-header">
+      <DashboardMenu />
       <div className="ap-header-identity">
-        <div className="ap-header-title">
-          <h1 className="ap-header-name"><a href={OVERVIEW_HASH}>agent-dashboard</a></h1>
-          <DashboardMenu />
-        </div>
+        <h1 className="ap-header-name"><a href={OVERVIEW_HASH}>agent-dashboard</a></h1>
         <LiveStatus connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
       </div>
       <HeaderStatistics totals={totals} machineParallelAgentLimit={stream.snapshot?.machineParallelAgentLimit ?? null} />
