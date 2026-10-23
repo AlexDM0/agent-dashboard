@@ -669,7 +669,13 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   in a text field stays in the field. A tab bar heads it, one tab per crew role, "Orchestrator" and "Product owner",
   each with a badge counting its live session's pending questions. It opens on the tab it was asked for, else
   (`#/projects/<trackerId>/crew`) on the Product owner tab while the product owner alone asks
-  (`OrchestratorSessionUtil.askingRoleOf`), else on the Orchestrator tab.
+  (`OrchestratorSessionUtil.askingRoleOf`), else on the Orchestrator tab. Each tab lists only the sessions that have
+  not ended as cards; the ended ones (`EndedSessionSplitUtil.splitOf`) sit in one fold at the bottom, "Ended (N)"
+  (`web/orchestrator/EndedFold.tsx`), closed on every page view and absent while none has ended. Opened, it lists them
+  newest first by their last action (the snapshot carries no end instant), each one closed line
+  (`web/orchestrator/EndedSessionLine.tsx`): its name, "started <clock> · ended after <clock of its last action> ·
+  <last action>"; a line opened shows that session's card read-only, its conversation and no chat box, its stream
+  tailed only while open. A session that ends moves to the fold on the next snapshot.
 - The drawer's **Product owner tab**: "+ New ticket" while no product owner lives, then the project's product owner
   (the snapshot carries the newest one only, live or ended) as the same session card as the orchestrator's, named
   "Product owner": its pending questions answered in place through `/product-owner/answers`, its conversation from
@@ -685,7 +691,10 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   - **Conversations**: every project's dashboard-owned orchestrator and product owner (live or ended, as the snapshot
     keeps them for this server's run) and every watched desktop orchestrator, "desktop app · send-only", ordered by
     `ChatConversationListUtil.conversationsOf`: live sessions with a pending question first, then by `lastAction.at`
-    newest first (none last), then the ended ones ("ended · <last action>"). Above the list a project picker, "New
+    newest first (none last). The ended ones are not in that list but in the same closed "Ended (N)" fold as the
+    drawer's at the bottom of the column, newest first, each line its start, its end bound and its last action;
+    picking one shows its conversation read-only, without quick prompts or chat box. The conversation shown by
+    default is the first one that has not ended, else none. Above the list a project picker, "New
     spar" (`POST /product-owner` with `{ "mode": "spar" }`, then selects that project's product owner) and "Talk to
     orchestrator" (its live session, else a fresh one with `startBuilding` false).
   - **Conversation**: the session's glyph, a title (the first line of the user's first message after the dashboard's

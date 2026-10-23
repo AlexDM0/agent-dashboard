@@ -5,6 +5,9 @@ import {
   useState
 } from 'react';
 import type { OrchestratorSession, ProjectSnapshot, SessionRole } from '../../src/shared/DashboardContract.ts';
+import { EndedFold }                                              from './EndedFold.tsx';
+import { EndedSessionLine }                                       from './EndedSessionLine.tsx';
+import { EndedSessionSplitUtil }                                  from './EndedSessionSplitUtil.ts';
 import { OrchestratorSessionUtil }                                from './OrchestratorSessionUtil.ts';
 import { SessionCard }                                            from './SessionCard.tsx';
 import { StartOrchestratorButton }                                from './StartOrchestratorButton.tsx';
@@ -33,28 +36,53 @@ function isTypingField(target: EventTarget | null): boolean {
   return (target instanceof HTMLInputElement && target.type === 'text') || target instanceof HTMLTextAreaElement;
 }
 
+function sessionItself(session: OrchestratorSession): OrchestratorSession {
+  return session;
+}
+
+/** The running sessions as cards, the ended ones in the closed fold under them. */
+function SessionList({
+  role, project, sessions, emptyCaption
+}: { role: SessionRole; project: ProjectSnapshot; sessions: OrchestratorSession[]; emptyCaption: string }) {
+  const { running, ended } = EndedSessionSplitUtil.splitOf(sessions, sessionItself);
+  return (
+    <>
+      {sessions.length === 0 ? <p className="muted ap-caption">{emptyCaption}</p> : null}
+      {running.map((session) => <SessionCard key={`${project.trackerId}:${session.sessionId}`} role={role} trackerId={project.trackerId} session={session} />)}
+      <EndedFold endedCount={ended.length}>
+        {ended.map((session) => <EndedSessionLine key={`${project.trackerId}:${session.sessionId}`} role={role} trackerId={project.trackerId} session={session} />)}
+      </EndedFold>
+    </>
+  );
+}
+
 function OrchestratorPanel({ project, watchedSessions }: { project: ProjectSnapshot; watchedSessions: OrchestratorSession[] }) {
-  const sessions = OrchestratorSessionUtil.sessionsOf(project, watchedSessions);
   return (
     <>
       {OrchestratorSessionUtil.canStart(project) ? <StartOrchestratorButton key={project.trackerId} project={project} /> : null}
-      {sessions.length === 0 ? <p className="muted ap-caption">No orchestrator runs in this project</p> : null}
-      {sessions.map((session) => <SessionCard key={`${project.trackerId}:${session.sessionId}`} role="orchestrator" trackerId={project.trackerId} session={session} />)}
+      <SessionList
+        role="orchestrator"
+        project={project}
+        sessions={OrchestratorSessionUtil.sessionsOf(project, watchedSessions)}
+        emptyCaption="No orchestrator runs in this project"
+      />
     </>
   );
 }
 
 /** The snapshot holds the newest product owner only, live or ended, so the tab shows that one. */
 function ProductOwnerPanel({ project }: { project: ProjectSnapshot }) {
-  const session = project.productOwner;
   return (
     <>
       {OrchestratorSessionUtil.canStart(project, 'product-owner')
         ? <StartProductOwnerButton key={project.trackerId} project={project} label="+ New ticket" onOpened={() => undefined} />
         : null}
-      {session === null
-        ? <p className="muted ap-caption">No product owner runs in this project</p>
-        : <SessionCard key={`${project.trackerId}:${session.sessionId}`} role="product-owner" trackerId={project.trackerId} session={session} />}
+      <SessionList
+        role="product-owner"
+        project={project}
+        sessions={project.productOwner === null ? [] : [project.productOwner]}
+        emptyCaption="No product owner runs in this project"
+      />
     </>
   );
 }

@@ -38,7 +38,10 @@ export function ChatOverlayDialog({ snapshot, overlay }: ChatOverlayDialogProper
   if (overlay.visibility === 'closed') return null;
   const projects = snapshot?.projects ?? [];
   const conversations = ChatConversationListUtil.conversationsOf(projects, snapshot?.watchedOrchestratorsByTracker ?? {});
-  const selected = conversations.find((conversation) => conversation.key === overlay.selectedKey) ?? conversations[0] ?? null;
+  // An ended conversation is shown only when picked from the fold, never by default.
+  const selected = conversations.find((conversation) => conversation.key === overlay.selectedKey)
+    ?? conversations.find((conversation) => conversation.session.state !== 'ended')
+    ?? null;
 
   if (overlay.visibility === 'minimised') return <DockChip conversation={selected} onOpen={overlay.open} />;
 

@@ -507,6 +507,13 @@ ul { padding: 0; list-style: none; }
 
 .ap-session { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding-top: var(--sp-3); }
 .ap-session + .ap-session, .ap-orchestrator-request + .ap-session { border-top: 1px solid var(--line); }
+.ap-ended-fold { margin-top: auto; padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.ap-ended-fold-summary { font-size: var(--fs-small); font-weight: 600; color: var(--ink-muted); cursor: pointer; }
+.ap-ended-fold-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.ap-ended-line { padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r-2); }
+.ap-ended-line-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; cursor: pointer; }
+.ap-ended-line-name { font-size: var(--fs-small); font-weight: 600; color: var(--ink-muted); }
+.ap-ended-line-times { font-size: var(--fs-micro); overflow-wrap: anywhere; }
 .ap-session-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .ap-session-name { flex: 1 1 120px; font-weight: 600; }
 .ap-session-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }

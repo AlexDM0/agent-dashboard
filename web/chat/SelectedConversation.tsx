@@ -115,10 +115,14 @@ function ConversationColumns({
             ))}
           {conversation.isSendOnly ? null : <ConversationLog role={role} messages={SparTableUtil.messagesWithoutTablesOf(messages)} />}
         </div>
-        <footer className="ap-chat-composer">
-          <QuickPrompts key={conversation.key} conversation={conversation} />
-          <ChatBox key={conversation.key} role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={hasEnded} />
-        </footer>
+        {hasEnded
+          ? null
+          : (
+            <footer className="ap-chat-composer">
+              <QuickPrompts key={conversation.key} conversation={conversation} />
+              <ChatBox key={conversation.key} role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={hasEnded} />
+            </footer>
+          )}
       </section>
       <OnTheTable table={SparTableUtil.latestTableOf(messages)} board={board} />
     </>

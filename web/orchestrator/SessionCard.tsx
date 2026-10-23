@@ -12,9 +12,11 @@ import { useOrchestratorConversation }            from './UseOrchestratorConvers
 import { type SessionRequest, useSessionRequest } from './UseSessionRequest.ts';
 
 interface SessionCardProperties {
-  role:      SessionRole;
-  trackerId: string;
-  session:   OrchestratorSession;
+  role:        SessionRole;
+  trackerId:   string;
+  session:     OrchestratorSession;
+  /** An ended session read back from the fold: its conversation without a composer. */
+  isReadOnly?: boolean;
 }
 
 interface DashboardSessionDetailsProperties {
@@ -68,7 +70,9 @@ function DashboardSessionDetails({
 }
 
 /** A watched session offers neither the menu nor answers: it was not started here, and its questions are answered in its own app. */
-export function SessionCard({ role, trackerId, session }: SessionCardProperties) {
+export function SessionCard({
+  role, trackerId, session, isReadOnly = false
+}: SessionCardProperties) {
   const sessionName = OrchestratorSessionUtil.nameOf(session, role);
   const refreshRequest = useSessionRequest();
   const stopRequest = useSessionRequest();
@@ -91,7 +95,10 @@ export function SessionCard({ role, trackerId, session }: SessionCardProperties)
       {isDashboardOwned
         ? <DashboardSessionDetails role={role} trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
         : null}
-      <ChatBox role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={session.state === 'ended'} />
+      {isReadOnly && !isDashboardOwned ? <p className="muted ap-caption">This desktop app session&apos;s conversation showed in its own app.</p> : null}
+      {isReadOnly
+        ? null
+        : <ChatBox role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={session.state === 'ended'} />}
     </section>
   );
 }
