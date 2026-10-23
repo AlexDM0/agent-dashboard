@@ -20,6 +20,9 @@ interface PageFrameProperties {
   frameReference: RefObject<HTMLIFrameElement | null>;
 }
 
+// Scripts for the board's own rendering and polling, its origin for its storage and the bridge; no top navigation, popups or forms.
+const BOARD_FRAME_SANDBOX_TOKENS = 'allow-scripts allow-same-origin';
+
 function leaveTheBoard(): void {
   window.location.hash = OVERVIEW_HASH;
 }
@@ -72,6 +75,7 @@ export function PageFrame({
         name={BOARD_FRAME_NAME}
         className={isBoardLoaded ? 'ap-page-frame' : 'ap-page-frame is-loading'}
         src={pageUrl}
+        sandbox={BOARD_FRAME_SANDBOX_TOKENS}
         title={`Board of ${projectName}`}
       />
       <iframe

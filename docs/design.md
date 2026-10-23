@@ -125,7 +125,10 @@ The board frame holds `progress.html` on the board origin; beside it the dashboa
 same board origin. The bridge is a sibling rather than the board's parent, so the board's `window.parent` is the
 dashboard and `window.parent.document` throws. Same-origin with the board, the bridge finds it among its parent's
 frames by the frame name `agent-dashboard-board`, and reaches what the dashboard no longer can: the board's document
-and the board origin's storage. The two sides talk by `postMessage` (`web/bridge/BoardBridgeMessageUtil.ts`), each
+and the board origin's storage. The board frame carries `sandbox="allow-scripts allow-same-origin"`: scripts for the
+board's rendering and stamp polling, its own origin for its storage and for the bridge to reach it, and no
+`allow-top-navigation*`, `allow-popups*` or `allow-forms`, so a script on a board page can neither navigate the
+dashboard's window nor open one. The two sides talk by `postMessage` (`web/bridge/BoardBridgeMessageUtil.ts`), each
 acting only on a message from the expected window and origin and of the exact shape, and ignoring any other:
 
 | From → to | Message | Effect |
@@ -503,7 +506,8 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 - A **toolbar** over the frame: back to overview (`←` and Esc, also pressed inside the frame unless the board used it
   to close its detail panel or a popover), project name, root path in mono, dispatcher pill,
   slot meter compact, and on the right "Reload" and "Open in new tab".
-- The **frame**: `progress.html` from the board origin in an iframe filling the rest of the viewport, no border,
+- The **frame**: `progress.html` from the board origin in an iframe sandboxed to `allow-scripts allow-same-origin`
+  (see "The bridge") filling the rest of the viewport, no border,
   `--bg` behind it, hidden until it loads and again from the bridge's `board-unloading` to the next load; beside it the
   hidden bridge frame. Esc inside it arrives as the bridge's `leave-board`; Reload sends the frame to its page again,
   since a page on another origin cannot be told to reload. A project whose page does not exist yet shows a panel saying
