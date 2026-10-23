@@ -22,6 +22,12 @@ export type OrchestratorRequest =
   | { kind: 'start-building' }
   | { kind: 'clear-low-tickets'; ticketIds: string[] };
 
+/** A dashboard-owned session takes the request as its user's turn; a desktop session gets it as a peer's message. */
+export type OrchestratorRecipient = 'dashboard-session' | 'desktop-session';
+
+/** The 200 answer of `POST /api/projects/<trackerId>/orchestrator-requests`. */
+export interface OrchestratorRequestReceipt { recipient: OrchestratorRecipient }
+
 export interface BoardSummary {
   dispatcherState:           DispatcherState;
   concurrencyLimit:          number;

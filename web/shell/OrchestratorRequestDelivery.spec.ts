@@ -12,14 +12,14 @@ const EXAMPLE_REQUESTS: OrchestratorRequest[] = [
   { kind: 'clear-low-tickets', ticketIds: ['007', '012'] },
 ];
 
-test('each kind posts its body as JSON to the orchestrator requests route and reads a 204 as sent', async () => {
+test('each kind posts its body as JSON to the orchestrator requests route and reads the receipt\'s recipient', async () => {
   for (const orchestratorRequest of EXAMPLE_REQUESTS) {
     const sentRequests: Array<{ path: string; init: RequestInit }> = [];
     const verdict = await deliverOrchestratorRequest('example-project', orchestratorRequest, (path, init) => {
       sentRequests.push({ path, init });
-      return Promise.resolve(new Response(null, { status: 204 }));
+      return Promise.resolve(Response.json({ recipient: 'dashboard-session' }));
     });
-    expect(verdict).toEqual({ kind: 'sent' });
+    expect(verdict).toEqual({ kind: 'sent', recipient: 'dashboard-session' });
     expect(sentRequests).toHaveLength(1);
     expect(sentRequests[0]?.path).toBe('/api/projects/example-project/orchestrator-requests');
     expect(sentRequests[0]?.init.method).toBe('POST');
@@ -36,6 +36,14 @@ test('the start-building and clear-low-tickets bodies are exactly the server pro
     });
   }
   expect(sentBodies).toEqual(['{"kind":"start-building"}', '{"kind":"clear-low-tickets","ticketIds":["007","012"]}']);
+});
+
+test('a desktop receipt, and a success naming no known recipient, read as sent to a desktop session', async () => {
+  const answers = [Response.json({ recipient: 'desktop-session' }), Response.json({ recipient: 'example' }), new Response(null, { status: 204 })];
+  for (const answer of answers) {
+    const verdict = await deliverOrchestratorRequest('example-project', { kind: 'start-building' }, () => Promise.resolve(answer));
+    expect(verdict).toEqual({ kind: 'sent', recipient: 'desktop-session' });
+  }
 });
 
 test('a tracker id is encoded into the path', () => {

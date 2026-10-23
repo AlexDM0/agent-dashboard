@@ -107,7 +107,7 @@ from the manifest, so the server routes them by fixed path before `fetch` as wel
 | `GET /api/events` | Server-Sent Events: `event: snapshot` with the whole snapshot on connect and on every change; a `: heartbeat` comment every 25 s |
 | `POST /api/projects/<trackerId>/concurrency` | body `{ "limit": <n> }`, an absolute whole number from 1 to 10: runs `agent-progress concurrency <n>` in that project's root (one of the two CLI runs a click may make in a tracked repository, beside `agent-progress dispatcher stopped`), re-reads the board at once so the next snapshot carries the new limit, and answers 204. Same Host guard; 403 for an `Origin` that is present and not this server's own, 404 for an unknown tracker, 400 for any other body (no CLI run), 409 with the CLI's message on its exit 1, 502 for any other failure |
 | `POST /api/projects/<trackerId>/dispatcher` | body exactly `{ "state": "stopped" }`: runs `agent-progress dispatcher stopped` in that project's root (the other CLI run a click may make in a tracked repository, beside `agent-progress concurrency <n>`), re-reads the board at once and answers 204. The running dispatcher reads the stored state as each agent returns and starts no new agent while those in flight finish; the store clears `concurrency.dispatcherRunId`, so the orchestrator is found afterwards by its working directory. Same Host guard; 403 for a foreign `Origin`, 404 for an unknown tracker, 400 for any other body (no CLI run), 409 with the CLI's message on its exit 1, 502 for any other failure |
-| `POST /api/projects/<trackerId>/orchestrator-requests` | body `{ "kind": "start-building" }` or `{ "kind": "clear-low-tickets", "ticketIds": [...] }` (1 to 50 non-empty ids, each among the board's `lowPriorityWaitingTickets`): writes one NDJSON line `{"type":"user","message":{"role":"user","content":<text>}}` to the board's orchestrator session's `messagingSocketPath` and answers 204. The text relays the user's click, names the project and says what to do: run the board through the agent-progress dispatcher, leaving a run in flight running; or triage the named tickets and launch with `includeLowPriority: true` once no run is in flight, never stopping a running dispatcher. The orchestrator is the one live session (pid alive, socket accepting) whose `~/.claude/projects/<slug of its cwd>/<sessionId>/subagents/workflows/` holds the board's `dispatcherRunId`, else the one live session whose `cwd` is the project root. Nothing is written to the board or the repository. Same Host guard; 403 for a foreign `Origin`, 404 for an unknown tracker, 400 for any other body, 409 for an id that is not low-priority waiting or for zero or several candidate sessions, 502 when the chosen socket fails; none of these writes to a socket |
+| `POST /api/projects/<trackerId>/orchestrator-requests` | body `{ "kind": "start-building" }` or `{ "kind": "clear-low-tickets", "ticketIds": [...] }` (1 to 50 non-empty ids, each among the board's `lowPriorityWaitingTickets`): sends the text to a live dashboard-owned orchestrator as its `chat` and answers 200 `{ "recipient": "dashboard-session" }`, else writes one NDJSON line `{"type":"user","message":{"role":"user","content":<text>}}` to the board's orchestrator session's `messagingSocketPath` and answers 200 `{ "recipient": "desktop-session" }` (`OrchestratorRequestReceipt`). The text relays the user's click, names the project and says what to do: run the board through the agent-progress dispatcher, leaving a run in flight running; or triage the named tickets and launch with `includeLowPriority: true` once no run is in flight, never stopping a running dispatcher. The desktop text adds that it came as another session's message, which never carries the user's go, and asks the orchestrator to confirm with its user first (Peer messages and the user's go). The orchestrator is the one live session (pid alive, socket accepting) whose `~/.claude/projects/<slug of its cwd>/<sessionId>/subagents/workflows/` holds the board's `dispatcherRunId`, else the one live session whose `cwd` is the project root. Nothing is written to the board or the repository. Same Host guard; 403 for a foreign `Origin`, 404 for an unknown tracker, 400 for any other body, 409 for an id that is not low-priority waiting or for zero or several candidate sessions, 502 when the chosen socket fails; none of these writes to a socket |
 | `POST /api/shutdown` | stops the server (used by `agent-dashboard stop`; same Host guard) |
 
 `/projects/*` and the bridge are 404 on the dashboard origin. Board-origin routes, `GET` and `HEAD` only (any other
@@ -310,6 +310,12 @@ user on a live desktop session, ticket #016). So nothing sent to a watched sessi
 launches the dispatcher. Only a dashboard-owned session's stdin `user` line is its user's turn, so `startBuilding`
 and chat to a dashboard-owned session carry the user's go that `Workflow` needs.
 
+The two deliveries are worded apart. A dashboard-owned session gets the request text alone and acts on the one click.
+A desktop session reached through its socket gets the same text followed by a sentence saying it came as another
+session's message, which never carries its user's go, and asking it to confirm with its user before it runs the
+dispatcher or triages anything. The route's 200 answer names the recipient, so the button's note after a desktop
+delivery reads "Sent: the orchestrator will ask you to confirm" instead of "Sent to the orchestrator".
+
 ### Context usage
 
 Used tokens are the last assistant turn's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`;
@@ -374,7 +380,8 @@ refused too), since a fresh session is not proven to resume a Workflow run anoth
 
 The snapshot carries each project's dashboard-owned `orchestrator` (live, or `ended` since this server started; null
 for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
-When one lives, `orchestrator-requests` sends its text to it as `chat`, before any `~/.claude/sessions/` lookup.
+When one lives, `orchestrator-requests` sends its text to it as `chat`, before any `~/.claude/sessions/` lookup, and
+answers `{ "recipient": "dashboard-session" }`.
 
 ### Contract additions (`src/shared/DashboardContract.ts`)
 

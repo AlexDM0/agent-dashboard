@@ -195,7 +195,8 @@ test('a started session runs in the project root in auto mode and is still reach
     headers: { 'Origin': url, 'Content-Type': 'application/json' },
     body:    '{"kind":"start-building"}',
   });
-  expect(request.status).toBe(204);
+  expect(request.status).toBe(200);
+  expect(await request.json()).toEqual({ recipient: 'dashboard-session' });
   const startBuildingArrived = (): boolean => readFakeClaudeTranscript(home).some((entry) => entry.event === 'stdin' && entry.line.includes(PROJECT_NAME));
   await waitUntil(startBuildingArrived, 'the start-building message reached the session', SESSION_WAIT_MILLISECONDS);
   const answered = await waitForOrchestratorState('idle', (orchestrator) => orchestrator.context !== null);

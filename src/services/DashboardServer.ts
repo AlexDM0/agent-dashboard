@@ -26,6 +26,8 @@ import {
   type OrchestratorAnswerRequest,
   type OrchestratorChatRequest,
   type OrchestratorHandoffResult,
+  type OrchestratorRecipient,
+  type OrchestratorRequestReceipt,
   type OrchestratorSession,
   type PendingQuestion,
   type ServerIdentity
@@ -337,6 +339,8 @@ function contextWindowsByModelOf(dashboardOwnedSessions: OrchestratorSession[]):
   return contextWindowByModel;
 }
 
+type OrchestratorDelivery = { kind: 'delivered'; recipient: OrchestratorRecipient } | { kind: 'refused'; response: Response };
+
 interface OrchestratorSources {
   homeDirectory:  string;
   orchestratorOf: (trackerId: string) => OrchestratorSession | null;
@@ -631,15 +635,24 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       }
     }
 
-    return deliveredToOrchestratorResponse(trackerId, root, board, orchestratorMessageTextOf(orchestratorRequest, project?.project ?? trackerId));
+    const projectName = project?.project ?? trackerId;
+    const delivery = await orchestratorDeliveryOf(trackerId, root, board, (recipient) => orchestratorMessageTextOf(orchestratorRequest, projectName, recipient));
+    if (delivery.kind === 'refused') return delivery.response;
+    const receipt: OrchestratorRequestReceipt = { recipient: delivery.recipient };
+    return Response.json(receipt, { headers: NO_STORE_HEADERS });
   }
 
   /** A live dashboard-owned session takes the text as its user's turn; else the one watched session the finder names, as a peer's. */
-  async function deliveredToOrchestratorResponse(trackerId: string, root: string, board: BoardSummary | null, messageText: string): Promise<Response> {
+  async function orchestratorDeliveryOf(
+    trackerId: string,
+    root: string,
+    board: BoardSummary | null,
+    messageTextOf: (recipient: OrchestratorRecipient) => string
+  ): Promise<OrchestratorDelivery> {
     if (orchestratorSessions.isLive(trackerId)) {
-      const delivery = await orchestratorSessions.chat(trackerId, messageText);
-      if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
-      if (delivery.kind === 'delivered') return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+      const delivery = await orchestratorSessions.chat(trackerId, messageTextOf('dashboard-session'));
+      if (delivery.kind === 'failed') return { kind: 'refused', response: plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason) };
+      if (delivery.kind === 'delivered') return { kind: 'delivered', recipient: 'dashboard-session' };
     }
 
     const search = await findOrchestratorSession({
@@ -648,10 +661,14 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       dispatcherRunId: board?.dispatcherRunId ?? null,
       socketAccepts:   (socketPath) => sessionSocketAccepts(socketPath, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS),
     });
-    if (search.kind === 'refused') return plainResponse(HTTP_STATUS.CONFLICT, search.reason);
-    const delivery = await writeSessionMessage(search.session.messagingSocketPath, messageText, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS);
-    if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
-    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+    if (search.kind === 'refused') return { kind: 'refused', response: plainResponse(HTTP_STATUS.CONFLICT, search.reason) };
+    const delivery = await writeSessionMessage(
+      search.session.messagingSocketPath,
+      messageTextOf('desktop-session'),
+      DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS
+    );
+    if (delivery.kind === 'failed') return { kind: 'refused', response: plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason) };
+    return { kind: 'delivered', recipient: 'desktop-session' };
   }
 
   async function orchestratorChatResponse(request: Request, encodedTrackerId: string): Promise<Response> {
@@ -664,7 +681,9 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (chat === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
     if (chat.sessionId !== undefined) return deliveredToNamedSessionResponse(trackerId, root, chat.sessionId, chat.text);
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
-    return deliveredToOrchestratorResponse(trackerId, root, project?.health.kind === 'ready' ? project.health.board : null, chat.text);
+    const delivery = await orchestratorDeliveryOf(trackerId, root, project?.health.kind === 'ready' ? project.health.board : null, () => chat.text);
+    if (delivery.kind === 'refused') return delivery.response;
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
   /** The dashboard-owned session takes the text as its user's turn; a watched one through its inbox, as a peer's request. */
@@ -733,7 +752,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (startBuilding === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_START_BODY_REFUSAL);
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
-    const firstMessage = startBuilding ? orchestratorMessageTextOf({ kind: 'start-building' }, project?.project ?? trackerId) : null;
+    const firstMessage = startBuilding ? orchestratorMessageTextOf({ kind: 'start-building' }, project?.project ?? trackerId, 'dashboard-session') : null;
     const launch = await orchestratorSessions.launch(trackerId, root, firstMessage);
     switch (launch.kind) {
       case 'started':

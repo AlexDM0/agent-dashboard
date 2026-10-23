@@ -13,9 +13,9 @@ test('selecting two low tickets and clearing them sends exactly both ids, lowest
   const sentBodies: unknown[] = [];
   const verdict = await deliverOrchestratorRequest('example-project', clearRequestOf(selectedTicketIds), (_path, init) => {
     sentBodies.push(init.body);
-    return Promise.resolve(new Response(null, { status: 204 }));
+    return Promise.resolve(Response.json({ recipient: 'desktop-session' }));
   });
-  expect(verdict).toEqual({ kind: 'sent' });
+  expect(verdict).toEqual({ kind: 'sent', recipient: 'desktop-session' });
   expect(sentBodies).toEqual(['{"kind":"clear-low-tickets","ticketIds":["007","012"]}']);
 });
 

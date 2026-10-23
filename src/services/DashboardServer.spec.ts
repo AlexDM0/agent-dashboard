@@ -15,7 +15,8 @@
  * reaches the CLI, and its 204 is followed by a snapshot showing the dispatcher stopped.
  * The orchestrator-request route is proven against scratch Unix-socket listeners standing in for Claude Code sessions
  * under a scratch home: the exact line a session receives, no write on any refusal (guards, a bad body, an id that is
- * not low-priority waiting, zero or several candidates), and 502 when the chosen session's socket fails.
+ * not low-priority waiting, zero or several candidates), and 502 when the chosen session's socket fails; a live
+ * dashboard-owned session (stubbed) takes the text as its chat instead, and the answer names which of the two it reached.
  * Watched sessions: the snapshot lists every live one in the root with its record's name and status and its
  * transcript's usage (unknown without one) and never probes their sockets; a chat naming one reaches it alone, and a
  * gone session is 409, a malformed body 400 and a missing launch grant 403, none writing.
@@ -791,7 +792,7 @@ function withSocketDirectory(work: (socketDirectory: string, listeners: ExampleS
   });
 }
 
-test('start-building writes exactly one user-message line to the session holding the run, then answers 204', () => withSocketDirectory(async (socketDirectory, listeners) => {
+test('start-building writes one line asking for confirmation to the desktop session holding the run', () => withSocketDirectory(async (socketDirectory, listeners) => {
   const fixture = await startOrchestratorServer('orchestrator-start');
   const orchestrator = liveExampleSession(fixture, 'a', socketDirectory);
   listeners.push(orchestrator);
@@ -800,10 +801,53 @@ test('start-building writes exactly one user-message line to the session holding
   }, ORCHESTRATOR_RUN_ID);
 
   const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'start-building' }), { Origin: fixture.server.url });
-  expect(answer.status).toBe(204);
+  expect(answer.status).toBe(200);
+  expect(await answer.json()).toEqual({ recipient: 'desktop-session' });
   await waitUntil(() => orchestrator.receivedText().endsWith('\n'), 'the session receives the line');
-  const expectedText = orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront');
+  const expectedText = orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront', 'desktop-session');
+  expect(expectedText).toContain('ask your user to confirm');
   expect(orchestrator.receivedText()).toBe(`${JSON.stringify({ type: 'user', message: { role: 'user', content: expectedText } })}\n`);
+}));
+
+test('a live dashboard-owned session gets the request as its chat with no confirm request, naming that delivery', () => withSocketDirectory(async (socketDirectory, listeners) => {
+  const homeDirectory = join(scratchDirectory, 'orchestrator-owned-home');
+  mkdirSync(homeDirectory);
+  writeExampleRegistry(homeDirectory, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, 'example-storefront') });
+  const ownedOptions = { ...serverOptions, homeDirectory };
+  const desktopSession = liveExampleSession({ server, homeDirectory }, 'h', socketDirectory);
+  listeners.push(desktopSession);
+  const chattedTexts: string[] = [];
+  const realSessions = createDashboardOrchestratorSessions(ownedOptions);
+  const ownedServer = startedOrThrow(await serveDashboard(ownedOptions, {
+    monitor: createProjectMonitor({
+      homeDirectory,
+      readBoardStatus:              () => Promise.resolve({ kind: 'unreadable', reason: 'Example' }),
+      clock:                        () => EXAMPLE_INSTANT,
+      quietMilliseconds:            SHORT_HEARTBEAT_MILLISECONDS,
+      maximumWaitMilliseconds:      60_000,
+      sweepIntervalMilliseconds:    60_000,
+      maximumConcurrentStatusReads: 1,
+      machineParallelAgentLimit:    EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
+    }),
+    orchestratorSessions: {
+      ...realSessions,
+      isLive: (trackerId) => trackerId === TRACKER_ID,
+      chat(_trackerId, text) {
+        chattedTexts.push(text);
+        return Promise.resolve({ kind: 'delivered' });
+      },
+    },
+    heartbeatIntervalMilliseconds:   SHORT_HEARTBEAT_MILLISECONDS,
+    handoffReplyTimeoutMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
+  }));
+  extraServers.push(ownedServer);
+
+  const answer = await orchestratorRequest(ownedServer, JSON.stringify({ kind: 'start-building' }), { Origin: ownedServer.url });
+  expect(answer.status).toBe(200);
+  expect(await answer.json()).toEqual({ recipient: 'dashboard-session' });
+  expect(chattedTexts).toEqual([orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront', 'dashboard-session')]);
+  expect(chattedTexts[0]).not.toContain('confirm');
+  expect(desktopSession.connectionCount()).toBe(0);
 }));
 
 test('a clear-low-tickets request names every id; an id not low-priority waiting is 409 with no write', () => withSocketDirectory(async (socketDirectory, listeners) => {
@@ -817,11 +861,13 @@ test('a clear-low-tickets request names every id; an id not low-priority waiting
   expect(orchestrator.connectionCount()).toBe(0);
 
   const answer = await orchestratorRequest(fixture.server, JSON.stringify({ kind: 'clear-low-tickets', ticketIds: ['012', '014'] }));
-  expect(answer.status).toBe(204);
+  expect(answer.status).toBe(200);
+  expect(await answer.json()).toEqual({ recipient: 'desktop-session' });
   await waitUntil(() => orchestrator.receivedText().endsWith('\n'), 'the session receives the line');
   const received = JSON.parse(orchestrator.receivedText()) as { message: { content: string } };
   expect(received.message.content).toContain('#012, #014');
   expect(received.message.content).toContain('includeLowPriority: true');
+  expect(received.message.content).toContain('ask your user to confirm');
 }));
 
 test('a malformed orchestrator request is 400 and nothing is written', () => withSocketDirectory(async (socketDirectory, listeners) => {
