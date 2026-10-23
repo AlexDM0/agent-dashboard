@@ -2,7 +2,7 @@
  * The dashboard's HTTP servers, bound to 127.0.0.1 only. The dashboard origin: the React app, the server identity, the
  * snapshot and its event stream, a project's concurrency limit set and its dispatcher stopped through its agent-progress
  * CLI, a message to a board's orchestrator Claude Code session, a dashboard-owned orchestrator's start, stop, chat,
- * answers and conversation stream, and a shutdown the CLI's `stop` asks for. The board
+ * answers and conversation stream, a shutdown the CLI's `stop` asks for and a restart the page's menu asks for. The board
  * origin, a port of its own: each project's page folder and the bridge page, so no board page is same-origin with the
  * dashboard. Every route but the app shell refuses a request whose Host is not its server's own, against DNS rebinding;
  * Bun answers the shell before `fetch`, and it holds no data.
@@ -65,6 +65,8 @@ export interface RunningDashboardServer {
   boardPort:   number;
   stop():      Promise<void>;
   stopped:     Promise<void>;
+  /** Whether the stop was a restart the page asked for, so `serve` starts a successor once the ports are free. */
+  isRestartRequested(): boolean;
 }
 
 /** Which of the two ports a start found held. */
@@ -398,6 +400,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   const closeOpenStreams = new Set<() => void>();
   const trackersBeingHandedOff = new Set<string>();
   let stopping: Promise<void> | null = null;
+  let restartIsRequested = false;
   let resolveStopped = (): void => {};
   const stopped = new Promise<void>((resolve) => {
     resolveStopped = resolve;
@@ -563,6 +566,14 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     // The answer leaves before the server closes its connections.
     setTimeout(() => void stop(), 0);
     return plainResponse(DASHBOARD_PROTOCOL.SHUTDOWN_ACCEPTED_STATUS, 'Stopping');
+  }
+
+  function restartResponse(request: Request): Response {
+    const restartHeader = request.headers.get(DASHBOARD_PROTOCOL.RESTART_HEADER_NAME);
+    if (restartHeader !== DASHBOARD_PROTOCOL.RESTART_HEADER_VALUE || isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    restartIsRequested = true;
+    setTimeout(() => void stop(), 0);
+    return plainResponse(DASHBOARD_PROTOCOL.SHUTDOWN_ACCEPTED_STATUS, 'Restarting');
   }
 
   function isForeignOrigin(request: Request): boolean {
@@ -894,6 +905,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const isRead = request.method === 'GET' || request.method === 'HEAD';
 
     if (pathname === DASHBOARD_PROTOCOL.SHUTDOWN_PATH) return request.method === 'POST' ? shutdownResponse(request) : methodNotAllowed('POST');
+    if (pathname === DASHBOARD_PROTOCOL.RESTART_PATH) return request.method === 'POST' ? restartResponse(request) : methodNotAllowed('POST');
     if (pathname === DASHBOARD_PROTOCOL.IDENTITY_PATH) return isRead ? identityResponse() : methodNotAllowed('GET, HEAD');
     const concurrencyRouteMatch = CONCURRENCY_ROUTE_PATTERN.exec(pathname);
     if (concurrencyRouteMatch?.[1] !== undefined) {
@@ -943,7 +955,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   return {
     kind:   'started',
     server: {
-      url, port, boardOrigin, boardPort, stop, stopped
+      url, port, boardOrigin, boardPort, stop, stopped, isRestartRequested: () => restartIsRequested
     }
   };
 }

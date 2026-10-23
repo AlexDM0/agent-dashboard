@@ -3,6 +3,7 @@ import type { InboxEntry }           from '../inbox/InboxUtil.ts';
 import { NotificationToggle }        from '../notifications/NotificationToggle.tsx';
 import type { DesktopNotifications } from '../notifications/UseDesktopNotifications.ts';
 import type { ThemePreference }      from '../preferences/UseThemePreference.ts';
+import { DashboardMenu }             from './DashboardMenu.tsx';
 import { OVERVIEW_HASH }             from './HashRoute.ts';
 import { HeaderStatistics }          from './HeaderStatistics.tsx';
 import type { HeaderTotals }         from './HeaderTotals.ts';
@@ -25,7 +26,10 @@ export function Header({
   return (
     <header className="ap-header">
       <div className="ap-header-identity">
-        <h1 className="ap-header-name"><a href={OVERVIEW_HASH}>agent-dashboard</a></h1>
+        <div className="ap-header-title">
+          <h1 className="ap-header-name"><a href={OVERVIEW_HASH}>agent-dashboard</a></h1>
+          <DashboardMenu />
+        </div>
         <LiveStatus connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
       </div>
       <HeaderStatistics totals={totals} machineParallelAgentLimit={stream.snapshot?.machineParallelAgentLimit ?? null} />

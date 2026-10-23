@@ -431,6 +431,44 @@ test('shutdown needs POST, the header and no foreign origin, then answers 202 an
   await expect(fetch(`${extraServer.url}/api/identity`)).rejects.toThrow();
 });
 
+test('restart needs POST, its header and no foreign origin, then answers 202, stops and reads as a restart', async () => {
+  const extraServer = startedOrThrow(await startDashboardServer(serverOptions));
+  extraServers.push(extraServer);
+  const restartHeader = { 'X-Agent-Dashboard-Restart': '1' };
+
+  expect((await sendRawHttpRequest({
+    port: extraServer.port, method: 'GET', target: '/api/restart', headers: restartHeader
+  })).status).toBe(405);
+  expect((await sendRawHttpRequest({ port: extraServer.port, method: 'POST', target: '/api/restart' })).status).toBe(403);
+  expect((await sendRawHttpRequest({
+    port: extraServer.port, method: 'POST', target: '/api/restart', headers: { 'X-Agent-Dashboard-Shutdown': '1' }
+  })).status).toBe(403);
+  expect((await sendRawHttpRequest({
+    port:    extraServer.port,
+    method:  'POST',
+    target:  '/api/restart',
+    headers: { ...restartHeader, Origin: 'http://evil.example' },
+  })).status).toBe(403);
+  expect((await sendRawHttpRequest({
+    port:    extraServer.port,
+    method:  'POST',
+    target:  '/api/restart',
+    headers: { ...restartHeader, Origin: `http://localhost:${extraServer.port + 1}` },
+  })).status).toBe(403);
+  expect(extraServer.isRestartRequested()).toBe(false);
+
+  const accepted = await sendRawHttpRequest({
+    port:    extraServer.port,
+    method:  'POST',
+    target:  '/api/restart',
+    headers: { ...restartHeader, Origin: extraServer.url },
+  });
+  expect(accepted.status).toBe(202);
+  await extraServer.stopped;
+  expect(extraServer.isRestartRequested()).toBe(true);
+  await expect(fetch(`${extraServer.url}/api/identity`)).rejects.toThrow();
+});
+
 test('a port something else holds is reported as in use, not thrown', async () => {
   const holder = createServer();
   await new Promise<void>((resolve) => holder.listen(0, '127.0.0.1', resolve));

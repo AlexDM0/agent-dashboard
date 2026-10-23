@@ -6,6 +6,10 @@ export const DASHBOARD_PROTOCOL = {
   SHUTDOWN_HEADER_NAME:              'X-Agent-Dashboard-Shutdown',
   SHUTDOWN_HEADER_VALUE:             '1',
   SHUTDOWN_ACCEPTED_STATUS:          202,
+  /** `POST`, no body, guarded as the shutdown is: the server stops and `serve` starts its successor on the same port. */
+  RESTART_PATH:                      '/api/restart',
+  RESTART_HEADER_NAME:               'X-Agent-Dashboard-Restart',
+  RESTART_HEADER_VALUE:              '1',
   /** `POST <PROJECTS_API_PATH>/<trackerId><CONCURRENCY_PATH_SUFFIX>` with `{ "limit": <n> }`. */
   PROJECTS_API_PATH:                 '/api/projects',
   CONCURRENCY_PATH_SUFFIX:           '/concurrency',
