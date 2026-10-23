@@ -165,6 +165,7 @@ beforeAll(async () => {
   const start = await serveDashboard(options, {
     monitor,
     orchestratorSessions:            createDashboardOrchestratorSessions(options, supervisorEnvironment),
+    productOwnerSessions:            createDashboardOrchestratorSessions(options, supervisorEnvironment, 'product-owner'),
     heartbeatIntervalMilliseconds:   HEARTBEAT_MILLISECONDS,
     handoffReplyTimeoutMilliseconds: SHORT_REPLY_TIMEOUT_MILLISECONDS,
   });

@@ -25,6 +25,7 @@ test('a history and a message line read with their sequences, and a damaged entr
 
 const EXAMPLE_RECORD = {
   trackerId:         'example-tracker',
+  role:              'orchestrator' as const,
   root:              '/Users/alex.example/development/example-agency',
   supervisorPid:     4100,
   sessionPid:        4101,

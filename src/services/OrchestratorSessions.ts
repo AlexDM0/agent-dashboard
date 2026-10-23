@@ -1,7 +1,8 @@
 /**
- * The server's side of the dashboard-owned orchestrators: it starts a detached supervisor per project, connects to every
- * supervisor whose record lives (again after a server restart), holds each session's latest state, and sends chat and
- * stop to it. Closing it disconnects and leaves every supervisor running. Nothing here throws on a supervisor gone.
+ * The server's side of the dashboard-owned sessions of one role: it starts a detached supervisor per project, connects
+ * to every supervisor of its role whose record lives (again after a server restart), holds each session's latest state,
+ * and sends chat and stop to it. Closing it disconnects and leaves every supervisor running. Nothing here throws on a
+ * supervisor gone.
  */
 import { spawn } from 'node:child_process';
 import {
@@ -26,7 +27,8 @@ import type {
   OrchestratorSession,
   PendingQuestion,
   QuestionContext,
-  SessionAction
+  SessionAction,
+  SessionRole
 } from '../shared/DashboardContract.ts';
 import { orchestratorFilePathsOf } from '../shared/OrchestratorFilePaths.ts';
 import { UnknownValueUtil }        from '../shared/UnknownValueUtil.ts';
@@ -34,6 +36,8 @@ import { DASHBOARD_LIMITS }        from '../shared/constants/DashboardLimits.ts'
 import { DASHBOARD_PROTOCOL }      from '../shared/constants/DashboardProtocol.ts';
 
 export interface OrchestratorSessionsOptions {
+  /** Every session these sessions start, recover and address is of this role; another role's records are left alone. */
+  role:                     SessionRole;
   orchestratorDirectory:    string;
   /** The Bun running the server and `agent-dashboard.ts`, which a supervisor is started with. */
   runtimeExecutablePath:    string;
@@ -269,7 +273,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
   function start(boardDispatcherRunIdOf: (trackerId: string) => string | null): void {
     dispatcherRunIdOf = boardDispatcherRunIdOf;
     for (const reading of readOrchestratorRecords(options.orchestratorDirectory)) {
-      if (reading.kind !== 'present') continue;
+      if (reading.kind !== 'present' || reading.record.role !== options.role) continue;
       const { record } = reading;
       if (!processIsAlive(record.supervisorPid)) {
         rmSync(reading.recordPath, { force: true });
@@ -291,7 +295,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     mkdirSync(options.orchestratorDirectory, { recursive: true });
     const logDescriptor = openSync(logPath, 'a');
     try {
-      const supervisor = spawn(options.runtimeExecutablePath, [options.dashboardEntryPointPath, DASHBOARD_PROTOCOL.SUPERVISE_COMMAND, trackerId, root], {
+      const supervisor = spawn(options.runtimeExecutablePath, [options.dashboardEntryPointPath, DASHBOARD_PROTOCOL.SUPERVISE_COMMAND, trackerId, root, options.role], {
         cwd:      options.orchestratorDirectory,
         env:      options.supervisorEnvironment,
         detached: true,
@@ -309,7 +313,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
   }
 
   async function launch(trackerId: string, root: string, firstMessage: string | null, previousSessionId?: string): Promise<OrchestratorLaunch> {
-    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId);
+    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role);
     const onDisk = readOrchestratorRecord(paths.recordPath);
     const supervisorRuns = isLive(trackerId) || (onDisk.kind === 'present' && processIsAlive(onDisk.record.supervisorPid));
     if (supervisorRuns || trackersBeingLaunched.has(trackerId)) return { kind: 'running' };
@@ -322,7 +326,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
   }
 
   async function launchSupervisor(trackerId: string, root: string, firstMessage: string | null, previousSessionId: string | null): Promise<OrchestratorLaunch> {
-    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId);
+    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role);
     if (Buffer.byteLength(paths.socketPath) > DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES) {
       return { kind: 'refused', reason: `The socket path ${paths.socketPath} is longer than ${DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES} bytes` };
     }

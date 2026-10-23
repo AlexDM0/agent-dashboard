@@ -1,8 +1,8 @@
 /**
  * The dashboard's HTTP servers, bound to 127.0.0.1 only. The dashboard origin: the React app, the server identity, the
  * snapshot and its event stream, a project's concurrency limit set and its dispatcher stopped through its agent-progress
- * CLI, a message to a board's orchestrator Claude Code session, a dashboard-owned orchestrator's start, stop, chat,
- * answers and conversation stream, a shutdown the CLI's `stop` asks for and a restart the page's menu asks for. The board
+ * CLI, a message to a board's orchestrator Claude Code session, a dashboard-owned orchestrator's or product owner's start,
+ * stop, chat, answers and conversation stream, a shutdown the CLI's `stop` asks for and a restart the page's menu asks for. The board
  * origin, a port of its own: each project's page folder and the bridge page, so no board page is same-origin with the
  * dashboard. Every route but the app shell refuses a request whose Host is not its server's own, against DNS rebinding;
  * Bun answers the shell before `fetch`, and it holds no data.
@@ -30,7 +30,8 @@ import {
   type OrchestratorRequestReceipt,
   type OrchestratorSession,
   type ProjectSnapshot,
-  type ServerIdentity
+  type ServerIdentity,
+  type SessionRole
 } from '../shared/DashboardContract.ts';
 import { environmentCopy }                                                                     from '../shared/Environment.ts';
 import { orchestratorDirectoryOf }                                                             from '../shared/OrchestratorFilePaths.ts';
@@ -40,7 +41,8 @@ import { DASHBOARD_LIMITS }                                                     
 import { DASHBOARD_PROTOCOL }                                                                  from '../shared/constants/DashboardProtocol.ts';
 import { handOffOrchestrator, handoffDirectoryOf }                                             from './OrchestratorHandoff.ts';
 import { ORCHESTRATOR_REQUEST_BODY_REFUSAL, orchestratorMessageTextOf, orchestratorRequestOf } from './OrchestratorRequestMessage.ts';
-import { type OrchestratorSessions, createOrchestratorSessions }                               from './OrchestratorSessions.ts';
+import { type OrchestratorLaunch, type OrchestratorSessions, createOrchestratorSessions }      from './OrchestratorSessions.ts';
+import { PRODUCT_OWNER_START_BODY_REFUSAL, productOwnerBriefTextOf, productOwnerModeOf }       from './ProductOwnerBriefMessage.ts';
 import { type MonitoredSnapshot, type ProjectMonitor, createProjectMonitor }                   from './ProjectMonitor.ts';
 
 export interface DashboardServerOptions {
@@ -164,6 +166,16 @@ const ORCHESTRATOR_ANSWERS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PRO
 const ORCHESTRATOR_EVENTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_EVENTS_PATH_SUFFIX}$`);
 
 const ORCHESTRATOR_HANDOFF_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_HANDOFF_PATH_SUFFIX}$`);
+
+const PRODUCT_OWNER_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX}$`);
+
+const PRODUCT_OWNER_MESSAGES_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_MESSAGES_PATH_SUFFIX}$`);
+
+const PRODUCT_OWNER_ANSWERS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_ANSWERS_PATH_SUFFIX}$`);
+
+const PRODUCT_OWNER_EVENTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_EVENTS_PATH_SUFFIX}$`);
+
+const ROLE_WORDS: Record<SessionRole, string> = { 'orchestrator': 'orchestrator', 'product-owner': 'product owner' };
 
 const HTTP_STATUS = {
   CREATED:               201,
@@ -352,23 +364,32 @@ type OrchestratorDelivery = { kind: 'delivered'; recipient: OrchestratorRecipien
 interface OrchestratorSources {
   homeDirectory:  string;
   orchestratorOf: (trackerId: string) => OrchestratorSession | null;
+  productOwnerOf: (trackerId: string) => OrchestratorSession | null;
+}
+
+/** Every dashboard-owned session of every role, so none of them is ever listed as watched. */
+function dashboardOwnedSessionsOf(projects: readonly { trackerId: string }[], orchestratorSources: OrchestratorSources): OrchestratorSession[] {
+  return projects
+    .flatMap((project) => [orchestratorSources.orchestratorOf(project.trackerId), orchestratorSources.productOwnerOf(project.trackerId)])
+    .filter((session): session is OrchestratorSession => session !== null);
 }
 
 /**
- * The monitor's snapshot with every page addressed on the board origin, each project's dashboard-owned orchestrator,
- * and the sessions holding each project's dispatcher run, read afresh from `~/.claude/` for every snapshot served.
+ * The monitor's snapshot with every page addressed on the board origin, each project's dashboard-owned orchestrator and
+ * product owner, and the sessions holding each project's dispatcher run, read afresh from `~/.claude/` for every
+ * snapshot served.
  */
 function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orchestratorSources: OrchestratorSources): DashboardSnapshot {
-  const { homeDirectory, orchestratorOf } = orchestratorSources;
-  const dashboardOwnedByTracker = new Map(monitored.projects.map((project) => [project.trackerId, orchestratorOf(project.trackerId)]));
-  const dashboardOwnedSessions = [...dashboardOwnedByTracker.values()].filter((session): session is OrchestratorSession => session !== null);
+  const { homeDirectory, orchestratorOf, productOwnerOf } = orchestratorSources;
+  const dashboardOwnedSessions = dashboardOwnedSessionsOf(monitored.projects, orchestratorSources);
   const contextWindowByModel = contextWindowsByModelOf(dashboardOwnedSessions);
   return {
     ...monitored,
     projects: monitored.projects.map((project) => ({
       ...project,
       pageUrl:      `${boardOrigin}${project.pageUrl}`,
-      orchestrator: dashboardOwnedByTracker.get(project.trackerId) ?? null,
+      orchestrator: orchestratorOf(project.trackerId),
+      productOwner: productOwnerOf(project.trackerId),
     })),
     boardOrigin,
     boardBridgeUrl:                `${boardOrigin}${DASHBOARD_PROTOCOL.BOARD_BRIDGE_PATH}`,
@@ -386,13 +407,19 @@ function snapshotEvent(snapshot: DashboardSnapshot): string {
 interface ServingDependencies {
   monitor:                         ProjectMonitor;
   orchestratorSessions:            OrchestratorSessions;
+  productOwnerSessions:            OrchestratorSessions;
   heartbeatIntervalMilliseconds:   number;
   /** How long a handoff waits for the running session's note; a spec passes a short one. */
   handoffReplyTimeoutMilliseconds: number;
 }
 
-export function createDashboardOrchestratorSessions(options: DashboardServerOptions, supervisorEnvironment = environmentCopy()): OrchestratorSessions {
+export function createDashboardOrchestratorSessions(
+  options: DashboardServerOptions,
+  supervisorEnvironment = environmentCopy(),
+  role: SessionRole = 'orchestrator'
+): OrchestratorSessions {
   return createOrchestratorSessions({
+    role,
     orchestratorDirectory:    orchestratorDirectoryOf(options.homeDirectory),
     runtimeExecutablePath:    options.runtimeExecutablePath,
     dashboardEntryPointPath:  options.dashboardEntryPointPath,
@@ -404,7 +431,8 @@ export function createDashboardOrchestratorSessions(options: DashboardServerOpti
 
 /** The server with its monitor given; `startDashboardServer` builds the real monitor, a spec may pass its own. */
 export async function serveDashboard(options: DashboardServerOptions, dependencies: ServingDependencies): Promise<DashboardServerStart> {
-  const { monitor, orchestratorSessions } = dependencies;
+  const { monitor, orchestratorSessions, productOwnerSessions } = dependencies;
+  const sessionsByRole: Record<SessionRole, OrchestratorSessions> = { 'orchestrator': orchestratorSessions, 'product-owner': productOwnerSessions };
   // Held in memory only: never in the app shell, the log, the server record or a tracked repository.
   const launchToken = randomUUID();
   const closeOpenStreams = new Set<() => void>();
@@ -461,9 +489,12 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   const boardPagePolicy = boardPagePolicyOf(dashboardSources);
   let bridgeScript: Promise<string> | null = null;
   const monitorStarted = monitor.start();
-  orchestratorSessions.start((trackerId) => dispatcherRunIdOf(monitor.snapshot().projects.find((project) => project.trackerId === trackerId)));
+  const boardDispatcherRunIdOf = (trackerId: string): string | null => dispatcherRunIdOf(monitor.snapshot().projects.find((project) => project.trackerId === trackerId));
+  orchestratorSessions.start(boardDispatcherRunIdOf);
+  productOwnerSessions.start(boardDispatcherRunIdOf);
 
-  const orchestratorSources: OrchestratorSources = { homeDirectory: options.homeDirectory, orchestratorOf: orchestratorSessions.sessionOf };
+  const { homeDirectory } = options;
+  const orchestratorSources: OrchestratorSources = { homeDirectory, orchestratorOf: orchestratorSessions.sessionOf, productOwnerOf: productOwnerSessions.sessionOf };
 
   function servedSnapshot(): DashboardSnapshot {
     return servedSnapshotOf(monitor.snapshot(), boardOrigin, orchestratorSources);
@@ -473,6 +504,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     stopping ??= (async () => {
       for (const closeStream of [...closeOpenStreams]) closeStream();
       orchestratorSessions.close();
+      productOwnerSessions.close();
       await monitor.stop();
       await boardServer.stop(true);
       await server.stop(true);
@@ -535,30 +567,33 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return serverSentEventsResponse(request, servingServer, (send) => {
       const unsubscribeFromMonitor = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSources))));
       const unsubscribeFromOrchestrators = orchestratorSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
+      const unsubscribeFromProductOwners = productOwnerSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
       send(snapshotEvent(servedSnapshot()));
       return () => {
         unsubscribeFromMonitor();
         unsubscribeFromOrchestrators();
+        unsubscribeFromProductOwners();
       };
     });
   }
 
-  /** The conversation from the session's start, then each new message, and the session on every change of it. */
-  async function orchestratorEventsResponse(request: Request, servingServer: Bun.Server<undefined>, encodedTrackerId: string): Promise<Response> {
+  /** The conversation from the role's session's start, then each new message, and the session on every change of it. */
+  async function sessionEventsResponse(request: Request, servingServer: Bun.Server<undefined>, encodedTrackerId: string, role: SessionRole): Promise<Response> {
     if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     await monitorStarted;
     const trackerId = decodedOrNull(encodedTrackerId);
     if (trackerId === null || monitor.rootOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const sessions = sessionsByRole[role];
     return serverSentEventsResponse(request, servingServer, (send) => {
-      let lastSentSessionText = JSON.stringify(orchestratorSessions.sessionOf(trackerId));
-      const unsubscribeFromConversation = orchestratorSessions.subscribeToConversation(trackerId, (message) => send(serverSentEventOf('message', message)));
-      const unsubscribeFromSessions = orchestratorSessions.subscribe(() => {
-        const sessionText = JSON.stringify(orchestratorSessions.sessionOf(trackerId));
+      let lastSentSessionText = JSON.stringify(sessions.sessionOf(trackerId));
+      const unsubscribeFromConversation = sessions.subscribeToConversation(trackerId, (message) => send(serverSentEventOf('message', message)));
+      const unsubscribeFromSessions = sessions.subscribe(() => {
+        const sessionText = JSON.stringify(sessions.sessionOf(trackerId));
         if (sessionText === lastSentSessionText) return;
         lastSentSessionText = sessionText;
         send(`event: session\ndata: ${sessionText}\n\n`);
       });
-      send(serverSentEventOf('history', orchestratorSessions.conversationOf(trackerId)));
+      send(serverSentEventOf('history', sessions.conversationOf(trackerId)));
       send(`event: session\ndata: ${lastSentSessionText}\n\n`);
       return () => {
         unsubscribeFromConversation();
@@ -719,9 +754,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
     }
     const { projects } = monitor.snapshot();
-    const dashboardOwnedSessions = projects
-      .map((project) => orchestratorSessions.sessionOf(project.trackerId))
-      .filter((session): session is OrchestratorSession => session !== null);
+    const dashboardOwnedSessions = dashboardOwnedSessionsOf(projects, orchestratorSources);
     const project = projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
     const watched = watchedSessionsOf(options.homeDirectory, project, dashboardOwnedSessions).find((session) => session.sessionId === sessionId);
     if (watched === undefined) return plainResponse(HTTP_STATUS.CONFLICT, `No live session ${sessionId} holds this project's dispatcher run`);
@@ -730,21 +763,49 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
+  /** The product owner takes the text as its user's turn; a `sessionId` naming any other session is refused. */
+  async function productOwnerChatResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, bodyText } = projectRequest;
+    const chat = requestedChatOf(bodyText);
+    if (chat === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
+    const session = productOwnerSessions.sessionOf(trackerId);
+    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText('product-owner'));
+    if (chat.sessionId !== undefined && chat.sessionId !== session.sessionId) {
+      return plainResponse(HTTP_STATUS.CONFLICT, `The session ${chat.sessionId} is not this project's dashboard-owned product owner`);
+    }
+    const delivery = await productOwnerSessions.chat(trackerId, chat.text);
+    if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText('product-owner'));
+    if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
+    return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+  }
+
+  function noSessionRunsText(role: SessionRole): string {
+    return `No dashboard-owned ${ROLE_WORDS[role]} of this project runs`;
+  }
+
+  function sessionEndedText(role: SessionRole): string {
+    return `The dashboard-owned ${ROLE_WORDS[role]} of this project has ended`;
+  }
+
   /** Only a dashboard-owned session's questions are answered here; a watched one answers in its own app. */
-  async function orchestratorAnswerResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+  async function sessionAnswerResponse(request: Request, encodedTrackerId: string, role: SessionRole): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
     if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const { trackerId, bodyText } = projectRequest;
     const requestedAnswer = requestedAnswerOf(bodyText);
     if (requestedAnswer === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_ANSWER_BODY_REFUSAL);
-    const session = orchestratorSessions.sessionOf(trackerId);
-    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
-    if (session.state === 'ended') return plainResponse(HTTP_STATUS.CONFLICT, 'The dashboard-owned orchestrator of this project has ended');
-    const delivery = await orchestratorSessions.answer(trackerId, requestedAnswer.requestId, requestedAnswer.answers);
+    const sessions = sessionsByRole[role];
+    const session = sessions.sessionOf(trackerId);
+    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText(role));
+    if (session.state === 'ended') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText(role));
+    const delivery = await sessions.answer(trackerId, requestedAnswer.requestId, requestedAnswer.answers);
     if (delivery.kind === 'not-pending') return plainResponse(HTTP_STATUS.CONFLICT, `No question ${requestedAnswer.requestId} is pending`);
     if (delivery.kind === 'mismatched') return plainResponse(HTTP_STATUS.CONFLICT, delivery.reason);
-    if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, 'The dashboard-owned orchestrator of this project has ended');
+    if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText(role));
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
@@ -775,12 +836,29 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
     const firstMessage = startBuilding ? orchestratorMessageTextOf({ kind: 'start-building' }, project?.project ?? trackerId, 'dashboard-session') : null;
-    const launch = await orchestratorSessions.launch(trackerId, root, firstMessage);
+    return launchedSessionResponse(await orchestratorSessions.launch(trackerId, root, firstMessage), 'orchestrator');
+  }
+
+  /** Starts the supervisor in the project's root, beside any orchestrator; the brief is the session's first message. */
+  async function productOwnerStartResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
+    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const { trackerId, root, bodyText } = projectRequest;
+    const mode = productOwnerModeOf(bodyText);
+    if (mode === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, PRODUCT_OWNER_START_BODY_REFUSAL);
+    if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
+    const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
+    const briefText = productOwnerBriefTextOf(project?.project ?? trackerId, mode);
+    return launchedSessionResponse(await productOwnerSessions.launch(trackerId, root, briefText), 'product-owner');
+  }
+
+  function launchedSessionResponse(launch: OrchestratorLaunch, role: SessionRole): Response {
     switch (launch.kind) {
       case 'started':
         return Response.json(launch.session, { status: HTTP_STATUS.CREATED, headers: NO_STORE_HEADERS });
       case 'running':
-        return plainResponse(HTTP_STATUS.CONFLICT, 'A dashboard-owned orchestrator of this project already runs');
+        return plainResponse(HTTP_STATUS.CONFLICT, `A dashboard-owned ${ROLE_WORDS[role]} of this project already runs`);
       case 'refused':
         return plainResponse(HTTP_STATUS.CONFLICT, launch.reason);
       case 'failed':
@@ -788,14 +866,14 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     }
   }
 
-  async function orchestratorStopResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+  async function sessionStopResponse(request: Request, encodedTrackerId: string, role: SessionRole): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     await monitorStarted;
     const trackerId = decodedOrNull(encodedTrackerId);
     const root = trackerId === null ? null : monitor.rootOf(trackerId);
     if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const delivery = await orchestratorSessions.stop(trackerId);
-    if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
+    const delivery = await sessionsByRole[role].stop(trackerId);
+    if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText(role));
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
@@ -934,7 +1012,24 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const orchestratorRouteMatch = ORCHESTRATOR_ROUTE_PATTERN.exec(pathname);
     if (orchestratorRouteMatch?.[1] !== undefined) {
       if (request.method === 'POST') return orchestratorStartResponse(request, orchestratorRouteMatch[1]);
-      return request.method === 'DELETE' ? orchestratorStopResponse(request, orchestratorRouteMatch[1]) : methodNotAllowed('POST, DELETE');
+      return request.method === 'DELETE' ? sessionStopResponse(request, orchestratorRouteMatch[1], 'orchestrator') : methodNotAllowed('POST, DELETE');
+    }
+    const productOwnerRouteMatch = PRODUCT_OWNER_ROUTE_PATTERN.exec(pathname);
+    if (productOwnerRouteMatch?.[1] !== undefined) {
+      if (request.method === 'POST') return productOwnerStartResponse(request, productOwnerRouteMatch[1]);
+      return request.method === 'DELETE' ? sessionStopResponse(request, productOwnerRouteMatch[1], 'product-owner') : methodNotAllowed('POST, DELETE');
+    }
+    const productOwnerMessagesRouteMatch = PRODUCT_OWNER_MESSAGES_ROUTE_PATTERN.exec(pathname);
+    if (productOwnerMessagesRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? productOwnerChatResponse(request, productOwnerMessagesRouteMatch[1]) : methodNotAllowed('POST');
+    }
+    const productOwnerAnswersRouteMatch = PRODUCT_OWNER_ANSWERS_ROUTE_PATTERN.exec(pathname);
+    if (productOwnerAnswersRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? sessionAnswerResponse(request, productOwnerAnswersRouteMatch[1], 'product-owner') : methodNotAllowed('POST');
+    }
+    const productOwnerEventsRouteMatch = PRODUCT_OWNER_EVENTS_ROUTE_PATTERN.exec(pathname);
+    if (productOwnerEventsRouteMatch?.[1] !== undefined) {
+      return request.method === 'GET' ? sessionEventsResponse(request, servingServer, productOwnerEventsRouteMatch[1], 'product-owner') : methodNotAllowed('GET');
     }
     const orchestratorMessagesRouteMatch = ORCHESTRATOR_MESSAGES_ROUTE_PATTERN.exec(pathname);
     if (orchestratorMessagesRouteMatch?.[1] !== undefined) {
@@ -942,11 +1037,11 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     }
     const orchestratorAnswersRouteMatch = ORCHESTRATOR_ANSWERS_ROUTE_PATTERN.exec(pathname);
     if (orchestratorAnswersRouteMatch?.[1] !== undefined) {
-      return request.method === 'POST' ? orchestratorAnswerResponse(request, orchestratorAnswersRouteMatch[1]) : methodNotAllowed('POST');
+      return request.method === 'POST' ? sessionAnswerResponse(request, orchestratorAnswersRouteMatch[1], 'orchestrator') : methodNotAllowed('POST');
     }
     const orchestratorEventsRouteMatch = ORCHESTRATOR_EVENTS_ROUTE_PATTERN.exec(pathname);
     if (orchestratorEventsRouteMatch?.[1] !== undefined) {
-      return request.method === 'GET' ? orchestratorEventsResponse(request, servingServer, orchestratorEventsRouteMatch[1]) : methodNotAllowed('GET');
+      return request.method === 'GET' ? sessionEventsResponse(request, servingServer, orchestratorEventsRouteMatch[1], 'orchestrator') : methodNotAllowed('GET');
     }
     const orchestratorHandoffRouteMatch = ORCHESTRATOR_HANDOFF_ROUTE_PATTERN.exec(pathname);
     if (orchestratorHandoffRouteMatch?.[1] !== undefined) {
@@ -991,6 +1086,7 @@ export function startDashboardServer(options: DashboardServerOptions): Promise<D
   return serveDashboard(options, {
     monitor,
     orchestratorSessions:            createDashboardOrchestratorSessions(options),
+    productOwnerSessions:            createDashboardOrchestratorSessions(options, environmentCopy(), 'product-owner'),
     heartbeatIntervalMilliseconds:   DASHBOARD_LIMITS.HEARTBEAT_INTERVAL_MILLISECONDS,
     handoffReplyTimeoutMilliseconds: DASHBOARD_LIMITS.HANDOFF_REPLY_TIMEOUT_MILLISECONDS,
   });

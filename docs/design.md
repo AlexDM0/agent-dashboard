@@ -236,8 +236,21 @@ export interface ServerIdentity { application: 'agent-dashboard'; version: strin
 
 ## Orchestrator sessions
 
-The dashboard starts at most one orchestrator per project on the user's click and keeps it running past
-`agent-dashboard stop` and a server restart; it also watches orchestrators it did not start (desktop-app sessions).
+The dashboard starts, per role, at most one session per project on the user's click: at most one orchestrator per
+project per role, so a project runs one dashboard-owned orchestrator (role `orchestrator`) and, beside it, one
+product owner (role `product-owner`). It keeps each running past `agent-dashboard stop` and a server restart; it also
+watches orchestrators it did not start (desktop-app sessions). The two roles share the supervisor, the socket protocol,
+the record and the routes' guards; they differ in their brief (a session's first chat message, as there is no system
+prompt) and in that a product owner has no handoff: a product owner whose context fills up is stopped and a new one
+started. Each role has its own `src/services/OrchestratorSessions.ts` instance, so every per-project structure (the
+supervised session, its conversation, the launch guard) is keyed by tracker id within its role.
+
+A product owner is started with `{ "mode": "spar" | "file" }` (`src/services/ProductOwnerBriefMessage.ts`). Its first
+message names the project, tells it it is the project's product owner, to load the `agent-po` skill, never to load
+`agent-progress-orchestrate`, and never to dispatch, claim or start a ticket. In `spar` mode it files nothing until the
+user says "wrap up" (the text the overlay's Wrap up button sends), then files what was agreed; in `file` mode it files
+each ticket once agreed. It writes the tracker through the agent-progress CLI, as a started orchestrator does. Its
+pending questions reach the snapshot as the orchestrator's do (`ProjectSnapshot.productOwner`).
 Settled: the dashboard owns the process (headless, never a terminal); the session runs in `auto` permission mode, so
 permission prompts never reach the dashboard and only `AskUserQuestion` questions do; a watched session shows its
 context usage and takes chat, but its questions are answered in its own app.
@@ -262,7 +275,7 @@ Raw `claude -p --input-format stream-json --output-format stream-json --verbose 
 
 ### The supervisor
 
-`agent-dashboard supervise <trackerId> <root>`, a command the server alone runs (not in `help`), spawned detached
+`agent-dashboard supervise <trackerId> <root> <role>`, a command the server alone runs (not in `help`), spawned detached
 (`detached: true`, its own process group, stdio to its log, `unref()`), as `open` starts the server. It spawns the
 session (`AGENT_DASHBOARD_CLAUDE`, else `claude` on `PATH`, else the path `setup.sh` recorded in
 `~/.agent-progress-monitor/agent-dashboard/executables.json` while it still names an executable file; agent-progress
@@ -290,20 +303,23 @@ and removes its record and socket then.
   surfaced.
 - **Stop**: the supervisor closes the session's stdin and sends `SIGTERM` to the session's process group after 10 s
   if it still runs; it records the exit code (143 for the signal, as in the probe) in its log before it removes its record and socket.
-- **Reconnecting**: the server reads every record at start and connects to each socket that accepts; a record whose
-  supervisor pid is gone is stale and removed. A connection that drops is retried every 5 s while the record lives;
+- **Reconnecting**: the server reads every record at start and connects to each socket that accepts, each role's
+  sessions taking the records of their role; a record without `role`, which a supervisor started before roles existed
+  wrote under the tracker-id-only name, is the orchestrator's, so a server upgraded mid-run still finds a live
+  orchestrator. A record whose supervisor pid is gone is stale and removed. A connection that drops is retried every 5 s while the record lives;
   once the record or its supervisor is gone the session shows `ended` until the server restarts.
 - **The finder**: the session writes its own `~/.claude/sessions/<pid>.json` (`kind: "interactive"`, `entrypoint`
   inherited from the environment, a `messagingSocketPath`), so `src/adapters/OrchestratorSessionFinder.ts` sees it.
   A project with a live dashboard-owned orchestrator takes it as its orchestrator, matched by the record's
   `sessionPid`, and `orchestrator-requests` reaches it through the supervisor's `chat`.
 
-Files under `~/.agent-progress-monitor/agent-dashboard/orchestrators/`, each named for the tracker id's first 16
-hex digits of SHA-256 (a Unix socket path is limited to 104 bytes on macOS; a longer path is a refusal):
+Files under `~/.agent-progress-monitor/agent-dashboard/orchestrators/`, each named for the first 16 hex digits of the
+SHA-256 of `<role>\n<trackerId>`, so the role costs the name no length (a Unix socket path is limited to 104 bytes on
+macOS; a longer path is a refusal):
 
 | File | Holds |
 | --- | --- |
-| `<key>.json` | the record, written atomically: `{ trackerId, root, supervisorPid, sessionPid, sessionId, socketPath, claudeCodeVersion, startedAt }` |
+| `<key>.json` | the record, written atomically: `{ trackerId, role, root, supervisorPid, sessionPid, sessionId, socketPath, claudeCodeVersion, startedAt }` |
 | `<key>.sock` | the supervisor's Unix socket |
 | `<key>.ndjson` | every session stdout line and every client line, stamped, so chat history survives a server restart |
 | `<key>.log` | the supervisor's own stdout and stderr |
@@ -371,6 +387,11 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<answer>" } }`, one non-empty answer for every question of that pending request (a label it offered, labels joined for a multi-select, or free text for an "Other" choice): sent as `answer`, 204; the request is no longer pending from then on, so a second answer is 409 and the supervisor ignores an answer to a request it no longer holds. 400 for any other body, 404 when no dashboard-owned orchestrator ran since this server started, 409 for one that has ended, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/handoff` | no body; the launch token and this server's own `Origin` as for a start. Hands the board to a fresh session (see "Handing off") and answers 201 with `OrchestratorHandoffResult` `{ session, notePath }`. 404 when no dashboard-owned orchestrator ran since this server started; 409, changing nothing and saying which, for an ended session, a pending question, a session not `idle`, a dispatcher `running` or a board that cannot be read, or a handoff of the project already under way; 502 when the session ends, asks a question or gives no reply in time (the old session left running, nothing started), or when the stop or the fresh start fails after the note was kept (the text names the note's path) |
 | `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the project's dashboard-owned conversation (the last 200 `ChatMessage`s, from the session's start) on connect, then `event: session` with the `OrchestratorSession` (null for none), then `event: message` per new message and `event: session` on every change of it; a `: heartbeat` comment every 25 s. A project with no dashboard-owned session streams an empty history and waits for one. A watched session's messages are to be tailed from its transcript (not built yet) |
+| `POST /api/projects/<trackerId>/product-owner` | body `{ "mode": "spar" }` or `{ "mode": "file" }`: starts a product owner's supervisor in the project's root, beside a live orchestrator, its first message the brief for the mode, and answers 201 with the `OrchestratorSession`. 400 for any other body, 409 while a dashboard-owned product owner of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
+| `DELETE /api/projects/<trackerId>/product-owner` | sends `stop` to the product owner's supervisor, 204; 404 when none lives, 502 when the socket fails. The orchestrator is left running |
+| `POST /api/projects/<trackerId>/product-owner/messages` | body as the orchestrator's: sent to the product owner as `chat`, 204, never to the orchestrator or a watched session. 400 for any other body, 404 when no product owner ran since this server started, 409 for one that has ended or a `sessionId` that is not the product owner's, 502 when the socket fails |
+| `POST /api/projects/<trackerId>/product-owner/answers` | as the orchestrator's answers, for the product owner's pending questions |
+| `GET /api/projects/<trackerId>/product-owner/events` | as the orchestrator's events, for the product owner's conversation and session. There is no product-owner handoff |
 
 ### Handing off
 
@@ -389,8 +410,8 @@ starts. The wait bounds one request; no clock schedules a handoff.
 A handoff is refused while the board's dispatcher is `running` (read afresh for the request; an unreadable board is
 refused too), since a fresh session is not proven to resume a Workflow run another session launched.
 
-The snapshot carries each project's dashboard-owned `orchestrator` (live, or `ended` since this server started; null
-for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
+The snapshot carries each project's dashboard-owned `orchestrator` and `productOwner` (each live, or `ended` since this
+server started; null for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
 When one lives, `orchestrator-requests` sends its text to it as `chat`, before any `~/.claude/sessions/` lookup, and
 answers `{ "recipient": "dashboard-session" }`.
 
@@ -432,13 +453,16 @@ export interface OrchestratorSession {
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 export interface ChatMessage { at: string; role: ChatRole; text: string }
 
+export type SessionRole = 'orchestrator' | 'product-owner';
 export interface OrchestratorStartRequest { startBuilding: boolean }
+export type ProductOwnerMode = 'spar' | 'file';
+export interface ProductOwnerStartRequest { mode: ProductOwnerMode }
 export interface OrchestratorChatRequest { text: string; sessionId?: string }
 export interface OrchestratorAnswerRequest { requestId: string; answers: Record<string, string> }
 export interface LaunchToken { token: string }
 export interface OrchestratorHandoffResult { session: OrchestratorSession; notePath: string }
 
-// ProjectSnapshot gains: orchestrator: OrchestratorSession | null;
+// ProjectSnapshot gains: orchestrator: OrchestratorSession | null; productOwner: OrchestratorSession | null;
 // DashboardSnapshot gains: watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]>;  // dispatcher run holders
 ```
 

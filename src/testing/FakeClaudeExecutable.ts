@@ -1,6 +1,6 @@
 /**
  * A Bun script standing in for `claude -p` in stream-json, so no spec ever runs the real Claude Code: it records where
- * and how it was started and every stdin line in a transcript file, answers each user line with an `init` (the first
+ * and how it was started and every stdin line with its own pid in a transcript file, answers each user line with an `init` (the first
  * time), an `assistant` line carrying usage, a text and a tool call, and a `result`, or with an `AskUserQuestion` it
  * holds until a `control_response` answers it; it exits 0 once its stdin closes. A mode file turns its next replies
  * silent or into an exit. Test-only.
@@ -31,7 +31,7 @@ const EXECUTABLE_MODE = 0o755;
 
 export type FakeClaudeTranscriptEntry =
   | { event: 'started'; directory: string; commandLineArguments: string[]; pid: number }
-  | { event: 'stdin'; line: string }
+  | { event: 'stdin'; line: string; pid: number }
   | { event: 'stdin-closed' }
   | { event: 'exited-unreplied' };
 
@@ -73,7 +73,7 @@ export function writeFakeClaudeExecutable(directory: string): string {
     'const questionRequest = { subtype: "can_use_tool", tool_name: "AskUserQuestion", input: questionInput, requires_user_interaction: true };',
     'const bashCall = { type: "tool_use", id: "tool-bash", name: "Bash", input: { command: "agent-progress status --json" } };',
     'for await (const line of console) {',
-    '  record({ event: "stdin", line });',
+    '  record({ event: "stdin", line, pid: process.pid });',
     '  let parsed = null;',
     '  try { parsed = JSON.parse(line); } catch {}',
     '  if (parsed?.type === "control_response") {',

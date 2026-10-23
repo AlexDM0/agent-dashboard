@@ -375,6 +375,7 @@ test('an event stream sends heartbeats and releases its subscription when the cl
   const extraServer = startedOrThrow(await serveDashboard(serverOptions, {
     monitor:                         countingMonitor,
     orchestratorSessions:            createDashboardOrchestratorSessions(serverOptions),
+    productOwnerSessions:            createDashboardOrchestratorSessions(serverOptions, {}, 'product-owner'),
     heartbeatIntervalMilliseconds:   SHORT_HEARTBEAT_MILLISECONDS,
     handoffReplyTimeoutMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
   }));
@@ -955,6 +956,7 @@ test('a live dashboard-owned session gets the request as its chat with no confir
         return Promise.resolve({ kind: 'delivered' });
       },
     },
+    productOwnerSessions:            createDashboardOrchestratorSessions(ownedOptions, {}, 'product-owner'),
     heartbeatIntervalMilliseconds:   SHORT_HEARTBEAT_MILLISECONDS,
     handoffReplyTimeoutMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
   }));

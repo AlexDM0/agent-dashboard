@@ -22,14 +22,20 @@ import {
   type SupervisorState,
   supervisorRequestOf
 } from '../adapters/SupervisorLineReader.ts';
-import { writeFileAtomically }                               from '../lib/atomic-file/AtomicFile.ts';
-import type { ChatMessage, ContextUsage, OrchestratorState } from '../shared/DashboardContract.ts';
-import { orchestratorFilePathsOf }                           from '../shared/OrchestratorFilePaths.ts';
-import { UnknownValueUtil }                                  from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_LIMITS }                                  from '../shared/constants/DashboardLimits.ts';
+import { writeFileAtomically } from '../lib/atomic-file/AtomicFile.ts';
+import type {
+  ChatMessage,
+  ContextUsage,
+  OrchestratorState,
+  SessionRole
+} from '../shared/DashboardContract.ts';
+import { orchestratorFilePathsOf } from '../shared/OrchestratorFilePaths.ts';
+import { UnknownValueUtil }        from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_LIMITS }        from '../shared/constants/DashboardLimits.ts';
 
 export interface OrchestratorSupervisorOptions {
   trackerId:             string;
+  role:                  SessionRole;
   root:                  string;
   claudeExecutable:      string;
   orchestratorDirectory: string;
@@ -74,7 +80,7 @@ function controlResponseLineOf(requestId: string, response: Record<string, unkno
 
 /** Resolves when the session has ended; a refusal (socket path too long, the executable not starting) spawns or leaves nothing. */
 export async function superviseOrchestrator(options: OrchestratorSupervisorOptions): Promise<OrchestratorSupervisorEnd> {
-  const paths = orchestratorFilePathsOf(options.orchestratorDirectory, options.trackerId);
+  const paths = orchestratorFilePathsOf(options.orchestratorDirectory, options.trackerId, options.role);
   if (Buffer.byteLength(paths.socketPath) > DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES) {
     return { kind: 'refused', reason: `The socket path ${paths.socketPath} is longer than ${DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES} bytes` };
   }
@@ -98,6 +104,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
 
   const record: OrchestratorRecord = {
     trackerId:         options.trackerId,
+    role:              options.role,
     root:              options.root,
     supervisorPid:     options.supervisorPid,
     sessionPid,

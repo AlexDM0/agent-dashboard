@@ -95,8 +95,17 @@ export interface OrchestratorSession {
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 export interface ChatMessage { at: string; role: ChatRole; text: string }
 
+/** What a dashboard-owned session is briefed as; a project runs at most one live session per role. */
+export type SessionRole = 'orchestrator' | 'product-owner';
+
 /** The body of `POST /api/projects/<trackerId>/orchestrator`. */
 export interface OrchestratorStartRequest { startBuilding: boolean }
+
+/** `spar` files nothing until the user says "wrap up"; `file` files tickets as they are agreed. */
+export type ProductOwnerMode = 'spar' | 'file';
+
+/** The body of `POST /api/projects/<trackerId>/product-owner`. */
+export interface ProductOwnerStartRequest { mode: ProductOwnerMode }
 
 /**
  * The body of `POST /api/projects/<trackerId>/orchestrator/messages`: 1 to 20000 characters after trimming, to the
@@ -110,7 +119,7 @@ export interface OrchestratorAnswerRequest { requestId: string; answers: Record<
 /** The answer of `POST /api/projects/<trackerId>/orchestrator/handoff`: the fresh session, and where the note was kept. */
 export interface OrchestratorHandoffResult { session: OrchestratorSession; notePath: string }
 
-/** The answer of `GET /api/launch-token`, the header value an orchestrator start, stop, chat, answer or handoff must carry. */
+/** The answer of `GET /api/launch-token`, the header value a session start, stop, chat, answer or handoff must carry. */
 export interface LaunchToken { token: string }
 
 export interface ProjectSnapshot {
@@ -127,6 +136,8 @@ export interface ProjectSnapshot {
   health:        ProjectHealth;
   /** The dashboard-owned orchestrator session of the project, live or ended since this server started; null for none. */
   orchestrator:  OrchestratorSession | null;
+  /** The dashboard-owned product-owner session of the project, live or ended since this server started; null for none. */
+  productOwner:  OrchestratorSession | null;
 }
 
 export type RegistryHealth =

@@ -5,11 +5,15 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join }                      from 'node:path';
 
+import type { SessionRole } from '../shared/DashboardContract.ts';
 import { UnknownValueUtil } from '../shared/UnknownValueUtil.ts';
 import { DASHBOARD_FILES }  from '../shared/constants/DashboardFiles.ts';
+import { SESSION_ROLES }    from '../shared/constants/SessionRoles.ts';
 
 export interface OrchestratorRecord {
   trackerId:         string;
+  /** Read as `orchestrator` from a record without one, which a supervisor started before roles existed wrote. */
+  role:              SessionRole;
   root:              string;
   supervisorPid:     number;
   sessionPid:        number;
@@ -35,8 +39,11 @@ export function orchestratorRecordOf(value: unknown): OrchestratorRecord | null 
   if (PROCESS_ID_FIELDS.some((field) => !Number.isInteger(value[field]) || (value[field] as number) <= 0)) return null;
   const { claudeCodeVersion } = value;
   if (claudeCodeVersion !== null && typeof claudeCodeVersion !== 'string') return null;
+  const role = value['role'] ?? 'orchestrator';
+  if (!SESSION_ROLES.some((sessionRole) => sessionRole === role)) return null;
   return {
     trackerId:     value['trackerId'] as string,
+    role:          role as SessionRole,
     root:          value['root'] as string,
     supervisorPid: value['supervisorPid'] as number,
     sessionPid:    value['sessionPid'] as number,

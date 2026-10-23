@@ -24,6 +24,15 @@ describe('commands', () => {
       .toEqual({ kind: 'command', command: 'serve', options: { port: EXAMPLE_PORT, portIsGiven: true, browserOpens: true } });
   });
 
+  test('supervise takes a tracker id, a root and a known role, and refuses a missing or unknown role', () => {
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'product-owner']))
+      .toEqual({
+        kind: 'supervise', trackerId: 'example-tracker', root: '/example/root', role: 'product-owner'
+      });
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root']).kind).toBe('refused');
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'example-role']).kind).toBe('refused');
+  });
+
   test('stop and status take no options', () => {
     expect(parsedCommandLineOf(['stop'])).toMatchObject({ kind: 'command', command: 'stop' });
     expect(parsedCommandLineOf(['status'])).toMatchObject({ kind: 'command', command: 'status' });

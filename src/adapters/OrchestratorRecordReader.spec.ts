@@ -1,6 +1,7 @@
 /**
  * The server reconnects to supervisors from these records, so a good record must read whole, a missing or damaged one
  * must be a verdict rather than a throw, a damaged one must not hide a good sibling, and only record files are read.
+ * A record without a role is read as the orchestrator's, so a supervisor started before roles existed is still found.
  */
 import { writeFileSync } from 'node:fs';
 import { join }          from 'node:path';
@@ -16,6 +17,7 @@ import { readOrchestratorRecord, readOrchestratorRecords } from './OrchestratorR
 
 const EXAMPLE_RECORD = {
   trackerId:         'example-tracker',
+  role:              'product-owner' as const,
   root:              '/Users/alex.example/development/example-agency',
   supervisorPid:     4100,
   sessionPid:        4101,
@@ -39,6 +41,16 @@ test('a whole record reads as present with every field', () => {
   const recordPath = join(directory, 'example.json');
   writeFileSync(recordPath, JSON.stringify(EXAMPLE_RECORD));
   expect(readOrchestratorRecord(recordPath)).toEqual({ kind: 'present', record: EXAMPLE_RECORD, recordPath });
+});
+
+test('a record without a role, as a supervisor started before roles wrote it, reads as the orchestrator\'s; an unknown role is unreadable', () => {
+  const recordWithoutRole = Object.fromEntries(Object.entries(EXAMPLE_RECORD).filter(([field]) => field !== 'role'));
+  const recordPath = join(directory, 'without-role.json');
+  writeFileSync(recordPath, JSON.stringify(recordWithoutRole));
+  expect(readOrchestratorRecord(recordPath)).toEqual({ kind: 'present', record: { ...EXAMPLE_RECORD, role: 'orchestrator' }, recordPath });
+  const unknownRolePath = join(directory, 'unknown-role.json');
+  writeFileSync(unknownRolePath, JSON.stringify({ ...EXAMPLE_RECORD, role: 'example-role' }));
+  expect(readOrchestratorRecord(unknownRolePath).kind).toBe('unreadable');
 });
 
 test('a missing record is missing and a damaged one unreadable, never a throw', () => {
