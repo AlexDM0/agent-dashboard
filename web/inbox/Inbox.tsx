@@ -1,14 +1,9 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState
-} from 'react';
-import { isPressOutside }      from '../popover/PressOutside.ts';
-import { PendingQuestionForm } from '../questions/PendingQuestionForm.tsx';
-import { boardHashOf }         from '../shell/HashRoute.ts';
-import { TimeUtil }            from '../time/TimeUtil.ts';
-import type { InboxEntry }     from './InboxUtil.ts';
+import { useId, useRef, useState } from 'react';
+import { useDismissablePopover }   from '../popover/UseDismissablePopover.ts';
+import { PendingQuestionForm }     from '../questions/PendingQuestionForm.tsx';
+import { boardHashOf }             from '../shell/HashRoute.ts';
+import { TimeUtil }                from '../time/TimeUtil.ts';
+import type { InboxEntry }         from './InboxUtil.ts';
 
 interface InboxProperties {
   entries: InboxEntry[];
@@ -36,31 +31,9 @@ export function Inbox({ entries, now }: InboxProperties) {
   const panelId = useId();
   const pendingCount = entries.length;
 
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    // Captured on the window, so the board's own Esc (back to the overview) never sees the key that closes the panel.
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      event.preventDefault();
-      setIsOpen(false);
-      toggleReference.current?.focus();
-    };
-    // Focus moving into the board frame blurs this window; the board's own Esc must not then find the panel open.
-    const closeOnLeave = (): void => setIsOpen(false);
-    const closeOnPressOutside = (event: PointerEvent): void => {
-      const target = event.target instanceof Node ? event.target : null;
-      if (isPressOutside(inboxReference.current, target)) setIsOpen(false);
-    };
-    window.addEventListener('keydown', closeOnEscape, true);
-    window.addEventListener('blur', closeOnLeave);
-    document.addEventListener('pointerdown', closeOnPressOutside, true);
-    return () => {
-      window.removeEventListener('keydown', closeOnEscape, true);
-      window.removeEventListener('blur', closeOnLeave);
-      document.removeEventListener('pointerdown', closeOnPressOutside, true);
-    };
-  }, [isOpen]);
+  useDismissablePopover({
+    isOpen, containerReference: inboxReference, toggleReference, close: () => setIsOpen(false)
+  });
 
   return (
     <div ref={inboxReference} className="ap-inbox">

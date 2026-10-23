@@ -1,11 +1,6 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState
-} from 'react';
-import { isPressOutside }       from '../popover/PressOutside.ts';
-import { requestServerRestart } from './ServerRestartRequest.ts';
+import { useId, useRef, useState } from 'react';
+import { useDismissablePopover }   from '../popover/UseDismissablePopover.ts';
+import { requestServerRestart }    from './ServerRestartRequest.ts';
 
 type DashboardMenuStep = { kind: 'choosing' } | { kind: 'confirming-restart' } | { kind: 'sending-restart' } | { kind: 'restart-refused'; reason: string };
 
@@ -24,30 +19,9 @@ export function DashboardMenu() {
     setStep(CHOOSING);
   };
 
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    // Captured on the window, so the board's own Esc (back to the overview) never sees the key that closes the menu.
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      event.preventDefault();
-      close();
-      toggleReference.current?.focus();
-    };
-    const closeOnLeave = (): void => close();
-    const closeOnPressOutside = (event: PointerEvent): void => {
-      const target = event.target instanceof Node ? event.target : null;
-      if (isPressOutside(menuReference.current, target)) close();
-    };
-    window.addEventListener('keydown', closeOnEscape, true);
-    window.addEventListener('blur', closeOnLeave);
-    document.addEventListener('pointerdown', closeOnPressOutside, true);
-    return () => {
-      window.removeEventListener('keydown', closeOnEscape, true);
-      window.removeEventListener('blur', closeOnLeave);
-      document.removeEventListener('pointerdown', closeOnPressOutside, true);
-    };
-  }, [isOpen]);
+  useDismissablePopover({
+    isOpen, containerReference: menuReference, toggleReference, close
+  });
 
   const restart = async (): Promise<void> => {
     setStep({ kind: 'sending-restart' });
