@@ -260,7 +260,7 @@ started. Each role has its own `src/services/OrchestratorSessions.ts` instance, 
 supervised session, its conversation, the launch guard) is keyed by tracker id within its role.
 
 A product owner is started with `{ "mode": "spar" | "file" }` (`src/services/ProductOwnerBriefMessage.ts`). Its first
-message names the project, tells it it is the project's product owner, to load the `agent-po` skill, never to load
+message opens with the line `/agent-po`, names the project, tells it it is the project's product owner, never to load
 `agent-progress-orchestrate`, and never to dispatch, claim or start a ticket. In `spar` mode it files nothing until the
 user says "wrap up" (the text the overlay's Wrap up button sends), then files what was agreed; in `file` mode it files
 each ticket once agreed. It writes the tracker through the agent-progress CLI, as a started orchestrator does. Its

@@ -16,11 +16,13 @@ test('a body naming spar or file is that mode, and any other body is null', () =
   expect(productOwnerModeOf('not json')).toBeNull();
 });
 
-test('both briefs name the project, the agent-po skill and the prohibitions; only the spar brief has the wrap-up rule', () => {
+test('both briefs open with the /agent-po command and name the project and the prohibitions; only the spar brief has the wrap-up rule', () => {
   const sparBrief = productOwnerBriefTextOf('example-storefront', 'spar');
   const fileBrief = productOwnerBriefTextOf('example-storefront', 'file');
   for (const brief of [sparBrief, fileBrief]) {
-    for (const named of ['example-storefront', '`agent-po`', 'Never load the `agent-progress-orchestrate` skill', 'never dispatch', 'never claim or start a ticket']) {
+    expect(brief.startsWith('/agent-po\n')).toBe(true);
+    expect(brief).not.toContain('Load the `agent-po`');
+    for (const named of ['example-storefront', 'Never load the `agent-progress-orchestrate` skill', 'never dispatch', 'never claim or start a ticket']) {
       expect(brief).toContain(named);
     }
   }

@@ -9,9 +9,10 @@ export const PRODUCT_OWNER_START_BODY_REFUSAL = 'The body must be { "mode": "spa
 /** The text the overlay's Wrap up button sends, and the words a sparring product owner files on. */
 export const PRODUCT_OWNER_WRAP_UP_TEXT = 'wrap up';
 
-const ROLE_INSTRUCTION = 'You are this project\'s product owner, started from the agent-dashboard. Load the `agent-po` '
-  + 'skill and work through it: talk the user\'s ideas, bugs and questions into tickets on this board with the '
-  + 'agent-progress CLI.';
+const PRODUCT_OWNER_SKILL_COMMAND = '/agent-po';
+
+const ROLE_INSTRUCTION = 'You are this project\'s product owner, started from the agent-dashboard: talk the user\'s '
+  + 'ideas, bugs and questions into tickets on this board with the agent-progress CLI.';
 
 const PROHIBITIONS = 'Never load the `agent-progress-orchestrate` skill, never dispatch an agent or run the dispatcher, '
   + 'and never claim or start a ticket: the project\'s orchestrator runs the board.';
@@ -39,5 +40,5 @@ export function productOwnerModeOf(bodyText: string): ProductOwnerMode | null {
 
 export function productOwnerBriefTextOf(project: string, mode: ProductOwnerMode): string {
   const modeInstruction = mode === 'spar' ? SPAR_INSTRUCTION : FILE_INSTRUCTION;
-  return `The project is ${project}. ${ROLE_INSTRUCTION} ${PROHIBITIONS} ${modeInstruction}`;
+  return `${PRODUCT_OWNER_SKILL_COMMAND}\nThe project is ${project}. ${ROLE_INSTRUCTION} ${PROHIBITIONS} ${modeInstruction}`;
 }
