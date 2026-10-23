@@ -5,6 +5,7 @@
  * lives but does not answer is left. A second server must never take over the record of one that answers.
  */
 import { existsSync }              from 'node:fs';
+import { join }                    from 'node:path';
 import { afterEach, expect, test } from 'bun:test';
 
 import { type RunningDashboardServer, startDashboardServer }       from '../src/services/DashboardServer.ts';
@@ -30,6 +31,7 @@ async function recordedRunningServer(home: string): Promise<RunningDashboardServ
     agentProgressExecutable:   null,
     runtimeExecutablePath:     process.execPath,
     dashboardEntryPointPath:   'agent-dashboard.ts',
+    dashboardDirectory:        join(import.meta.dir, '..'),
     claudeExecutable:          null,
     version:                   '0.0.0-spec',
     clock:                     () => new Date('2026-09-18T20:11:03Z'),

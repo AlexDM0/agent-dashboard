@@ -1,3 +1,4 @@
+import { readDependencyResolution }                       from '../../src/adapters/DependencyResolutionReader.ts';
 import { boardPortOf }                                    from '../../src/services/DashboardServer.ts';
 import type { CommandContext }                            from '../CommandContext.ts';
 import { CommandRefusal }                                 from '../CommandRefusal.ts';
@@ -7,6 +8,7 @@ import { portIsFree }                                     from '../PortIsFree.ts
 import { localServerUrlOf, probeServerIdentity }          from '../ServerIdentityProbe.ts';
 import { serverLogPathOf }                                from '../ServerRecordFile.ts';
 import { detachedServerAnswerOf, unansweredServerTextOf } from './DetachedServerAnswer.ts';
+import { printDependencyWarning }                         from './MissingDependenciesWarning.ts';
 import { portHeldRefusalFor }                             from './PortHeldRefusal.ts';
 import { runningDashboardServerOf }                       from './RunningDashboardServer.ts';
 import { runningElsewhereRefusalFor }                     from './RunningElsewhereRefusal.ts';
@@ -37,5 +39,6 @@ async function urlOfAServerStartedOrReused(options: CommandOptions, context: Com
 export async function openCommand(options: CommandOptions, context: CommandContext): Promise<void> {
   const { url, started } = await urlOfAServerStartedOrReused(options, context);
   context.standardOutput(started ? `Started the dashboard server at ${url}` : `The dashboard server runs at ${url}`);
+  printDependencyWarning(context, readDependencyResolution(context.dashboardDirectory));
   if (options.browserOpens && !context.browserOpeningIsDisabled) openInTheDefaultBrowser(context, url);
 }

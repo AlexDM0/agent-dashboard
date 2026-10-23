@@ -102,7 +102,7 @@ from the manifest, so the server routes them by fixed path before `fetch` as wel
 
 | Route | Answer |
 | --- | --- |
-| `GET /` | the React app (a Bun HTML import of `web/index.html`, bundled by Bun) |
+| `GET /` | the React app (a Bun HTML import of `web/index.html`, bundled by Bun); 503 with the missing-packages page when a declared dependency does not resolve (Missing packages, below) |
 | `GET /api/identity` | `ServerIdentity`, how the CLI knows a running server is the dashboard |
 | `GET /api/snapshot` | the current `DashboardSnapshot` |
 | `GET /api/events` | Server-Sent Events: `event: snapshot` with the whole snapshot on connect and on every change; a `: heartbeat` comment every 25 s |
@@ -120,6 +120,19 @@ method 405), every other path 404, `/api/*` included:
 | `GET /projects/<trackerId>/page/<path>` | a file from that project's page folder: 404 for an unknown tracker, a missing file, or any path that resolves (after `realpath`) outside the folder; `Cache-Control: no-store`. `progress.html` and `progress.stamp.js` carry a CSP limiting them to the board origin (inline script and style allowed) with `frame-ancestors` naming the dashboard's origins (`http://127.0.0.1:<port> http://localhost:<port>`; CSP takes no bracketed IPv6 literal); every other file carries `Content-Security-Policy: sandbox`, so a script in a ticket's linked SVG or HTML runs in an opaque origin |
 | `GET /bridge` | the bridge page: no content of its own, `<html data-dashboard-origins="…">` naming the dashboard's origins and one script; CSP `default-src 'none'; script-src 'self'`, `frame-ancestors` the dashboard's origins |
 | `GET /bridge.js` | the bridge script, `web/bridge/BoardBridgeMain.ts` bundled by `Bun.build` on its first request (its own small bundle, not the React app) |
+
+#### Missing packages
+
+Bun bundles `web/index.html` on the route's first request; when an import does not resolve it answers `/` with an empty
+body, calls no `error` handler and logs nothing, so a page that cannot build would be a blank dashboard. The server
+therefore checks first: at its start `src/adapters/DependencyResolutionReader.ts` resolves every name under
+`package.json`'s `dependencies` from the dashboard's own folder (`Bun.resolveSync`), and any that does not resolve makes
+`/` a small self-contained page (`src/services/MissingDependenciesPage.ts`, status 503, `no-store`) naming each missing
+package and the fix: `bun run setup` (or `bun install`) in that folder, then its Restart server button, which posts
+`/api/restart`. Every other route answers as before, so the API and the CLI still reach the server. `serve` prints the
+same warning on standard error at its start (so a detached server's lands in its log), `open` after its URL line, and a
+restart's handover before it starts its successor. Nothing installs at runtime: a release that adds a dependency
+needs `bun run setup` in the main checkout before the next server start.
 
 #### The bridge
 

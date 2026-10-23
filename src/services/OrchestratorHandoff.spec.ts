@@ -148,6 +148,7 @@ beforeAll(async () => {
     agentProgressExecutable,
     runtimeExecutablePath:     process.execPath,
     dashboardEntryPointPath:   join(import.meta.dir, '..', '..', 'agent-dashboard.ts'),
+    dashboardDirectory:        join(import.meta.dir, '..', '..'),
     claudeExecutable:          fakeClaude,
     version:                   '0.0.0-example',
     clock:                     () => new Date(),

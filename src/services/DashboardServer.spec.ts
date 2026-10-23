@@ -63,6 +63,7 @@ import {
   fakeExecutablePrintingOnceReleased
 } from '../testing/FakeAgentProgressExecutable.ts';
 import { sendRawHttpRequest }                                                      from '../testing/RawHttpRequest.ts';
+import { type ScratchDashboardFolderContents, writeScratchDashboardFolder }        from '../testing/ScratchDashboardFolder.ts';
 import { createScratchDirectory, removeScratchDirectory, requireScratchDirectory } from '../testing/ScratchDirectory.ts';
 import { waitUntil }                                                               from '../testing/WaitUntil.ts';
 import {
@@ -82,6 +83,7 @@ const EXAMPLE_INSTANT = new Date('2026-10-21T12:00:00.000Z');
 const EXAMPLE_VERSION = '0.0.0-example';
 const EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT = 12;
 const SHORT_HEARTBEAT_MILLISECONDS = 30;
+const DASHBOARD_DIRECTORY = join(import.meta.dir, '..', '..');
 
 let scratchDirectory = '';
 let projectRoot = '';
@@ -116,6 +118,7 @@ beforeAll(async () => {
     agentProgressExecutable:   fakeExecutablePrinting(scratchDirectory, statusDocumentPath()),
     runtimeExecutablePath:     process.execPath,
     dashboardEntryPointPath:   join(import.meta.dir, '..', '..', 'agent-dashboard.ts'),
+    dashboardDirectory:        DASHBOARD_DIRECTORY,
     claudeExecutable:          null,
     version:                   EXAMPLE_VERSION,
     clock:                     () => EXAMPLE_INSTANT,
@@ -206,6 +209,42 @@ test('the app shell answers a foreign Host, as Bun serves it before the guard, a
   expect(answer.status).toBe(200);
   expect(answer.body).not.toContain(TRACKER_ID);
   expect(answer.body).not.toContain(projectRoot);
+});
+
+async function serverOverDashboardFolder(folderName: string, contents: ScratchDashboardFolderContents): Promise<RunningDashboardServer> {
+  const dashboardDirectory = join(scratchDirectory, folderName);
+  mkdirSync(dashboardDirectory);
+  writeScratchDashboardFolder(dashboardDirectory, contents);
+  const extraServer = startedOrThrow(await startDashboardServer({ ...serverOptions, port: 0, dashboardDirectory }));
+  extraServers.push(extraServer);
+  return extraServer;
+}
+
+test('a declared package missing from the dashboard folder makes / a 503 page naming it and the fix, while the API still answers', async () => {
+  const unbuildable = await serverOverDashboardFolder('dashboard-missing-package', {
+    declared:  ['example-installed-package', 'example-missing-package'],
+    installed: ['example-installed-package'],
+  });
+  expect(unbuildable.dependencyResolution).toEqual({ kind: 'unresolvable', packageNames: ['example-missing-package'] });
+  const page = await sendRawHttpRequest({ port: unbuildable.port, target: '/' });
+  expect(page.status).toBe(503);
+  expect(page.headers.get('content-type')).toStartWith('text/html');
+  expect(page.body).toContain('<code>example-missing-package</code>');
+  expect(page.body).not.toContain('<code>example-installed-package</code>');
+  expect(page.body).toContain('bun run setup');
+  expect(page.body).toContain('Restart server');
+  const snapshot = await sendRawHttpRequest({ port: unbuildable.port, target: '/api/snapshot' });
+  expect(snapshot.status).toBe(200);
+  expect((JSON.parse(snapshot.body) as DashboardSnapshot).projects.map((project) => project.trackerId)).toEqual([TRACKER_ID]);
+});
+
+test('with every declared package installed / serves the dashboard shell as before', async () => {
+  const buildable = await serverOverDashboardFolder('dashboard-installed', { declared: ['example-installed-package'], installed: ['example-installed-package'] });
+  expect(buildable.dependencyResolution).toEqual({ kind: 'resolvable' });
+  const shell = await sendRawHttpRequest({ port: buildable.port, target: '/' });
+  expect(shell.status).toBe(200);
+  expect(shell.body).toContain('<link rel="manifest"');
+  expect(shell.body).toBe((await sendRawHttpRequest({ port: server.port, target: '/' })).body);
 });
 
 test('the app shell links a web app manifest whose name, start URL and icons are served beside it, before the Host guard as the shell is', async () => {
@@ -529,6 +568,7 @@ test('a second dashboard in another process on the first one\'s port is in use, 
     `import { startDashboardServer } from ${JSON.stringify(join(import.meta.dir, 'DashboardServer.ts'))};`,
     'const start = await startDashboardServer({',
     `  port: ${server.port}, homeDirectory: ${JSON.stringify(serverOptions.homeDirectory)}, agentProgressExecutable: null,`,
+    `  dashboardDirectory: ${JSON.stringify(DASHBOARD_DIRECTORY)},`,
     `  runtimeExecutablePath: process.execPath, version: 'example', clock: () => new Date(${EXAMPLE_INSTANT.getTime()}),`,
     `  machineParallelAgentLimit: ${EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT},`,
     '});',

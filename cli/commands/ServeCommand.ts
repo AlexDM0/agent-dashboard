@@ -1,8 +1,10 @@
+import { readDependencyResolution }                                 from '../../src/adapters/DependencyResolutionReader.ts';
 import { startDashboardServer }                                     from '../../src/services/DashboardServer.ts';
 import type { CommandContext }                                      from '../CommandContext.ts';
 import type { CommandOptions }                                      from '../ParsedCommandLine.ts';
 import { removeServerRecordOf, serverLogPathOf, writeServerRecord } from '../ServerRecordFile.ts';
 import { detachedServerAnswerOf, unansweredServerTextOf }           from './DetachedServerAnswer.ts';
+import { printDependencyWarning }                                   from './MissingDependenciesWarning.ts';
 import { portHeldRefusalFor }                                       from './PortHeldRefusal.ts';
 import { runningDashboardServerOf }                                 from './RunningDashboardServer.ts';
 import { runningElsewhereRefusalFor }                               from './RunningElsewhereRefusal.ts';
@@ -22,6 +24,7 @@ export async function serveCommand(options: CommandOptions, context: CommandCont
     agentProgressExecutable:   context.agentProgressExecutable,
     claudeExecutable:          context.claudeExecutable,
     dashboardEntryPointPath:   context.dashboardEntryPointPath,
+    dashboardDirectory:        context.dashboardDirectory,
     runtimeExecutablePath:     context.runtimeExecutablePath,
     version:                   context.version,
     clock:                     context.now,
@@ -45,6 +48,7 @@ export async function serveCommand(options: CommandOptions, context: CommandCont
     context.standardOutput(
       `The dashboard server runs at ${server.url}, its board pages at ${server.boardOrigin} (pid ${context.processId}); stop it with Ctrl-C or agent-dashboard stop.`,
     );
+    printDependencyWarning(context, server.dependencyResolution);
     await server.stopped;
   } finally {
     stopListening();
@@ -54,6 +58,7 @@ export async function serveCommand(options: CommandOptions, context: CommandCont
   if (server.isRestartRequested()) {
     const successor = startDetachedServer(context, server.port);
     context.standardOutput(`Restarting the dashboard server at ${server.url}.`);
+    printDependencyWarning(context, readDependencyResolution(context.dashboardDirectory));
     // This process writes to the server log, so the line saying why the page stays on reconnecting lands where the person looks.
     const answer = await detachedServerAnswerOf(server.url, successor);
     if (answer.kind !== 'answered') context.standardError(unansweredServerTextOf(answer, serverLogPathOf(context.homeDirectory)));

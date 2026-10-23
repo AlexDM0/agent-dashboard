@@ -29,6 +29,7 @@ export function createCapturedCommandContext(homeDirectory: string): CapturedCom
     processId:                 SPEC_PROCESS_ID,
     runtimeExecutablePath:     process.execPath,
     dashboardEntryPointPath:   join(import.meta.dir, '..', '..', 'agent-dashboard.ts'),
+    dashboardDirectory:        join(import.meta.dir, '..', '..'),
     version:                   '0.0.0-spec',
     agentProgressExecutable:   null,
     claudeExecutable:          null,

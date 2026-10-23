@@ -29,6 +29,8 @@ export interface CommandContext {
   runtimeExecutablePath:     string;
   /** The absolute path of `agent-dashboard.ts`, which a detached `serve` runs. */
   dashboardEntryPointPath:   string;
+  /** The dashboard's own checkout, whose `package.json` dependencies the server checks are installed. */
+  dashboardDirectory:        string;
   /** `package.json`'s version, which the server reports as its identity. */
   version:                   string;
   agentProgressExecutable:   string | null;
@@ -100,6 +102,7 @@ export function createProcessContext(): CommandContext {
     processId:                 process.pid,
     runtimeExecutablePath:     process.execPath,
     dashboardEntryPointPath:   join(import.meta.dir, '..', 'agent-dashboard.ts'),
+    dashboardDirectory:        join(import.meta.dir, '..'),
     version:                   packageVersion(),
     agentProgressExecutable:   executableFrom(currentDirectory, agentProgressExecutableOverride(), 'agent-progress', recordedExecutables.agentProgress),
     claudeExecutable:          executableFrom(currentDirectory, claudeExecutableOverride(), 'claude', recordedExecutables.claude),

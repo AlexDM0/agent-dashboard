@@ -14,6 +14,7 @@ import dashboardApplication from '../../web/index.html';
 
 import { readBoardStatus }                                                from '../adapters/BoardStatusReader.ts';
 import { writeConcurrencyLimit }                                          from '../adapters/ConcurrencyLimitWriter.ts';
+import { type DependencyResolution, readDependencyResolution }            from '../adapters/DependencyResolutionReader.ts';
 import { writeDispatcherStopped }                                         from '../adapters/DispatcherStopWriter.ts';
 import { type LiveSession, findOrchestratorSession, findWatchedSessions } from '../adapters/OrchestratorSessionFinder.ts';
 import { sessionSocketAccepts, writeSessionMessage }                      from '../adapters/SessionMessageWriter.ts';
@@ -39,6 +40,7 @@ import { UnknownValueUtil }                        from '../shared/UnknownValueU
 import { DASHBOARD_FILES }                         from '../shared/constants/DashboardFiles.ts';
 import { DASHBOARD_LIMITS }                        from '../shared/constants/DashboardLimits.ts';
 import { DASHBOARD_PROTOCOL }                      from '../shared/constants/DashboardProtocol.ts';
+import { missingDependenciesPageOf }               from './MissingDependenciesPage.ts';
 import { handOffOrchestrator, handoffDirectoryOf } from './OrchestratorHandoff.ts';
 import {
   ORCHESTRATOR_REQUEST_BODY_REFUSAL,
@@ -58,6 +60,8 @@ export interface DashboardServerOptions {
   runtimeExecutablePath:     string;
   /** `agent-dashboard.ts`, which the server runs a detached orchestrator supervisor with. */
   dashboardEntryPointPath:   string;
+  /** The dashboard's own folder, whose `package.json` dependencies must resolve for `/` to serve the page. */
+  dashboardDirectory:        string;
   /** The Claude Code executable an orchestrator session runs; null refuses every start. */
   claudeExecutable:          string | null;
   version:                   string;
@@ -67,12 +71,14 @@ export interface DashboardServerOptions {
 }
 
 export interface RunningDashboardServer {
-  url:         string;
-  port:        number;
-  boardOrigin: string;
-  boardPort:   number;
+  url:                  string;
+  port:                 number;
+  boardOrigin:          string;
+  boardPort:            number;
   stop():      Promise<void>;
-  stopped:     Promise<void>;
+  stopped:              Promise<void>;
+  /** Read at the start; an unresolvable one makes `/` the page naming the missing packages. */
+  dependencyResolution: DependencyResolution;
   /** Whether the stop was a restart the page asked for, so `serve` starts a successor once the ports are free. */
   isRestartRequested(): boolean;
 }
@@ -192,7 +198,15 @@ const HTTP_STATUS = {
   CONFLICT:              409,
   INTERNAL_SERVER_ERROR: 500,
   BAD_GATEWAY:           502,
+  SERVICE_UNAVAILABLE:   503,
 } as const;
+
+/** Bun answers an HTML-import route whose bundle fails with an empty body and calls no error handler, so a missing install is caught before. */
+function applicationRouteOf(dependencyResolution: DependencyResolution, dashboardDirectory: string): Bun.HTMLBundle | (() => Response) {
+  if (dependencyResolution.kind !== 'unresolvable') return dashboardApplication;
+  const page = missingDependenciesPageOf(dependencyResolution.packageNames, dashboardDirectory);
+  return () => new Response(page, { status: HTTP_STATUS.SERVICE_UNAVAILABLE, headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE_HEADERS } });
+}
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' } as const;
 
@@ -449,6 +463,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     resolveStopped = resolve;
   });
 
+  const dependencyResolution = readDependencyResolution(options.dashboardDirectory);
   let server: Bun.Server<undefined>;
   try {
     server = Bun.serve({
@@ -457,7 +472,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       development: false,
       // Bun turns SO_REUSEPORT on without development mode, which would let a second dashboard share the port.
       reusePort:   false,
-      routes:      { '/': dashboardApplication, ...installIconRoutes() },
+      routes:      { '/': applicationRouteOf(dependencyResolution, options.dashboardDirectory), ...installIconRoutes() },
       fetch:       (request, servingServer) => answer(request, servingServer),
     });
   } catch (error) {
@@ -1074,7 +1089,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   return {
     kind:   'started',
     server: {
-      url, port, boardOrigin, boardPort, stop, stopped, isRestartRequested: () => restartIsRequested
+      url, port, boardOrigin, boardPort, stop, stopped, dependencyResolution, isRestartRequested: () => restartIsRequested
     }
   };
 }
