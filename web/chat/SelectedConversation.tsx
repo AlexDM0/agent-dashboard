@@ -112,7 +112,7 @@ function ConversationColumns({
           <div className="ap-chat-conversation-actions">
             <button type="button" className="ap-control is-quiet" onClick={onCollapse}>Collapse into the board&apos;s drawer</button>
             <button type="button" className="ap-control is-quiet" onClick={onOpenBoard}>Open board</button>
-            <SessionMenu key={conversation.key} conversation={conversation} isDispatcherRunning={board?.dispatcherState === 'running'} />
+            <SessionMenu key={`${conversation.key}:${conversation.session.sessionId}`} conversation={conversation} isDispatcherRunning={board?.dispatcherState === 'running'} />
             <button type="button" className="ap-control is-quiet ap-icon-control ap-chat-close" aria-label="Close the chat" onClick={onClose}>
               <span aria-hidden="true">×</span>
             </button>
