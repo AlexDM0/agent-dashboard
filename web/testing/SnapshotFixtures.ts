@@ -83,19 +83,25 @@ function activeProjectWith(project: string, board: Partial<BoardSummary>, orches
   return projectSnapshotWith(project, { health: { kind: 'ready', board: boardSummaryWith({ dispatcherState: 'running', ...board }) }, orchestrator });
 }
 
-/** A board-view fleet: four active projects, each with a session in another state, one watched, and two idle ones. */
+/**
+ * A board-view and Fleet fleet: four active projects, each with a session in another state (one watched, one past the
+ * critical context share), a queue on two of them, and two idle ones.
+ */
 export function fleetSnapshotWith(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot {
   const context = {
     usedTokens: 124_000, contextWindowTokens: 200_000, model: 'example-model', measuredAt: '2026-10-21T10:00:00+02:00'
   };
+  const criticalContext = { ...context, usedTokens: 172_000 };
   const lastAction = { at: '2026-10-21T09:58:00+02:00', text: 'Started a builder on #042' };
   const lowPriorityWaitingTickets = [{ ticketId: '012', title: 'Example low-priority tidy-up' }, { ticketId: '014', title: 'Example copy fix' }];
   const projects = [
-    activeProjectWith('example-storefront', { agentsInFlight: 2, freeSlots: 0, lowPriorityWaitingTickets }, orchestratorSessionWith({ state: 'busy', context, lastAction })),
-    activeProjectWith('example-invoice-service-with-a-long-name', { agentsInFlight: 1, freeSlots: 1 }, orchestratorSessionWith({
+    activeProjectWith('example-storefront', {
+      agentsInFlight: 2, freeSlots: 0, lowPriorityWaitingTickets, readyTicketIds: ['043'], heldTicketIds: ['047']
+    }, orchestratorSessionWith({ state: 'busy', context, lastAction })),
+    activeProjectWith('example-invoice-service-with-a-long-name', { agentsInFlight: 1, freeSlots: 1, reviewWaitingTicketIds: ['040'] }, orchestratorSessionWith({
       state: 'waiting-for-answer', context, lastAction, pendingQuestions: [pendingQuestionWith('request-one', '2026-10-21T09:59:00+02:00')]
     })),
-    activeProjectWith('example-agency-site', { agentsInFlight: 0, freeSlots: 2 }, orchestratorSessionWith({ state: 'idle', lastAction })),
+    activeProjectWith('example-agency-site', { agentsInFlight: 0, freeSlots: 2 }, orchestratorSessionWith({ state: 'idle', context: criticalContext, lastAction })),
     activeProjectWith('example-mobile-app', { agentsInFlight: 1, freeSlots: 1 }, null),
     projectSnapshotWith('example-archive'),
     projectSnapshotWith('example-notes', { health: { kind: 'ready', board: boardSummaryWith({ dispatcherState: 'stopped' }) } }),

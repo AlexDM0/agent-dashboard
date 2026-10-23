@@ -32,17 +32,16 @@ ul { padding: 0; list-style: none; }
 
 /* ----------------------------------------------------------------- header -- */
 .ap-header {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px;
-  padding-bottom: 20px; border-bottom: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--line);
 }
-.ap-app[data-route="board"] .ap-header { padding-bottom: 14px; }
-.ap-header-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-width: 0; margin-right: auto; }
-.ap-header-name { font: 700 var(--fs-page)/1.2 var(--font-ui); letter-spacing: -0.02em; }
+.ap-header-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; margin-right: auto; }
+.ap-header-name { font: 700 var(--fs-title)/1.2 var(--font-ui); letter-spacing: -0.01em; }
 .ap-header-name a { color: var(--ink); }
 .ap-header-name a:hover { text-decoration: none; }
 
 .ap-menu { position: relative; }
-.ap-header > .ap-menu { margin-right: -16px; }
+.ap-header > .ap-menu { margin-right: -4px; }
 .ap-menu-toggle { padding: 0 6px; }
 .ap-menu-toggle svg { width: 16px; height: 16px; }
 .ap-menu-panel {
@@ -68,15 +67,21 @@ ul { padding: 0; list-style: none; }
 .ap-status-line[data-freshness="live"] .ap-status-dot { background: var(--status-live); }
 .ap-status-label { font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
 
-.ap-head-stats { display: flex; flex-wrap: wrap; gap: 12px 28px; }
-.ap-stat { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px; text-align: left; }
-.ap-stat-n { font: 500 18px/1.25 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--ink); }
-.ap-stat-n small { font-size: var(--fs-small); color: var(--ink-muted); letter-spacing: 0; }
-.ap-stat-label { font: 400 var(--fs-small)/1.3 var(--font-ui); color: var(--ink-muted); }
-.ap-stat[data-state] .ap-stat-n { color: var(--s-ink); }
+.ap-view-switch { flex: none; }
+.ap-view-switch a {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+  font: 500 var(--fs-small)/1 var(--font-ui); color: var(--ink-muted); border-radius: var(--r-1);
+}
+.ap-view-switch a:hover { color: var(--ink); text-decoration: none; }
+.ap-view-switch a[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px var(--shadow-control); }
+.ap-view-switch a:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.ap-view-switch-count { font: 500 var(--fs-micro)/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.ap-header-totals { flex: none; font-size: var(--fs-micro); white-space: nowrap; }
+/* The compact header keeps the connection word; the age of the last update is the lost-connection banner's to show. */
+.ap-header-identity .ap-status-line > :nth-child(3) { display: none; }
 
 .ap-theme { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); }
-.ap-theme button { padding: 3px 8px; font: 500 var(--fs-micro)/normal var(--font-mono); border: 0; border-radius: 5px; background: transparent; color: var(--ink-muted); cursor: pointer; }
+.ap-theme button { padding: 3px 6px; font: 500 var(--fs-micro)/normal var(--font-mono); border: 0; border-radius: 5px; background: transparent; color: var(--ink-muted); cursor: pointer; }
 .ap-theme button:hover { color: var(--ink); }
 .ap-theme button[aria-checked="true"] { background: var(--surface-selected); color: var(--ink); }
 .ap-theme button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
@@ -89,7 +94,7 @@ ul { padding: 0; list-style: none; }
 .ap-theme-icon:hover { color: var(--ink); }
 .ap-theme-icon:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-.ap-header-tools { flex: none; display: flex; align-items: center; gap: 12px; }
+.ap-header-tools { flex: none; display: flex; align-items: center; gap: 8px; }
 
 /* ---------------------------------------------------------- notifications -- */
 .ap-notification-toggle[data-muted="true"] { color: var(--ink-muted); }
@@ -502,24 +507,87 @@ ul { padding: 0; list-style: none; }
   .ap-crew-drawer { width: 100vw; border-left: 0; }
 }
 
+/* ------------------------------------------------------------------ fleet -- */
+/* One grid for the table and a subgrid per row, so the columns line up without fixed widths and never scroll sideways. */
+.ap-fleet { display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 22vw, 360px); gap: 16px; align-items: start; }
+.ap-fleet-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; container: fleet-table / inline-size; }
+.ap-fleet-table {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) max-content max-content max-content;
+  min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-3);
+}
+.ap-fleet-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; min-width: 0; }
+.ap-fleet-row + .ap-fleet-row { border-top: 1px solid var(--line); }
+.ap-fleet-heading .ap-fleet-cell { padding-block: 6px; font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+.ap-fleet-cell { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; white-space: nowrap; font-size: var(--fs-small); }
+.ap-fleet-name { min-width: 0; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-fleet-project .ap-pill, .ap-fleet-crew .ap-pill { flex: none; }
+/* The two flexible columns clip rather than widen the table; the Run cell may not, its popover opens out of it. */
+.ap-fleet-project, .ap-fleet-crew { overflow: hidden; }
+.ap-fleet-action { display: flex; flex: 1 1 0; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; }
+.ap-fleet-action-age { flex: none; font-size: var(--fs-micro); }
+.ap-fleet-unreadable { grid-column: span 3; }
+.ap-fleet-run { justify-content: flex-end; }
+
+.ap-needs-you { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ap-needs-you-title { font: 600 var(--fs-body)/1.3 var(--font-ui); }
+.ap-needs-you-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ap-attention-card {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; padding: 10px 12px;
+  font: inherit; font-size: var(--fs-small); color: var(--ink); text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--link); border-radius: var(--r-2); cursor: pointer;
+}
+.ap-attention-card[data-kind="handoff"] { border-left-color: var(--err-ink); }
+.ap-attention-card:hover { background: var(--surface-2); }
+.ap-attention-card:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.ap-attention-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.ap-attention-project { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-attention-age { flex: none; font-size: var(--fs-micro); }
+.ap-attention-who { font-size: var(--fs-micro); }
+.ap-attention-text { overflow-wrap: anywhere; }
+
+@media (max-width: 1099px) {
+  .ap-fleet { grid-template-columns: minmax(0, 1fr); }
+}
+/* Each row its own grid: identity and capacity on the first line, the crew and its actions on the second. Measured on the
+   table's own width, since the Needs you column beside it narrows it below one line's columns before the window does. */
+@container fleet-table (max-width: 979px) {
+  .ap-fleet-table { grid-template-columns: minmax(0, 1fr); }
+  .ap-fleet-heading { display: none; }
+  .ap-fleet-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "project agents queue" "crew crew run";
+  }
+  .ap-fleet-project { grid-area: project; }
+  .ap-fleet-crew { grid-area: crew; }
+  .ap-fleet-agents { grid-area: agents; }
+  .ap-fleet-queue { grid-area: queue; }
+  .ap-fleet-run, .ap-fleet-unreadable { grid-area: run; }
+  .ap-fleet-row > .ap-fleet-cell { padding-block: 6px; }
+}
+@container fleet-table (max-width: 600px) {
+  .ap-fleet-row { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "project project" "crew crew" "agents queue" "run run"; }
+  .ap-fleet-cell { flex-wrap: wrap; white-space: normal; }
+  .ap-fleet-run { justify-content: flex-start; }
+}
+
 /* ------------------------------------------------------------------ phone -- */
 @media (max-width: 640px) {
   .ap-page { padding: 20px 16px 32px; }
 
   .ap-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px 12px; padding-bottom: 0; border-bottom: 0; }
   .ap-header > .ap-menu { grid-row: 1; grid-column: 1; align-self: start; margin-right: 0; }
-  .ap-header-identity { grid-row: 1; grid-column: 2; flex-direction: column; align-items: flex-start; gap: 4px; margin-right: 0; }
+  .ap-header-identity { grid-row: 1; grid-column: 2 / -1; flex-direction: row; align-items: center; gap: 4px 12px; margin-right: 0; }
   .ap-theme { display: none; }
-  .ap-header-tools { grid-row: 1; grid-column: 3; gap: 8px; }
+  .ap-header-tools { grid-row: 2; grid-column: 1 / -1; gap: 8px; }
   .ap-inbox-toggle, .ap-notification-toggle, .ap-menu-toggle { min-height: 44px; }
   .ap-inbox-panel { left: 0; width: auto; }
   .ap-menu-toggle { min-width: 44px; justify-content: center; }
   .ap-menu-item { min-height: 44px; }
   .ap-theme-icon { display: inline-flex; }
-  .ap-head-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  .ap-head-stats .ap-stat { padding: var(--sp-2) 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); min-width: 0; }
-  .ap-head-stats .ap-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ap-app[data-route="board"] .ap-head-stats { display: none; }
+  .ap-view-switch { grid-column: 1 / -1; justify-self: start; }
+  .ap-view-switch a { min-height: 40px; padding: 0 16px; }
+  .ap-header-totals { grid-column: 1 / -1; white-space: normal; }
+  .ap-app[data-route="board"] .ap-header-totals { display: none; }
 
   .ap-filter-bar { flex-direction: column; align-items: stretch; gap: 8px; }
   .ap-search { flex: none; }
@@ -527,6 +595,7 @@ ul { padding: 0; list-style: none; }
   .ap-search input { height: 44px; padding: 0 12px 0 34px; font-size: var(--fs-body); }
   .ap-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ap-seg button { min-height: 40px; }
+  .ap-fleet .ap-seg { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ap-filter-caption { margin-left: 0; }
 
   .ap-card-section { padding: 10px 14px; }

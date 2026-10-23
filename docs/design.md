@@ -489,12 +489,16 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 
 ### Overview (`#/`)
 
-- **Header** (one line, wraps on a phone): the dashboard menu first, at the header's left edge, then the name
-  `agent-dashboard` and the live status, then header stats in the
-  template's `.ap-head-stats` manner: Projects, Agents (in flight across every board / the machine's parallel
-  maximum, `availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
-  the projects' concurrency limits are not summed here), Ready, Awaiting review, Held; the
-  notification control, the Inbox control and the theme toggle at the end.
+- **Header** (one compact row from 1280 px, on every view; wraps on a phone): the dashboard menu first, at the
+  header's left edge, then the name `agent-dashboard` and the live status's connection word (the age of the last
+  update is the lost-connection banner's), then the **view switch**, Projects | Fleet (`web/shell/ViewSwitch.tsx`):
+  two links to `#/` and `#/fleet`, `aria-current="page"` on the current one and on neither over a board, Projects
+  carrying the project count. Then the totals as one mono line (`web/shell/HeaderTotalsLineUtil.ts`), `4/8 agents ·
+  4 orchestrators · 1 ready · 1 review · 1 held`: agents in flight across every board over the machine's parallel
+  maximum (`availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
+  the projects' concurrency limits are not summed here), every live orchestrator session, dashboard-owned or watched,
+  and the ready, awaiting-review and held counts, all as `web/shell/HeaderTotals.ts` sums them. The notification
+  control, the Inbox control and the theme toggle come last.
 - **Dashboard menu** (before the title on every view, its panel opening along the header's left edge): a hamburger toggle named "Dashboard menu" opening a panel with
   one item, "Restart server". Choosing it asks "Restart the dashboard server?" with Restart and Cancel in the panel;
   Cancel returns to the item without a request, Restart sends `POST /api/restart` and closes the menu, after which the
@@ -543,6 +547,30 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   tracked repository (`status` is read-only and registers nothing).
 - **Lost connection**: a `--warn-tint` banner under the header, "Reconnecting to the dashboard server…", and each
   card's slot row ends "as of 14:30", the last snapshot's time, until the stream is back.
+
+### Fleet (`#/fleet`)
+
+A second view beside the overview's cards, which stay: every project's crew and capacity in one table, and what
+waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUtil.ts`).
+
+- **Filters** All / Running / Needs you over the table, and "n of m projects". Running keeps the projects whose
+  dispatcher is `running`; Needs you those whose live dashboard-owned session has a pending question or a context at
+  or past `CONTEXT_CRITICAL_SHARE` (a watched session is offered no hand-off, so it never counts).
+- **Table**, one row per project in the overview's order (the Active group, then the Idle one): **Project** (status
+  dot, ringed while a question waits; the name linking to its board, ellipsis with the full name in `title`; the
+  dispatcher pill, or the health kind for a board that cannot be read); **Crew** (the leading session's `OR` glyph,
+  its state pill, the compact context meter with its share, or "n tokens" for an unknown window, then the
+  `lastAction`'s age and text on the same line; "No orchestrator" and "Start orchestrator" when no session lives);
+  **Agents** (`n/m` and the − / + stepper); **Queue** (`n ready`, then `n low · n review · n held` muted, the zero
+  ones left out); **Run** (the board command bar's actions for the dispatcher state, from the same
+  `BoardCommandUtil.commandsOf`, then a Chat icon opening that project's crew drawer over the Fleet view on its chat
+  box). The table is one grid with a subgrid per row, so the columns line up; each row is one line while the table is
+  980 px or wider, below that its cells wrap onto a second line (project, agents and queue; then crew and run), and
+  under 600 px they stack. Nothing scrolls sideways.
+- **Needs you** column (320 to 360 px beside the table; under it below 1100 px): the inbox's entries as compact
+  cards in the inbox's order (project, "Orchestrator asks", the question's first line, its age), each opening the
+  header's inbox; then a "hand off" card per live dashboard-owned session at or past `CONTEXT_CRITICAL_SHARE` (its
+  context caption and the age of the measure), opening the project's crew drawer where Hand off lives.
 
 ### Board (`#/projects/<trackerId>`)
 

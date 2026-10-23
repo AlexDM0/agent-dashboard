@@ -1,37 +1,13 @@
-import type { HeaderTotals } from './HeaderTotals.ts';
+import type { HeaderTotals }    from './HeaderTotals.ts';
+import { HeaderTotalsLineUtil } from './HeaderTotalsLineUtil.ts';
 
 interface HeaderStatisticsProperties {
   totals:                    HeaderTotals;
   /** Null until the first snapshot arrives. */
   machineParallelAgentLimit: number | null;
+  orchestratorCount:         number;
 }
 
-export function HeaderStatistics({ totals, machineParallelAgentLimit }: HeaderStatisticsProperties) {
-  return (
-    <dl className="ap-head-stats">
-      <div className="ap-stat">
-        <dt className="ap-stat-label">Projects</dt>
-        <dd className="ap-stat-n">{totals.projectCount}</dd>
-      </div>
-      <div className="ap-stat">
-        <dt className="ap-stat-label">Agents</dt>
-        <dd className="ap-stat-n">
-          {totals.agentsInFlight}
-          {machineParallelAgentLimit === null ? null : <small>/{machineParallelAgentLimit}</small>}
-        </dd>
-      </div>
-      <div className="ap-stat">
-        <dt className="ap-stat-label">Ready</dt>
-        <dd className="ap-stat-n">{totals.readyCount}</dd>
-      </div>
-      <div className="ap-stat" {...(totals.reviewWaitingCount > 0 ? { 'data-state': 'in-review' } : {})}>
-        <dt className="ap-stat-label">Awaiting review</dt>
-        <dd className="ap-stat-n">{totals.reviewWaitingCount}</dd>
-      </div>
-      <div className="ap-stat" {...(totals.heldCount > 0 ? { 'data-state': 'paused' } : {})}>
-        <dt className="ap-stat-label">Held</dt>
-        <dd className="ap-stat-n">{totals.heldCount}</dd>
-      </div>
-    </dl>
-  );
+export function HeaderStatistics({ totals, machineParallelAgentLimit, orchestratorCount }: HeaderStatisticsProperties) {
+  return <p className="mono muted ap-header-totals">{HeaderTotalsLineUtil.lineOf(totals, machineParallelAgentLimit, orchestratorCount)}</p>;
 }

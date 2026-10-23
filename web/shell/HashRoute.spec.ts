@@ -1,10 +1,24 @@
-/** The two routes, a round trip of an id needing encoding, and every malformed hash falling back to the overview. */
-import { expect, test }                            from 'bun:test';
-import { boardHashOf, hashRouteOf, OVERVIEW_HASH } from './HashRoute.ts';
+/** The three routes, a round trip of an id needing encoding, and every malformed hash falling back to the overview. */
+import { expect, test } from 'bun:test';
+import {
+  boardHashOf,
+  FLEET_HASH,
+  hashRouteOf,
+  OVERVIEW_HASH
+} from './HashRoute.ts';
 
 test('the overview hash and an empty hash are the overview', () => {
   expect(hashRouteOf(OVERVIEW_HASH)).toEqual({ kind: 'overview' });
   expect(hashRouteOf('')).toEqual({ kind: 'overview' });
+});
+
+test('the fleet hash is the fleet, with or without a trailing slash', () => {
+  expect(hashRouteOf(FLEET_HASH)).toEqual({ kind: 'fleet' });
+  expect(hashRouteOf(`${FLEET_HASH}/`)).toEqual({ kind: 'fleet' });
+});
+
+test('a hash that only starts like the fleet one is the overview', () => {
+  expect(hashRouteOf('#/fleetwood')).toEqual({ kind: 'overview' });
 });
 
 test('a board hash round-trips its tracker id', () => {

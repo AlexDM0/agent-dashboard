@@ -1,5 +1,6 @@
 import { useEffect, useState }     from 'react';
 import { BoardView }               from './board/BoardView.tsx';
+import { FleetView }               from './fleet/FleetView.tsx';
 import { InboxUtil }               from './inbox/InboxUtil.ts';
 import { useAppBadge }             from './notifications/UseAppBadge.ts';
 import { useDesktopNotifications } from './notifications/UseDesktopNotifications.ts';
@@ -9,6 +10,7 @@ import { useThemePreference }      from './preferences/UseThemePreference.ts';
 import { ConnectionBanner }        from './shell/ConnectionBanner.tsx';
 import { Header }                  from './shell/Header.tsx';
 import { headerTotalsOf }          from './shell/HeaderTotals.ts';
+import { HeaderTotalsLineUtil }    from './shell/HeaderTotalsLineUtil.ts';
 import { useDashboardStream }      from './shell/UseDashboardStream.ts';
 import { useHashRoute }            from './shell/UseHashRoute.ts';
 import { useNow }                  from './shell/UseNow.ts';
@@ -42,11 +44,21 @@ export function App() {
   return (
     <div className="ap-app" data-route={route.kind}>
       <div className="ap-page">
-        <Header stream={stream} totals={headerTotalsOf(projects)} inboxEntries={inboxEntries} notifications={notifications} theme={theme} now={now} />
+        <Header
+          stream={stream}
+          route={route}
+          totals={headerTotalsOf(projects)}
+          orchestratorCount={HeaderTotalsLineUtil.orchestratorCountOf(projects, stream.snapshot?.watchedOrchestratorsByTracker ?? {})}
+          inboxEntries={inboxEntries}
+          notifications={notifications}
+          theme={theme}
+          now={now}
+        />
         <ConnectionBanner connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
-        {route.kind === 'board'
-          ? <BoardView snapshot={stream.snapshot} trackerId={route.trackerId} />
-          : (
+        {route.kind === 'board' ? <BoardView snapshot={stream.snapshot} trackerId={route.trackerId} /> : null}
+        {route.kind === 'fleet' ? <FleetView snapshot={stream.snapshot} inboxEntries={inboxEntries} now={now} /> : null}
+        {route.kind === 'overview'
+          ? (
             <OverviewView
               snapshot={stream.snapshot}
               searchText={searchText}
@@ -56,7 +68,8 @@ export function App() {
               onSearchChange={setSearchText}
               onFilterChange={setFilter}
             />
-          )}
+          )
+          : null}
       </div>
     </div>
   );
