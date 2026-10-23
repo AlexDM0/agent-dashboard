@@ -29,7 +29,6 @@ import {
   type OrchestratorRecipient,
   type OrchestratorRequestReceipt,
   type OrchestratorSession,
-  type PendingQuestion,
   type ServerIdentity
 } from '../shared/DashboardContract.ts';
 import { environmentCopy }                                                                     from '../shared/Environment.ts';
@@ -288,15 +287,6 @@ function requestedAnswerOf(bodyText: string): OrchestratorAnswerRequest | null {
   const answerEntries = Object.entries(answers);
   const everyAnswerIsText = answerEntries.every((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim().length > 0);
   return everyAnswerIsText && answerEntries.length > 0 ? { requestId, answers: Object.fromEntries(answerEntries) } : null;
-}
-
-/** Null when the answers name exactly the questions of the pending request, else why not. */
-function answerMismatchOf(pending: PendingQuestion, answers: Record<string, string>): string | null {
-  const askedQuestions = new Set(pending.questions.map((question) => question.question));
-  const notAsked = Object.keys(answers).filter((question) => !askedQuestions.has(question));
-  if (notAsked.length > 0) return `Not asked by this request: ${notAsked.join(', ')}`;
-  const unanswered = [...askedQuestions].filter((question) => !Object.hasOwn(answers, question));
-  return unanswered.length > 0 ? `Left unanswered: ${unanswered.join(', ')}` : null;
 }
 
 function serverSentEventOf(eventName: string, data: unknown): string {
@@ -716,11 +706,9 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const session = orchestratorSessions.sessionOf(trackerId);
     if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'No dashboard-owned orchestrator of this project runs');
     if (session.state === 'ended') return plainResponse(HTTP_STATUS.CONFLICT, 'The dashboard-owned orchestrator of this project has ended');
-    const pending = session.pendingQuestions.find((pendingQuestion) => pendingQuestion.requestId === requestedAnswer.requestId);
-    if (pending === undefined) return plainResponse(HTTP_STATUS.CONFLICT, `No question ${requestedAnswer.requestId} is pending`);
-    const mismatch = answerMismatchOf(pending, requestedAnswer.answers);
-    if (mismatch !== null) return plainResponse(HTTP_STATUS.CONFLICT, mismatch);
     const delivery = await orchestratorSessions.answer(trackerId, requestedAnswer.requestId, requestedAnswer.answers);
+    if (delivery.kind === 'not-pending') return plainResponse(HTTP_STATUS.CONFLICT, `No question ${requestedAnswer.requestId} is pending`);
+    if (delivery.kind === 'mismatched') return plainResponse(HTTP_STATUS.CONFLICT, delivery.reason);
     if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, 'The dashboard-owned orchestrator of this project has ended');
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });

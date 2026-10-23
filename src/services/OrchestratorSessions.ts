@@ -19,12 +19,12 @@ import {
   supervisorConversationOf,
   supervisorStateOf
 } from '../adapters/SupervisorLineReader.ts';
-import { processIsAlive }                        from '../lib/process-liveness/ProcessIsAlive.ts';
-import type { ChatMessage, OrchestratorSession } from '../shared/DashboardContract.ts';
-import { orchestratorFilePathsOf }               from '../shared/OrchestratorFilePaths.ts';
-import { UnknownValueUtil }                      from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_LIMITS }                      from '../shared/constants/DashboardLimits.ts';
-import { DASHBOARD_PROTOCOL }                    from '../shared/constants/DashboardProtocol.ts';
+import { processIsAlive }                                         from '../lib/process-liveness/ProcessIsAlive.ts';
+import type { ChatMessage, OrchestratorSession, PendingQuestion } from '../shared/DashboardContract.ts';
+import { orchestratorFilePathsOf }                                from '../shared/OrchestratorFilePaths.ts';
+import { UnknownValueUtil }                                       from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_LIMITS }                                       from '../shared/constants/DashboardLimits.ts';
+import { DASHBOARD_PROTOCOL }                                     from '../shared/constants/DashboardProtocol.ts';
 
 export interface OrchestratorSessionsOptions {
   orchestratorDirectory:    string;
@@ -44,6 +44,8 @@ export type OrchestratorLaunch =
   | { kind: 'failed'; reason: string };
 
 export type SupervisorDelivery = { kind: 'delivered' } | { kind: 'none' } | { kind: 'failed'; reason: string };
+
+export type AnswerDelivery = SupervisorDelivery | { kind: 'not-pending' } | { kind: 'mismatched'; reason: string };
 
 export type SessionReply = { kind: 'replied'; text: string } | { kind: 'failed'; reason: string };
 
@@ -66,8 +68,11 @@ export interface OrchestratorSessions {
    * fails when the session ends, asks a question instead, or gives no complete reply within the bound.
    */
   replyTo(trackerId: string, text: string, timeoutMilliseconds: number): Promise<SessionReply>;
-  /** Sends the answers to a pending question; once delivered the question is no longer pending here either. */
-  answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<SupervisorDelivery>;
+  /**
+   * Claims the pending question in the same turn it is checked, then sends the answers: a second answer arriving while
+   * the first is in flight finds nothing pending. A delivery that is not made puts the question back.
+   */
+  answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<AnswerDelivery>;
   /** The project's conversation so far, oldest first, at most the supervisor's held history; empty for none. */
   conversationOf(trackerId: string): ChatMessage[];
   /** Called on every change of a session's state; returns the unsubscribe. */
@@ -100,6 +105,15 @@ function supervisedOf(recordPath: string, record: OrchestratorRecord, previousSe
 }
 
 const START_POLL_MILLISECONDS = 50;
+
+/** Null when the answers name exactly the questions of the pending request, else why not. */
+function answerMismatchOf(pending: PendingQuestion, answers: Record<string, string>): string | null {
+  const askedQuestions = new Set(pending.questions.map((question) => question.question));
+  const notAsked = Object.keys(answers).filter((question) => !askedQuestions.has(question));
+  if (notAsked.length > 0) return `Not asked by this request: ${notAsked.join(', ')}`;
+  const unanswered = [...askedQuestions].filter((question) => !Object.hasOwn(answers, question));
+  return unanswered.length > 0 ? `Left unanswered: ${unanswered.join(', ')}` : null;
+}
 
 function sessionFromRecord(sessionId: string, sessionPid: number, startedAt: string, previousSessionId: string | null): OrchestratorSession {
   return {
@@ -293,13 +307,21 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     return send(trackerId, { kind: 'chat', text });
   }
 
-  async function answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<SupervisorDelivery> {
-    const delivery = await send(trackerId, { kind: 'answer', requestId, answers });
+  async function answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<AnswerDelivery> {
     const supervised = supervisedByTracker.get(trackerId);
-    // The supervisor's next state line says so too; until it arrives a second answer must already find nothing pending.
-    if (delivery.kind === 'delivered' && supervised !== undefined) {
-      const pendingQuestions = supervised.session.pendingQuestions.filter((pending) => pending.requestId !== requestId);
-      supervised.session = { ...supervised.session, pendingQuestions };
+    if (supervised === undefined || supervised.session.state === 'ended') return { kind: 'none' };
+    const sessionBeforeAnswer = supervised.session;
+    const pending = sessionBeforeAnswer.pendingQuestions.find((pendingQuestion) => pendingQuestion.requestId === requestId);
+    if (pending === undefined) return { kind: 'not-pending' };
+    const mismatch = answerMismatchOf(pending, answers);
+    if (mismatch !== null) return { kind: 'mismatched', reason: mismatch };
+    const claimedSession = { ...sessionBeforeAnswer, pendingQuestions: sessionBeforeAnswer.pendingQuestions.filter((pendingQuestion) => pendingQuestion !== pending) };
+    supervised.session = claimedSession;
+    notify();
+    const delivery = await send(trackerId, { kind: 'answer', requestId, answers });
+    // A state line that arrived meanwhile is the supervisor's own word on what is pending, so only an untouched claim is undone.
+    if (delivery.kind !== 'delivered' && supervised.session === claimedSession) {
+      supervised.session = sessionBeforeAnswer;
       notify();
     }
     return delivery;
