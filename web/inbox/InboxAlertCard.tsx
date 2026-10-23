@@ -27,7 +27,7 @@ export function InboxAlertCard({ alert, onLeave }: InboxAlertCardProperties) {
   return (
     <li className="ap-inbox-entry" data-kind="alert">
       <div className="ap-inbox-entry-head">
-        <SessionGlyph role="orchestrator"session={alert.session} />
+        <SessionGlyph role="orchestrator" session={alert.session} />
         <a className="ap-inbox-project" href={boardHashOf(alert.trackerId)} onClick={onLeave}>{alert.project}</a>
         <span className="muted">orchestrator</span>
         <span className="ap-inbox-hosted">hosted</span>

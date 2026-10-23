@@ -16,7 +16,7 @@ export function OrchestratorSummary({ project, watchedSessions }: OrchestratorSu
   const sessionName = OrchestratorSessionUtil.nameOf(leadingSession);
   return (
     <span className="ap-orchestrator-summary">
-      <SessionGlyph role="orchestrator"session={leadingSession} />
+      <SessionGlyph role="orchestrator" session={leadingSession} />
       <span className="ap-orchestrator-summary-name ellipsis" title={sessionName}>{sessionName}</span>
       <ContextMeter context={leadingSession.context} compact />
       {OrchestratorSessionUtil.isQuestionWaiting(project) ? <span className="ap-question-marker" data-state="in-review">question waiting</span> : null}
