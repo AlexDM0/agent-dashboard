@@ -1,19 +1,12 @@
 import { useId, useState } from 'react';
 
+import type { InboxAlert }           from '../inbox/InboxUtil.ts';
 import { HANDOFF_CONFIRMATION_TEXT } from '../orchestrator/OrchestratorMenuUtil.ts';
 import { handOffOrchestrator }       from '../orchestrator/OrchestratorSessionDelivery.ts';
-import { SessionGlyph }              from '../orchestrator/SessionGlyph.tsx';
 import { useSessionRequest }         from '../orchestrator/UseSessionRequest.ts';
-import { boardHashOf }               from '../shell/HashRoute.ts';
-import type { InboxAlert }           from './InboxUtil.ts';
 
-interface InboxAlertCardProperties {
-  alert:   InboxAlert;
-  onLeave: () => void;
-}
-
-/** A critical context as an entry: the drawer's handoff words and request, disabled with the server's reason while it would refuse. */
-export function InboxAlertCard({ alert, onLeave }: InboxAlertCardProperties) {
+/** A critical context docked above the composer: the drawer's handoff words and request, disabled with the server's reason while it would refuse. */
+export function DockedAlertCard({ alert }: { alert: InboxAlert }) {
   const handoffRequest = useSessionRequest();
   const [isConfirming, setIsConfirming] = useState(false);
   const refusalId = useId();
@@ -25,15 +18,12 @@ export function InboxAlertCard({ alert, onLeave }: InboxAlertCardProperties) {
   }
 
   return (
-    <li className="ap-inbox-entry" data-kind="alert">
-      <div className="ap-inbox-entry-head">
-        <SessionGlyph role="orchestrator" session={alert.session} />
-        <a className="ap-inbox-project" href={boardHashOf(alert.trackerId)} onClick={onLeave}>{alert.project}</a>
-        <span className="muted">orchestrator</span>
-        <span className="ap-inbox-hosted">hosted</span>
-      </div>
-      <p className="ap-inbox-alert-title">Context at {alert.contextPercent}%: refresh the orchestrator</p>
-      <p className="muted ap-inbox-alert-explanation">{HANDOFF_CONFIRMATION_TEXT}</p>
+    <section className="ap-chat-waiting-card" aria-label="Context alert">
+      <header className="ap-chat-waiting-head">
+        <span className="ap-pill" data-state="in-progress">Alert</span>
+      </header>
+      <p className="ap-chat-alert-title">Context at {alert.contextPercent}%: refresh the orchestrator</p>
+      <p className="muted ap-chat-alert-explanation">{HANDOFF_CONFIRMATION_TEXT}</p>
       <div className="ap-question-actions">
         {isConfirming
           ? (
@@ -53,9 +43,9 @@ export function InboxAlertCard({ alert, onLeave }: InboxAlertCardProperties) {
               {handoffRequest.isSending ? 'Refreshing…' : 'Refresh…'}
             </button>
           )}
-        {isRefused ? <span id={refusalId} className="muted ap-inbox-refusal">{alert.handoffRefusal}</span> : null}
+        {isRefused ? <span id={refusalId} className="muted ap-chat-alert-refusal">{alert.handoffRefusal}</span> : null}
         {handoffRequest.refusal === null ? null : <span className="ap-stepper-refusal" role="alert">{handoffRequest.refusal}</span>}
       </div>
-    </li>
+    </section>
   );
 }

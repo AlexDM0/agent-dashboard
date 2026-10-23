@@ -1,15 +1,14 @@
-import type { ActiveRow, ProjectSnapshot }                 from '../../src/shared/DashboardContract.ts';
+import type { ProjectSnapshot }                            from '../../src/shared/DashboardContract.ts';
 import { OrchestratorSessionUtil }                         from '../orchestrator/OrchestratorSessionUtil.ts';
 import { ProjectOrdering }                                 from '../overview/ProjectOrdering.ts';
 import { type ChatConversation, ChatConversationListUtil } from './ChatConversationListUtil.ts';
 
 export type ChatListFilter = 'all' | 'waiting';
 
-/** One project in the chat window's left column: its live sessions, its in-flight agents and whether a product owner can be started. */
+/** One project in the chat window's left column: its live crew sessions and whether a product owner can be started. */
 export interface ChatProjectGroup {
   project:            ProjectSnapshot;
   conversations:      ChatConversation[];
-  inFlightRows:       ActiveRow[];
   offersProductOwner: boolean;
 }
 
@@ -18,19 +17,13 @@ export interface ChatWindowGroups {
   endedConversations: ChatConversation[];
 }
 
-function inFlightRowsOf(project: ProjectSnapshot): ActiveRow[] {
-  return project.health.kind === 'ready' ? project.health.board.activeRows : [];
-}
-
 /** Projects in the rail's order, active then idle; an idle project with no live session is left out. */
 function groupsOf(projects: ProjectSnapshot[], conversations: ChatConversation[]): ChatWindowGroups {
   const railGroups = ProjectOrdering.grouped(projects, 'all', '');
   const projectGroups = [...railGroups.active, ...railGroups.idle].flatMap((project): ChatProjectGroup[] => {
     const liveConversations = conversations.filter((conversation) => conversation.trackerId === project.trackerId && ChatConversationListUtil.isLive(conversation));
     if (liveConversations.length === 0 && !ProjectOrdering.isActive(project)) return [];
-    return [{
-      project, conversations: liveConversations, inFlightRows: inFlightRowsOf(project), offersProductOwner: OrchestratorSessionUtil.canStart(project, 'product-owner')
-    }];
+    return [{ project, conversations: liveConversations, offersProductOwner: OrchestratorSessionUtil.canStart(project, 'product-owner') }];
   });
   const endedConversations = conversations.filter((conversation) => !ChatConversationListUtil.isLive(conversation));
   return { projectGroups, endedConversations };

@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState }              from 'react';
-import type { DashboardSnapshot }                   from '../../src/shared/DashboardContract.ts';
-import { boardHashOf, crewDrawerHashOf }            from '../shell/HashRoute.ts';
-import { ChatConversationListUtil }                 from './ChatConversationListUtil.ts';
-import { type ChatListFilter, ChatWindowGroupUtil } from './ChatWindowGroupUtil.ts';
-import { ConversationList }                         from './ConversationList.tsx';
-import { SelectedConversation }                     from './SelectedConversation.tsx';
-import type { ChatOverlay }                         from './UseChatOverlay.ts';
+import { useEffect, useRef, useState }                     from 'react';
+import type { DashboardSnapshot }                          from '../../src/shared/DashboardContract.ts';
+import { OrchestratorSessionUtil }                         from '../orchestrator/OrchestratorSessionUtil.ts';
+import { boardHashOf, crewDrawerHashOf }                   from '../shell/HashRoute.ts';
+import { type ChatConversation, ChatConversationListUtil } from './ChatConversationListUtil.ts';
+import { type ChatListFilter, ChatWindowGroupUtil }        from './ChatWindowGroupUtil.ts';
+import { ConversationList }                                from './ConversationList.tsx';
+import { SelectedConversation }                            from './SelectedConversation.tsx';
+import type { ChatOverlay }                                from './UseChatOverlay.ts';
+import { WaitingForYouUtil }                               from './WaitingForYouUtil.ts';
 
 interface ChatOverlayDialogProperties {
   snapshot: DashboardSnapshot | null;
@@ -24,19 +26,26 @@ export function ChatOverlayDialog({ snapshot, overlay, now }: ChatOverlayDialogP
     if (!isOpen) return;
     const dialog = dialogReference.current;
     (dialog?.querySelector<HTMLElement>('.ap-chat-composer .ap-chat-input:not(:disabled)') ?? dialog?.querySelector<HTMLElement>('.ap-chat-close'))?.focus();
-  }, [isOpen, overlay.selectedKey, overlay.composerSeed]);
+  }, [isOpen, overlay.selectedKey, overlay.docked]);
 
   if (!isOpen) return null;
   const projects = snapshot?.projects ?? [];
   const conversations = ChatConversationListUtil.conversationsOf(projects, snapshot?.watchedOrchestratorsByTracker ?? {});
   const groups = ChatWindowGroupUtil.filteredOf(ChatWindowGroupUtil.groupsOf(projects, conversations), searchText, filter);
+  const waitingItems = WaitingForYouUtil.waitingItemsOf(projects);
   // An ended conversation is shown only when picked from the fold, never by default.
   const selected = conversations.find((conversation) => conversation.key === overlay.selectedKey)
     ?? conversations.find((conversation) => ChatConversationListUtil.isLive(conversation))
     ?? null;
   const selectedProject = selected === null ? undefined : projects.find((project) => project.trackerId === selected.trackerId);
   const board = selectedProject?.health.kind === 'ready' ? selectedProject.health.board : null;
-  const seed = overlay.composerSeed !== null && overlay.composerSeed.key === selected?.key ? overlay.composerSeed : null;
+  const docked = selected?.key === overlay.selectedKey ? overlay.docked : null;
+  const dockedAlertItem = docked?.kind === 'alert' ? waitingItems.find((item) => item.kind === 'alert' && item.conversationKey === selected?.key) : undefined;
+  const isCrewOfSelected = (conversation: ChatConversation): boolean => conversation.trackerId === selected?.trackerId && ChatConversationListUtil.isLive(conversation);
+  const crew = {
+    conversations:        conversations.filter(isCrewOfSelected),
+    canStartProductOwner: selectedProject !== undefined && OrchestratorSessionUtil.canStart(selectedProject, 'product-owner'),
+  };
 
   const leaveFor = (hash: string): void => {
     overlay.close();
@@ -49,6 +58,9 @@ export function ChatOverlayDialog({ snapshot, overlay, now }: ChatOverlayDialogP
       <section ref={dialogReference} className="ap-chat-overlay" role="dialog" aria-modal="true" aria-label="Chat">
         <ConversationList
           groups={groups}
+          waitingItems={waitingItems}
+          waitingCountByKey={WaitingForYouUtil.waitingCountByConversationKeyOf(waitingItems)}
+          selectedItemKey={WaitingForYouUtil.selectedItemKeyOf(waitingItems, selected?.key ?? null, docked)}
           searchText={searchText}
           filter={filter}
           selectedKey={selected?.key ?? null}
@@ -56,7 +68,6 @@ export function ChatOverlayDialog({ snapshot, overlay, now }: ChatOverlayDialogP
           onSearchChange={setSearchText}
           onFilterChange={setFilter}
           onSelect={overlay.select}
-          onMention={(orchestratorKey, ticketId) => overlay.selectWithComposerText(orchestratorKey, `#${ticketId} `)}
         />
         {selected === null
           ? (
@@ -74,8 +85,10 @@ export function ChatOverlayDialog({ snapshot, overlay, now }: ChatOverlayDialogP
               conversation={selected}
               board={board}
               now={now}
-              composerSeedText={seed?.text ?? ''}
-              composerSeedSerial={seed?.serial ?? 0}
+              dockedAlert={dockedAlertItem?.kind === 'alert' ? dockedAlertItem.alert : null}
+              focusedRequestId={docked?.kind === 'question' ? docked.requestId : null}
+              crew={crew}
+              onSelect={overlay.select}
               onCollapse={() => leaveFor(crewDrawerHashOf(selected.trackerId, selected.role))}
               onOpenBoard={() => leaveFor(boardHashOf(selected.trackerId))}
               onClose={overlay.close}

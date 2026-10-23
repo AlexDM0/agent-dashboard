@@ -1,5 +1,7 @@
 import { useCallback, useId, useState }        from 'react';
 import type { DashboardSnapshot, SessionRole } from '../../src/shared/DashboardContract.ts';
+import { ChatConversationListUtil }            from '../chat/ChatConversationListUtil.ts';
+import type { DockedWaiting }                  from '../chat/WaitingForYouUtil.ts';
 import type { InboxEntry }                     from '../inbox/InboxUtil.ts';
 import { CrewDrawer, type CrewDrawerFocus }    from '../orchestrator/CrewDrawer.tsx';
 import { OrchestratorSessionUtil }             from '../orchestrator/OrchestratorSessionUtil.ts';
@@ -14,6 +16,7 @@ interface FleetViewProperties {
   snapshot:     DashboardSnapshot | null;
   inboxEntries: InboxEntry[];
   now:          number;
+  onOpenChat:   (conversationKey: string, docked: DockedWaiting) => void;
 }
 
 interface OpenDrawer {
@@ -31,7 +34,9 @@ const FILTERS: { filter: FleetFilter; label: string }[] = [
 const COLUMN_HEADINGS = ['Project', 'Crew', 'Agents', 'Queue', 'Run'];
 
 /** Every project's crew and capacity in one table, with what waits for the user beside it. */
-export function FleetView({ snapshot, inboxEntries, now }: FleetViewProperties) {
+export function FleetView({
+  snapshot, inboxEntries, now, onOpenChat
+}: FleetViewProperties) {
   const [filter, setFilter] = useState<FleetFilter>('all');
   const [openDrawer, setOpenDrawer] = useState<OpenDrawer | null>(null);
   const drawerId = useId();
@@ -79,7 +84,9 @@ export function FleetView({ snapshot, inboxEntries, now }: FleetViewProperties) 
       <NeedsYouColumn
         cards={FleetUtil.attentionCardsOf(inboxEntries, snapshot.projects)}
         now={now}
-        onOpenHandoff={(trackerId) => setOpenDrawer({ trackerId, focus: 'close', tab: 'orchestrator' })}
+        onOpen={(card) => (card.kind === 'question'
+          ? onOpenChat(ChatConversationListUtil.dashboardKeyOf(card.role, card.trackerId), { kind: 'question', requestId: card.requestId })
+          : onOpenChat(ChatConversationListUtil.dashboardKeyOf('orchestrator', card.trackerId), { kind: 'alert' }))}
       />
       {openDrawer === null || drawerProject === undefined
         ? null

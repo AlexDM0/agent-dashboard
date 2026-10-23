@@ -1,7 +1,7 @@
 /**
  * The chat window's left column (A1): live sessions grouped under their project in the rail's order (active, then
- * idle, each alphabetical), an idle project with no live session left out, each project's in-flight agents beside its
- * sessions, "+ Product owner" offered where none lives, the ended sessions apart; and the search and the filter.
+ * idle, each alphabetical), an idle project with no live session left out, only crew sessions listed (no in-flight
+ * agent), "+ Product owner" offered where none lives, the ended sessions apart; and the search and the filter.
  */
 import { expect, test } from 'bun:test';
 
@@ -27,9 +27,9 @@ test('live sessions sit under their project in the rail\'s order, and an idle pr
   expect(outlineOf(groups)['example-mobile-app']).toEqual(['watched:tracker-example-mobile-app:watched-example']);
 });
 
-test('each project carries its in-flight agents and offers a product owner only where none lives', () => {
+test('each project carries its crew sessions only, never its in-flight agents, and offers a product owner only where none lives', () => {
   const groupByName = Object.fromEntries(groupsOfChatSnapshot().projectGroups.map((group) => [group.project.project, group]));
-  expect(groupByName['example-notes']?.inFlightRows.map((row) => `${row.kind} ${row.ticketId ?? ''}`)).toEqual(['build 043', 'review 040']);
+  expect(Object.keys(groupByName['example-notes'] ?? {}).toSorted()).toEqual(['conversations', 'offersProductOwner', 'project']);
   expect(groupByName['example-notes']?.offersProductOwner).toBe(true);
   expect(groupByName['example-storefront']?.offersProductOwner).toBe(false);
   expect(groupByName['example-mobile-app']?.offersProductOwner).toBe(true);

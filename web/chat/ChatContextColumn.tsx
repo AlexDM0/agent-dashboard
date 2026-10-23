@@ -1,20 +1,32 @@
-import type { ReactNode }                 from 'react';
-import type { BoardSummary, ChatMessage } from '../../src/shared/DashboardContract.ts';
-import { ContextMeter }                   from '../orchestrator/ContextMeter.tsx';
-import { DispatcherPill }                 from '../shell/DispatcherPill.tsx';
-import { TimeUtil }                       from '../time/TimeUtil.ts';
-import { ChatContextUtil }                from './ChatContextUtil.ts';
-import type { ChatConversation }          from './ChatConversationListUtil.ts';
-import { InFlightAgentLine }              from './InFlightAgentLine.tsx';
-import { OnTheTable }                     from './OnTheTable.tsx';
-import { SparTableUtil }                  from './SparTableUtil.ts';
-import { TicketStatusPill }               from './TicketStatusPill.tsx';
+import type { ReactNode }                                  from 'react';
+import type { BoardSummary, ChatMessage, PendingQuestion } from '../../src/shared/DashboardContract.ts';
+import { ContextMeter }                                    from '../orchestrator/ContextMeter.tsx';
+import { DispatcherPill }                                  from '../shell/DispatcherPill.tsx';
+import { TimeUtil }                                        from '../time/TimeUtil.ts';
+import { ChatContextUtil }                                 from './ChatContextUtil.ts';
+import type { ChatConversation }                           from './ChatConversationListUtil.ts';
+import { CrewBlock }                                       from './CrewBlock.tsx';
+import { OnTheTable }                                      from './OnTheTable.tsx';
+import { SparTableUtil }                                   from './SparTableUtil.ts';
+import { TicketStatusPill }                                from './TicketStatusPill.tsx';
+import { WhyItAsks }                                       from './WhyItAsks.tsx';
+
+/** The project's crew as the Context column lists it, and whether a product owner can be started there. */
+export interface ChatCrew {
+  conversations:        ChatConversation[];
+  canStartProductOwner: boolean;
+}
 
 interface ChatContextColumnProperties {
-  conversation: ChatConversation;
-  board:        BoardSummary | null;
-  messages:     ChatMessage[];
-  now:          number;
+  conversation:    ChatConversation;
+  board:           BoardSummary | null;
+  messages:        ChatMessage[];
+  /** The question docked above the composer, whose context opens the column. */
+  pendingQuestion: PendingQuestion | null;
+  crew:            ChatCrew;
+  now:             number;
+  onSelect:        (key: string) => void;
+  onLeave:         () => void;
 }
 
 function Fact({ term, children }: { term: string; children: ReactNode }) {
@@ -26,9 +38,9 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
   );
 }
 
-/** What the conversation stands on: the session, its board, the tickets it names, the project's other agents and a product owner's table. */
+/** What the conversation stands on: why it asks, the session, its board, the tickets it names, the project's crew and a product owner's table. */
 export function ChatContextColumn({
-  conversation, board, messages, now
+  conversation, board, messages, pendingQuestion, crew, now, onSelect, onLeave
 }: ChatContextColumnProperties) {
   const { session, projectName, role } = conversation;
   const mentionedTickets = ChatContextUtil.mentionedTicketsOf(messages, session.pendingQuestions, board);
@@ -36,6 +48,7 @@ export function ChatContextColumn({
   return (
     <aside className="ap-chat-column ap-chat-context-column" aria-label="Context">
       <h2 className="ap-chat-column-title">Context</h2>
+      {pendingQuestion === null ? null : <WhyItAsks trackerId={conversation.trackerId} pendingQuestion={pendingQuestion} onLeave={onLeave} />}
       <section className="ap-chat-context-section" aria-label="Session">
         <h3 className="ap-chat-context-title">Session</h3>
         <dl className="ap-chat-facts">
@@ -73,12 +86,14 @@ export function ChatContextColumn({
             </ul>
           )}
       </section>
-      <section className="ap-chat-context-section" aria-label={`Also in ${projectName}`}>
-        <h3 className="ap-chat-context-title">Also in {projectName}</h3>
-        {board === null || board.activeRows.length === 0
-          ? <p className="muted ap-caption">No agent in flight</p>
-          : <ul className="ap-chat-agent-lines">{board.activeRows.map((row) => <li key={row.rowId}><InFlightAgentLine row={row} /></li>)}</ul>}
-      </section>
+      <CrewBlock
+        trackerId={conversation.trackerId}
+        projectName={projectName}
+        crew={crew.conversations}
+        selectedKey={conversation.key}
+        canStartProductOwner={crew.canStartProductOwner}
+        onSelect={onSelect}
+      />
       {sparTable === null ? null : <OnTheTable table={sparTable} board={board} />}
     </aside>
   );

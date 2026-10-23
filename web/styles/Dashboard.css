@@ -114,43 +114,9 @@ ul { padding: 0; list-style: none; }
 /* ---------------------------------------------------------- notifications -- */
 .ap-notification-toggle[data-muted="true"] { color: var(--ink-muted); }
 
-/* ------------------------------------------------------------------ inbox -- */
-/* The panel is anchored to the header, not its button, so it stays inside the window when the header wraps. */
+/* ----------------------------------------------------------------- header -- */
+/* A header popover is anchored to the header, not its button, so it stays inside the window when the header wraps. */
 .ap-header { position: relative; }
-.ap-inbox { position: static; }
-.ap-inbox-toggle { gap: 6px; }
-.ap-inbox-count {
-  min-width: 18px; padding: 0 5px; font: 600 var(--fs-micro)/18px var(--font-mono); text-align: center;
-  color: var(--ink-muted); background: var(--surface-2); border-radius: var(--r-pill);
-}
-.ap-inbox-toggle[data-pending="true"] .ap-inbox-count { color: var(--surface); background: var(--link); }
-.ap-inbox-panel {
-  position: absolute; top: auto; right: 0; z-index: 20; margin-top: 6px;
-  display: flex; flex-direction: column; gap: var(--sp-3);
-  width: min(440px, 100%); max-height: 70vh; max-height: 70dvh; padding: var(--sp-3); overflow-y: auto;
-  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-3);
-  box-shadow: 0 4px 16px var(--shadow-card-lift);
-}
-.ap-inbox-title { font: 600 var(--fs-body)/1.3 var(--font-ui); }
-.ap-inbox-empty { font-size: var(--fs-small); }
-.ap-inbox-list { display: flex; flex-direction: column; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
-.ap-inbox-entry { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.ap-inbox-entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.ap-inbox-project { font-weight: 600; overflow-wrap: anywhere; }
-.ap-inbox-age { font-size: var(--fs-micro); }
-.ap-inbox-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.ap-inbox-hosted {
-  padding: 0 6px; font: 500 var(--fs-micro)/16px var(--font-mono); color: var(--ink-muted);
-  border: 1px solid var(--line-strong); border-radius: var(--r-pill);
-}
-.ap-inbox-context { display: grid; gap: 2px; margin: 0; font-size: var(--fs-small); }
-.ap-inbox-context-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
-.ap-inbox-context-row dt, .ap-inbox-context-row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.ap-inbox-mentions { display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.ap-inbox-said { white-space: pre-wrap; }
-.ap-inbox-open-conversation { align-self: flex-start; font-size: var(--fs-small); }
-.ap-inbox-alert-title { margin: 0; font-weight: 600; color: var(--err-ink); overflow-wrap: anywhere; }
-.ap-inbox-alert-explanation, .ap-inbox-refusal { margin: 0; font-size: var(--fs-small); overflow-wrap: anywhere; }
 
 @keyframes ap-pulse { 50% { opacity: 0.45; transform: scale(0.8); } }
 @media (prefers-reduced-motion: no-preference) {
@@ -602,14 +568,16 @@ ul { padding: 0; list-style: none; }
 .ap-chat-project { display: flex; flex-direction: column; gap: 4px; }
 .ap-chat-project-heading { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; font: 600 var(--fs-small)/1.3 var(--font-ui); }
 .ap-chat-project-agents { margin-left: auto; font-size: var(--fs-micro); font-weight: 400; }
-.ap-chat-agent-lines { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.ap-chat-agent-line {
-  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding: 2px 8px; text-align: left;
-  font: var(--fs-micro)/1.4 var(--font-ui); color: var(--ink-muted); background: transparent; border: 0; border-radius: var(--r-1);
-}
-.ap-chat-agent-line.is-mentionable { cursor: pointer; }
-.ap-chat-agent-line.is-mentionable:hover { background: var(--surface-2); }
-.ap-chat-agent-line:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+.ap-chat-waiting-section { display: flex; flex-direction: column; gap: 4px; }
+.ap-chat-waiting-entry .ap-chat-list-status { display: flex; flex-wrap: wrap; gap: 0 6px; }
+.ap-chat-waiting-entry[data-kind="alert"] .ap-chat-list-name { color: var(--err-ink); }
+.ap-chat-alert-title { margin: 0; font-weight: 600; color: var(--err-ink); overflow-wrap: anywhere; }
+.ap-chat-alert-explanation, .ap-chat-alert-refusal { margin: 0; font-size: var(--fs-small); overflow-wrap: anywhere; }
+.ap-chat-context-rows { display: grid; gap: 2px; margin: 0; font-size: var(--fs-small); }
+.ap-chat-context-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+.ap-chat-context-row dt, .ap-chat-context-row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.ap-chat-context-mentions { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.ap-chat-context-said { white-space: pre-wrap; }
 .ap-chat-start-product-owner { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .ap-chat-add { font-size: var(--fs-small); }
 .ap-chat-start-choices { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -774,8 +742,7 @@ ul { padding: 0; list-style: none; }
   .ap-header-identity { grid-row: 1; grid-column: 2 / -1; flex-direction: row; align-items: center; gap: 4px 12px; margin-right: 0; }
   .ap-theme { display: none; }
   .ap-header-tools { grid-row: 2; grid-column: 1 / -1; gap: 8px; }
-  .ap-inbox-toggle, .ap-notification-toggle, .ap-menu-toggle { min-height: 44px; }
-  .ap-inbox-panel { left: 0; width: auto; }
+  .ap-chat-toggle, .ap-notification-toggle, .ap-menu-toggle { min-height: 44px; }
   .ap-menu-toggle { min-width: 44px; justify-content: center; }
   .ap-menu-item { min-height: 44px; }
   .ap-theme-icon { display: inline-flex; }

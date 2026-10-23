@@ -3,6 +3,7 @@ import { BoardView }                from './board/BoardView.tsx';
 import { ChatConversationListUtil } from './chat/ChatConversationListUtil.ts';
 import { ChatOverlayDialog }        from './chat/ChatOverlayDialog.tsx';
 import { useChatOverlay }           from './chat/UseChatOverlay.ts';
+import { WaitingForYouUtil }        from './chat/WaitingForYouUtil.ts';
 import { FleetView }                from './fleet/FleetView.tsx';
 import { InboxUtil }                from './inbox/InboxUtil.ts';
 import { useAppBadge }              from './notifications/UseAppBadge.ts';
@@ -36,9 +37,9 @@ export function App() {
   const boardProjectName = route.kind === 'board' ? projects.find((project) => project.trackerId === route.trackerId)?.project : undefined;
 
   const inboxEntries = InboxUtil.entriesOf(projects);
-  const inboxAlerts = InboxUtil.alertsOf(projects);
+  const waitingItems = WaitingForYouUtil.waitingItemsOf(projects);
   const pendingQuestionCount = inboxEntries.length;
-  const inboxWaitingCount = pendingQuestionCount + inboxAlerts.length;
+  const inboxWaitingCount = waitingItems.length;
   const notifications = useDesktopNotifications(stream);
   const chatOverlay = useChatOverlay();
   const conversations = ChatConversationListUtil.conversationsOf(projects, stream.snapshot?.watchedOrchestratorsByTracker ?? {});
@@ -58,8 +59,7 @@ export function App() {
             route={route}
             totals={headerTotalsOf(projects)}
             orchestratorCount={HeaderTotalsLineUtil.orchestratorCountOf(projects, stream.snapshot?.watchedOrchestratorsByTracker ?? {})}
-            inboxEntries={inboxEntries}
-            inboxAlerts={inboxAlerts}
+            waitingItems={waitingItems}
             notifications={notifications}
             theme={theme}
             chatOverlay={chatOverlay}
@@ -78,7 +78,7 @@ export function App() {
               />
             )
             : null}
-          {route.kind === 'fleet' ? <FleetView snapshot={stream.snapshot} inboxEntries={inboxEntries} now={now} /> : null}
+          {route.kind === 'fleet' ? <FleetView snapshot={stream.snapshot} inboxEntries={inboxEntries} now={now} onOpenChat={chatOverlay.open} /> : null}
           {route.kind === 'overview'
             ? (
               <OverviewView

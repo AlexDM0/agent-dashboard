@@ -1,5 +1,6 @@
 import { useEffect, useState }                             from 'react';
 import type { BoardSummary, ChatMessage }                  from '../../src/shared/DashboardContract.ts';
+import type { InboxAlert }                                 from '../inbox/InboxUtil.ts';
 import { ContextMeter }                                    from '../orchestrator/ContextMeter.tsx';
 import { ConversationLog }                                 from '../orchestrator/ConversationLog.tsx';
 import { OrchestratorMenu }                                from '../orchestrator/OrchestratorMenu.tsx';
@@ -9,22 +10,26 @@ import { useOrchestratorConversation }                     from '../orchestrator
 import { useSessionRequest }                               from '../orchestrator/UseSessionRequest.ts';
 import { type QuestionDraft, QuestionAnswerUtil }          from '../questions/QuestionAnswerUtil.ts';
 import { ChatComposer }                                    from './ChatComposer.tsx';
-import { ChatContextColumn }                               from './ChatContextColumn.tsx';
+import { type ChatCrew, ChatContextColumn }                from './ChatContextColumn.tsx';
 import { type ChatConversation, ChatConversationListUtil } from './ChatConversationListUtil.ts';
 import { ConversationHeadingUtil }                         from './ConversationHeadingUtil.ts';
+import { DockedAlertCard }                                 from './DockedAlertCard.tsx';
 import { DockedQuestionCard }                              from './DockedQuestionCard.tsx';
 import { SparTableUtil }                                   from './SparTableUtil.ts';
 
 interface SelectedConversationProperties {
-  conversation:       ChatConversation;
-  board:              BoardSummary | null;
-  now:                number;
-  /** Text put into the composer from outside, and a serial that changes with each new seed. */
-  composerSeedText:   string;
-  composerSeedSerial: number;
-  onCollapse:         () => void;
-  onOpenBoard:        () => void;
-  onClose:            () => void;
+  conversation:     ChatConversation;
+  board:            BoardSummary | null;
+  now:              number;
+  /** The critical context picked from Waiting for you, docked instead of a question. */
+  dockedAlert:      InboxAlert | null;
+  /** The question picked from Waiting for you, docked ahead of the session's earlier ones. */
+  focusedRequestId: string | null;
+  crew:             ChatCrew;
+  onSelect:         (key: string) => void;
+  onCollapse:       () => void;
+  onOpenBoard:      () => void;
+  onClose:          () => void;
 }
 
 interface ConversationColumnsProperties extends SelectedConversationProperties {
@@ -46,7 +51,7 @@ function SessionMenu({ conversation }: { conversation: ChatConversation }) {
 }
 
 function ConversationColumns({
-  conversation, board, now, messages, composerSeedText, composerSeedSerial, onCollapse, onOpenBoard, onClose
+  conversation, board, now, messages, dockedAlert, focusedRequestId, crew, onSelect, onCollapse, onOpenBoard, onClose
 }: ConversationColumnsProperties) {
   const { session, role } = conversation;
   const [draftsByRequest, setDraftsByRequest] = useState<Record<string, QuestionDraft[]>>({});
@@ -55,11 +60,15 @@ function ConversationColumns({
   const firstMessageTitle = conversation.isSendOnly ? null : ConversationHeadingUtil.titleOf(messages, true);
   const isSparring = role === 'product-owner' && ConversationHeadingUtil.isSparring(messages);
   const hasEnded = session.state === 'ended';
-  const waitingQuestions = conversation.isSendOnly || hasEnded ? [] : session.pendingQuestions.filter((pendingQuestion) => !answeredRequestIds.includes(pendingQuestion.requestId));
+  const isAsking = !conversation.isSendOnly && !hasEnded;
+  const unansweredQuestions = isAsking ? session.pendingQuestions.filter((pendingQuestion) => !answeredRequestIds.includes(pendingQuestion.requestId)) : [];
+  const waitingQuestions = unansweredQuestions.toSorted((a, b) => Number(b.requestId === focusedRequestId) - Number(a.requestId === focusedRequestId));
   const [pendingQuestion] = waitingQuestions;
   const drafts = pendingQuestion === undefined
     ? []
     : Object.hasOwn(draftsByRequest, pendingQuestion.requestId) ? draftsByRequest[pendingQuestion.requestId] ?? [] : QuestionAnswerUtil.emptyDraftsOf(pendingQuestion);
+  // With the alert docked the question's card is not shown, so the composer sends a message rather than its Other.
+  const composerQuestion = pendingQuestion === undefined || dockedAlert !== null ? null : { pendingQuestion, drafts };
   const markAnswered = (requestId: string): void => setAnsweredRequestIds((previous) => [...previous, requestId]);
   const pendingRequestIds = session.pendingQuestions.map((candidate) => candidate.requestId).join('\n');
 
@@ -101,7 +110,8 @@ function ConversationColumns({
             ? <p className="muted ap-caption">This desktop app session&apos;s conversation shows in its own app; a message sent here reaches it as a peer&apos;s message.</p>
             : <ConversationLog role={role} messages={SparTableUtil.messagesWithoutTablesOf(messages)} />}
         </div>
-        {pendingQuestion === undefined
+        {dockedAlert !== null ? <DockedAlertCard alert={dockedAlert} /> : null}
+        {pendingQuestion === undefined || dockedAlert !== null
           ? null
           : (
             <DockedQuestionCard
@@ -120,16 +130,24 @@ function ConversationColumns({
           : (
             <footer className="ap-chat-composer">
               <ChatComposer
-                key={`${conversation.key}:${String(composerSeedSerial)}`}
+                key={conversation.key}
                 conversation={conversation}
-                question={pendingQuestion === undefined ? null : { pendingQuestion, drafts }}
-                initialText={composerSeedText}
+                question={composerQuestion}
                 onAnswered={markAnswered}
               />
             </footer>
           )}
       </section>
-      <ChatContextColumn conversation={conversation} board={board} messages={messages} now={now} />
+      <ChatContextColumn
+        conversation={conversation}
+        board={board}
+        messages={messages}
+        pendingQuestion={pendingQuestion ?? null}
+        crew={crew}
+        now={now}
+        onSelect={onSelect}
+        onLeave={onClose}
+      />
     </>
   );
 }

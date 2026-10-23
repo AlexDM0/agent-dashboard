@@ -32,15 +32,17 @@ function drawerMarkupOf(project: typeof PROJECT_WITH_ENDED, watchedSessions: typ
 function listMarkupOf(project: typeof PROJECT_WITH_ENDED, watchedSessions: typeof LIVE_WATCHED[]): string {
   const conversations = ChatConversationListUtil.conversationsOf([project], { [project.trackerId]: watchedSessions });
   return renderToStaticMarkup(createElement(ConversationList, {
-    groups:         ChatWindowGroupUtil.groupsOf([project], conversations),
-    searchText:     '',
-    filter:         'all',
-    selectedKey:    null,
-    now:            Date.parse('2026-10-21T12:00:00Z'),
-    onSearchChange: () => undefined,
-    onFilterChange: () => undefined,
-    onSelect:       () => undefined,
-    onMention:      () => undefined,
+    groups:            ChatWindowGroupUtil.groupsOf([project], conversations),
+    waitingItems:      [],
+    waitingCountByKey: new Map<string, number>(),
+    selectedItemKey:   null,
+    searchText:        '',
+    filter:            'all',
+    selectedKey:       null,
+    now:               Date.parse('2026-10-21T12:00:00Z'),
+    onSearchChange:    () => undefined,
+    onFilterChange:    () => undefined,
+    onSelect:          () => undefined,
   }));
 }
 

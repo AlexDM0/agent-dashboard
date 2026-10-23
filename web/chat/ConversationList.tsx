@@ -8,34 +8,39 @@ import { ProjectDot }                                              from '../shel
 import { TimeUtil }                                                from '../time/TimeUtil.ts';
 import { type ChatConversation, ChatConversationListUtil }         from './ChatConversationListUtil.ts';
 import type { ChatListFilter, ChatProjectGroup, ChatWindowGroups } from './ChatWindowGroupUtil.ts';
-import { InFlightAgentLine }                                       from './InFlightAgentLine.tsx';
 import { ProductOwnerStartMenu }                                   from './ProductOwnerStartMenu.tsx';
+import { WaitingForYouSection }                                    from './WaitingForYouSection.tsx';
+import type { DockedWaiting, WaitingItem }                         from './WaitingForYouUtil.ts';
 
 interface ConversationListProperties {
-  groups:         ChatWindowGroups;
-  searchText:     string;
-  filter:         ChatListFilter;
-  selectedKey:    string | null;
-  now:            number;
-  onSearchChange: (searchText: string) => void;
-  onFilterChange: (filter: ChatListFilter) => void;
-  onSelect:       (key: string) => void;
-  onMention:      (orchestratorKey: string, ticketId: string) => void;
+  groups:            ChatWindowGroups;
+  waitingItems:      WaitingItem[];
+  /** A session's questions and alert together, by its conversation key. */
+  waitingCountByKey: Map<string, number>;
+  selectedItemKey:   string | null;
+  searchText:        string;
+  filter:            ChatListFilter;
+  selectedKey:       string | null;
+  now:               number;
+  onSearchChange:    (searchText: string) => void;
+  onFilterChange:    (filter: ChatListFilter) => void;
+  onSelect:          (key: string, docked?: DockedWaiting) => void;
 }
 
 interface ConversationEntryProperties {
   conversation: ChatConversation;
+  waitingCount: number;
   isSelected:   boolean;
   now:          number;
   onSelect:     (key: string) => void;
 }
 
 function ConversationEntry({
-  conversation, isSelected, now, onSelect
+  conversation, waitingCount, isSelected, now, onSelect
 }: ConversationEntryProperties) {
   const { session, role } = conversation;
   const hasEnded = session.state === 'ended';
-  const questionCount = ChatConversationListUtil.isLive(conversation) ? session.pendingQuestions.length : 0;
+  const questionCount = ChatConversationListUtil.isLive(conversation) ? waitingCount : 0;
   const age = session.lastAction === null || conversation.isSendOnly ? '' : TimeUtil.relativeAgeOfStamp(session.lastAction.at, now);
   return (
     <li>
@@ -59,26 +64,25 @@ function ConversationEntry({
         </span>
         {questionCount === 0
           ? null
-          : <span className="ap-chat-question-badge" aria-label={`${String(questionCount)} ${questionCount === 1 ? 'question' : 'questions'} waiting`}>{questionCount}</span>}
+          : <span className="ap-chat-question-badge" aria-label={`${String(questionCount)} waiting for you`}>{questionCount}</span>}
       </button>
     </li>
   );
 }
 
 interface ProjectSectionProperties {
-  group:       ChatProjectGroup;
-  selectedKey: string | null;
-  now:         number;
-  onSelect:    (key: string) => void;
-  onMention:   (orchestratorKey: string, ticketId: string) => void;
+  group:             ChatProjectGroup;
+  waitingCountByKey: Map<string, number>;
+  selectedKey:       string | null;
+  now:               number;
+  onSelect:          (key: string) => void;
 }
 
 function ProjectSection({
-  group, selectedKey, now, onSelect, onMention
+  group, waitingCountByKey, selectedKey, now, onSelect
 }: ProjectSectionProperties) {
   const { project } = group;
   const board = project.health.kind === 'ready' ? project.health.board : null;
-  const orchestratorKey = ChatConversationListUtil.crewSessionKeyOf(group.conversations, project.trackerId, 'orchestrator');
   return (
     <section className="ap-chat-project" aria-label={project.project}>
       <h3 className="ap-chat-project-heading">
@@ -91,18 +95,14 @@ function ProjectSection({
         : (
           <ul className="ap-chat-list">
             {group.conversations.map((conversation) => (
-              <ConversationEntry key={conversation.key} conversation={conversation} isSelected={conversation.key === selectedKey} now={now} onSelect={onSelect} />
-            ))}
-          </ul>
-        )}
-      {group.inFlightRows.length === 0
-        ? null
-        : (
-          <ul className="ap-chat-agent-lines" aria-label={`Agents in flight in ${project.project}`}>
-            {group.inFlightRows.map((row) => (
-              <li key={row.rowId}>
-                <InFlightAgentLine row={row} {...(orchestratorKey === null ? {} : { onMention: (ticketId: string) => onMention(orchestratorKey, ticketId) })} />
-              </li>
+              <ConversationEntry
+                key={conversation.key}
+                conversation={conversation}
+                waitingCount={waitingCountByKey.get(conversation.key) ?? 0}
+                isSelected={conversation.key === selectedKey}
+                now={now}
+                onSelect={onSelect}
+              />
             ))}
           </ul>
         )}
@@ -119,9 +119,9 @@ function ProjectSection({
   );
 }
 
-/** Every live session under its project, the project's in-flight agents beneath them, the ended ones folded away. */
+/** What waits for the user first, then every live session under its project, the ended ones folded away. */
 export function ConversationList({
-  groups, searchText, filter, selectedKey, now, onSearchChange, onFilterChange, onSelect, onMention
+  groups, waitingItems, waitingCountByKey, selectedItemKey, searchText, filter, selectedKey, now, onSearchChange, onFilterChange, onSelect
 }: ConversationListProperties) {
   const searchId = useId();
   return (
@@ -140,14 +140,15 @@ export function ConversationList({
           <button type="button" aria-pressed={filter === 'waiting'} onClick={() => onFilterChange('waiting')}>Waiting for you</button>
         </div>
       </div>
+      <WaitingForYouSection items={waitingItems} selectedItemKey={selectedItemKey} now={now} onSelect={onSelect} />
       {groups.projectGroups.length === 0 ? <p className="muted ap-caption">No live session matches</p> : null}
       {groups.projectGroups.map((group) => (
-        <ProjectSection key={group.project.trackerId} group={group} selectedKey={selectedKey} now={now} onSelect={onSelect} onMention={onMention} />
+        <ProjectSection key={group.project.trackerId} group={group} waitingCountByKey={waitingCountByKey} selectedKey={selectedKey} now={now} onSelect={onSelect} />
       ))}
       <EndedFold endedCount={groups.endedConversations.length}>
         <ul className="ap-chat-list">
           {groups.endedConversations.map((conversation) => (
-            <ConversationEntry key={conversation.key} conversation={conversation} isSelected={conversation.key === selectedKey} now={now} onSelect={onSelect} />
+            <ConversationEntry key={conversation.key} conversation={conversation} waitingCount={0} isSelected={conversation.key === selectedKey} now={now} onSelect={onSelect} />
           ))}
         </ul>
       </EndedFold>

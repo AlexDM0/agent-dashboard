@@ -14,7 +14,6 @@ export interface ComposerQuestion {
 interface ChatComposerProperties {
   conversation: ChatConversation;
   question:     ComposerQuestion | null;
-  initialText:  string;
   onAnswered:   (requestId: string) => void;
 }
 
@@ -22,10 +21,8 @@ interface ChatComposerProperties {
  * Enter sends, Shift+Enter is a newline; the text stays put on a refusal. While a question waits the text goes out as
  * its "Other" answer, never as a message.
  */
-export function ChatComposer({
-  conversation, question, initialText, onAnswered
-}: ChatComposerProperties) {
-  const [text, setText] = useState(initialText);
+export function ChatComposer({ conversation, question, onAnswered }: ChatComposerProperties) {
+  const [text, setText] = useState('');
   const { isSending, refusal, send } = useSessionRequest();
   const inputId = useId();
   const refusalId = useId();

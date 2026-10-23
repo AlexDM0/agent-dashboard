@@ -538,35 +538,16 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   maximum (`availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
   the projects' concurrency limits are not summed here), every live orchestrator session, dashboard-owned or watched,
   and the ready, awaiting-review and held counts, all as `web/shell/HeaderTotals.ts` sums them. The notification
-  control, the Inbox control and the theme toggle come last.
+  control, the Chat button (which carries the inbox's count, see the chat window) and the theme toggle come last.
 - **Dashboard menu** (before the title on every view, its panel opening along the header's left edge): a hamburger toggle named "Dashboard menu" opening a panel with
   one item, "Restart server", its explanation as a `title` tooltip. Choosing it asks "Restart the dashboard server?" with Restart and Cancel in the panel;
   Cancel returns to the item without a request, Restart sends `POST /api/restart` and closes the menu, after which the
-  reconnecting banner shows until the successor answers. A refusal is shown in the panel. The menu closes as the
-  Inbox does: Escape (focus back on the toggle), an outside pointerdown, the window's blur.
-- **Inbox** (in the header on every view): a button with the count of questions every live dashboard-owned
-  orchestrator and product owner owes, across all projects (watched desktop sessions' questions stay in the desktop app). It opens a
-  panel listing them oldest first, each with its project (a link to its board), how long it has waited and the same
-  question card the board's crew drawer shows (`web/questions/PendingQuestionForm.tsx`), answered in place
-  through the answers route; a card leaves when a snapshot no longer holds the request, wherever it was answered.
-  Esc closes the panel before it can leave a board. The panel also closes on a press anywhere outside it and its
-  button, and when the dashboard window loses focus (a click into the board frame or another app), so it is never
-  left open over a board whose own Esc leaves the board. Each entry opens with who asks: the session's glyph, the
-  project, the role (`orchestrator` or `product owner`, `InboxEntry.role`; both roles' questions in one list, oldest
-  first, each answered through its own role's route), a `hosted` pill and "waiting <age>". Under it a context block, from the question's
-  `PendingQuestion.context` (`InboxUtil.contextRowsOf`): "Doing" (the dispatcher run id, its first 8 characters),
-  "Mentions" (each ticket id a link to the project's board, which opens no ticket) and "Said" (the last assistant line
-  in quotation marks); a row with nothing to show is left out, and a context with nothing shows no block. Every
-  agent-written text renders as plain text, never markup. Under the question card, "Open conversation" goes to
-  `#/projects/<trackerId>/crew`: the board opens its crew drawer (on the Product owner tab while the product owner
-  alone asks, else the orchestrator's) and drops `/crew` from the hash.
-  Beside the questions the panel lists an alert for every live dashboard-owned orchestrator at or past
-  `CONTEXT_CRITICAL_SHARE` of a known window (`InboxUtil.alertsOf`, computed from the snapshot, never stored, never
-  dismissed): "Context at n%: refresh the orchestrator", the drawer's refresh explanation and a "Refresh…"
-  button sending the drawer's handoff request after a confirm. It is disabled, its reason beside it in the server's
-  words, while the server would refuse: a pending question, a session not idle, an unreadable board or a running
-  dispatcher. All / Questions / Alerts buttons filter the panel. While a question or an alert waits, the tab title
-  starts with `(<n>) `, n counting both, as the Inbox button's count does.
+  reconnecting banner shows until the successor answers. A refusal is shown in the panel. The menu closes on
+  Escape (focus back on the toggle), an outside pointerdown, the window's blur.
+- **Inbox**: there is no header panel; the inbox is the chat window's Waiting for you section (see the chat window),
+  and the Chat button carries its count. While a question or an alert waits, the tab title starts with `(<n>) `, n
+  counting both (`InboxUtil.documentTitleOf`), as the Chat button's badge does. Every agent-written text renders as
+  plain text, never markup.
 - **Notifications** (`web/notifications/`): a header control, "Notify me", asks for the browser's permission on the
   user's click and never on load; once granted it toggles between "Notifying" and "Muted" (`aria-pressed`), both
   choices kept through `web/preferences/PreferenceStore.ts`. A notification is raised only from a transition between
@@ -575,7 +556,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   context crossing `CONTEXT_CRITICAL_SHARE`. The first snapshot after the stream (re)opens is a baseline that raises
   nothing; no timer raises one, and none is raised while the tab has focus. Each is titled with its project, and
   clicking it focuses the tab on that project's board. Where `navigator.setAppBadge` exists (the dashboard installed
-  as a web app in Chrome or Edge) the icon carries the inbox count, cleared at zero.
+  as a web app in Chrome or Edge) the icon carries the count of pending questions (alerts not counted), cleared at zero.
 - **Filter bar**: a search field (project name or path) and a segmented toggle `All | Active`.
 - **Two groups**: "Active" (agents in flight, or the dispatcher `running`), a responsive grid of project cards
   (`repeat(auto-fill, minmax(560px, 1fr))`: two per row at 1440 px, three at 2000 px, one on a phone), and "Idle", one panel of one-line
@@ -639,9 +620,9 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   under 600 px they stack. Nothing scrolls sideways.
 - **Needs you** column (320 to 360 px beside the table; under it below 1100 px): the inbox's entries as compact
   cards in the inbox's order (project, "Orchestrator asks" or "Product owner asks", the question's first line, its age), each opening the
-  header's inbox; then a "Refresh the orchestrator" card per live dashboard-owned session at or past
-  `CONTEXT_CRITICAL_SHARE` (its context caption and the age of the measure), opening the project's crew drawer where
-  the orchestrator menu's Refresh orchestrator lives.
+  chat window on that question; then a "Refresh the orchestrator" card per live dashboard-owned session at or past
+  `CONTEXT_CRITICAL_SHARE` (its context caption and the age of the measure), opening the chat window on that
+  orchestrator with its alert card docked.
 
 ### Board (`#/projects/<trackerId>`)
 
@@ -694,10 +675,12 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   `/product-owner/messages` only, and a menu ("Product owner menu") holding End session alone (`DELETE
   /product-owner`), never a refresh or a context warning. Every request of a role goes to that role's routes
   (`OrchestratorSessionDelivery.ts`), so nothing meant for the product owner can reach the orchestrator.
-- The **chat window** (`web/chat/`): direct contact with every live agent, per project. The header's Chat button reads
-  "Chat", the live session count and a badge counting the sessions owing an answer
-  (`ChatConversationListUtil.liveCountOf`, `waitingCountOf`); it opens the window on the session waiting longest for an
-  answer, else the one opened last (`openingKeyOf`). `C` while focus is not in a text field opens it on the one opened
+- The **chat window** (`web/chat/`): direct contact with every live crew session, per project, and the inbox. The
+  header's Chat button reads "Chat", the live session count and a badge counting every question and every alert
+  waiting (`WaitingForYouUtil.waitingCountOf`, the count the tab title carries); its accessible name is "Chat, n
+  waiting for you, m agents live". It opens the window on the first Waiting for you entry, its card docked, else on
+  the session the conversation rule picks (`WaitingForYouUtil.openingOf`, then `ChatConversationListUtil.openingKeyOf`:
+  the one opened last, else the first live one). `C` while focus is not in a text field opens it on the one opened
   last. It is a large dialog over any route (`web/chat/UseChatOverlay.ts`); Esc, captured on the window before the
   drawer's and the board's own Esc, closes it from anywhere in it, the route unchanged and focus back on the Chat
   button. It holds no conversation of its own, only which one is shown: each session is read from the page's event
@@ -705,13 +688,24 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   the chat window", which closes the drawer and opens the window on that tab's session (`crewSessionKeyOf`: the role's
   dashboard session, else the project's first watched orchestrator). Three columns, stacking into one scrolling column
   below 768 px:
+  - **Waiting for you** (`WaitingForYouUtil.waitingItemsOf`, the inbox), at the top of the left column: every alert
+    and every question across the projects, in the inbox's order: the alerts in project order, then the questions the
+    longest waiting first. A question is every pending question of a live dashboard-owned orchestrator or product owner
+    (`InboxUtil.entriesOf`; watched desktop sessions' questions stay in the desktop app); an alert is every live
+    dashboard-owned orchestrator at or past `CONTEXT_CRITICAL_SHARE` of a known window (`InboxUtil.alertsOf`, computed
+    from the snapshot, never stored, never dismissed). Each row shows the asker's glyph, the question's first line or
+    "Context at n%: refresh the orchestrator", the project, "question" or "alert", and its age. Selecting a question
+    selects its session with that question docked above the composer; selecting an alert selects its orchestrator and
+    docks the alert card instead (`DockedAlertCard`): its text, the drawer's refresh explanation and a "Refresh…"
+    button sending the drawer's handoff request after a confirm, disabled with its reason in the server's words while
+    the server would refuse (a pending question, a session not idle, an unreadable board or a running dispatcher). An
+    entry leaves when a snapshot no longer holds it. The Fleet view's Needs you cards open the window on their entry.
   - **Sessions** (`ChatWindowGroupUtil.groupsOf`): active projects in the rail's order (active, then idle, each
     alphabetical), an idle project with no live session left out. Each project has a heading (its dot with the question
-    ring, its name, agents `n/m`), then its live sessions (orchestrator, product owner, a watched desktop orchestrator
-    as "desktop · send-only"), each with its glyph, role, a badge for its pending questions and its last action with
-    age. Under them sit the project's in-flight agents (`activeRows`) as status lines: state pill, ticket id, title.
-    They run inside the dispatcher workflow and take no message, so they are never selected; while the project has a
-    live orchestrator, clicking one selects it with `#<id> ` put into its composer. A project without a live product
+    ring, its name, agents `n/m`), then its live crew sessions only (orchestrator, product owner, a watched desktop
+    orchestrator as "desktop · send-only"), each with its glyph, role, a badge counting its questions and its alert
+    together and its last action with age. In-flight builders and reviewers are not listed here; the board, the Fleet
+    view and the overview show them. A project without a live product
     owner offers "+ Product owner", a two-item menu: "File tickets" (`POST /product-owner` with `{ "mode": "file" }`)
     and "Spar first" (`{ "mode": "spar" }`), then selects that product owner. At the top a search over project and role
     and the All / Waiting for you filters (`filteredOf`); the ended sessions of this server's run sit under the same
@@ -732,10 +726,15 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
     "Message the <role> of <project>"; while a question waits it reads "Answer the <role>'s question as "Other"", and
     its text goes out as that question's Other answer (`otherAnswerRequestOf`), never as a message. A desktop
     session's transcript is not tailed: it offers the composer alone.
-  - **Context** (`ChatContextColumn`): Session (started, context used of the window, last action); Board (dispatcher
+  - **Context** (`ChatContextColumn`): first, while the session has a pending question, Why it asks (`WhyItAsks`, the
+    docked question's `PendingQuestion.context` through `InboxUtil.contextRowsOf`): "Doing" (the dispatcher run id, its
+    first 8 characters), "Mentions" (each ticket id a link to the project's board) and "Said" (the last assistant line
+    in quotation marks), all plain text; a row with nothing to show is left out, and a context with nothing shows no
+    block. Then Session (started, context used of the window, last action); Board (dispatcher
     pill, agents, ready and held counts); Mentioned (`ChatContextUtil`: each `#<id>` the user's and the agent's text
     names, with every id in the pending questions' `context.mentionedTicketIds`, each with its status on the board);
-    Also in <project> (its in-flight agents); and, for a product owner whose replies hold a valid table, On the table:
+    Crew of <project> (`CrewBlock`: its live orchestrator and product owner sessions, each selectable, and "+ New
+    ticket", which starts a product owner in `file` mode and selects it, disabled while one lives); and, for a product owner whose replies hold a valid table, On the table:
     the newest valid table any assistant reply ends with as a ```` ```spar-table ```` JSON block in the shape
     `.agent-progress/evidence/043-table-protocol.md` recommends (`SparTableUtil`): points grouped Agreed / Open /
     Parked, the tickets it would file at wrap-up, and each referenced ticket with its status on the snapshot's board.

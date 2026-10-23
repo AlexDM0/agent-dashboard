@@ -1,7 +1,6 @@
 import { type ChatConversation, ChatConversationListUtil } from '../chat/ChatConversationListUtil.ts';
 import type { ChatOverlay }                                from '../chat/UseChatOverlay.ts';
-import { Inbox }                                           from '../inbox/Inbox.tsx';
-import type { InboxAlert, InboxEntry }                     from '../inbox/InboxUtil.ts';
+import { type WaitingItem, WaitingForYouUtil }             from '../chat/WaitingForYouUtil.ts';
 import { NotificationToggle }                              from '../notifications/NotificationToggle.tsx';
 import type { DesktopNotifications }                       from '../notifications/UseDesktopNotifications.ts';
 import type { ThemePreference }                            from '../preferences/UseThemePreference.ts';
@@ -19,8 +18,7 @@ interface HeaderProperties {
   route:             HashRoute;
   totals:            HeaderTotals;
   orchestratorCount: number;
-  inboxEntries:      InboxEntry[];
-  inboxAlerts:       InboxAlert[];
+  waitingItems:      WaitingItem[];
   notifications:     DesktopNotifications;
   theme:             ThemePreference;
   chatOverlay:       ChatOverlay;
@@ -29,12 +27,15 @@ interface HeaderProperties {
 }
 
 export function Header({
-  stream, route, totals, orchestratorCount, inboxEntries, inboxAlerts, notifications, theme, chatOverlay, conversations, now
+  stream, route, totals, orchestratorCount, waitingItems, notifications, theme, chatOverlay, conversations, now
 }: HeaderProperties) {
   const liveCount = ChatConversationListUtil.liveCountOf(conversations);
-  const waitingCount = ChatConversationListUtil.waitingCountOf(conversations);
-  const waitingPhrase = waitingCount === 0 ? '' : `, ${String(waitingCount)} waiting for an answer`;
-  const chatButtonLabel = `Chat: ${String(liveCount)} live ${liveCount === 1 ? 'session' : 'sessions'}${waitingPhrase}`;
+  const waitingCount = waitingItems.length;
+  const chatButtonLabel = `Chat, ${String(waitingCount)} waiting for you, ${String(liveCount)} ${liveCount === 1 ? 'agent' : 'agents'} live`;
+  const openChat = (): void => {
+    const opening = WaitingForYouUtil.openingOf(waitingItems, conversations, chatOverlay.selectedKey);
+    chatOverlay.open(opening.key, opening.docked);
+  };
   return (
     <header className="ap-header">
       <DashboardMenu />
@@ -55,13 +56,12 @@ export function Header({
           aria-keyshortcuts="C"
           title="Chat (C)"
           aria-label={chatButtonLabel}
-          onClick={() => chatOverlay.open(ChatConversationListUtil.openingKeyOf(conversations, chatOverlay.selectedKey))}
+          onClick={openChat}
         >
           Chat
           <span className="mono muted ap-chat-toggle-count" aria-hidden="true">{liveCount}</span>
           {waitingCount === 0 ? null : <span className="ap-chat-question-badge" aria-hidden="true">{waitingCount}</span>}
         </button>
-        <Inbox entries={inboxEntries} alerts={inboxAlerts} now={now} />
         <ThemeToggle choice={theme.choice} resolvedTheme={theme.resolvedTheme} onChoose={theme.chooseTheme} />
       </div>
     </header>
