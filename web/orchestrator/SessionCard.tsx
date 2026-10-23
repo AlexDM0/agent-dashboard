@@ -95,7 +95,7 @@ export function SessionCard({
       {isDashboardOwned
         ? <DashboardSessionDetails role={role} trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
         : null}
-      {isReadOnly && !isDashboardOwned ? <p className="muted ap-caption">This desktop app session&apos;s conversation showed in its own app.</p> : null}
+      {isReadOnly && !isDashboardOwned ? <p className="muted ap-caption">This desktop app session&apos;s conversation is in its own app.</p> : null}
       {isReadOnly
         ? null
         : <ChatBox role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={session.state === 'ended'} />}
