@@ -7,6 +7,8 @@ import type {
   ProjectSnapshot
 } from '../../src/shared/DashboardContract.ts';
 
+const FIXTURE_BOARD_ORIGIN = 'http://127.0.0.1:4851';
+
 export function orchestratorSessionWith(overrides: Partial<OrchestratorSession> = {}): OrchestratorSession {
   return {
     ownership:         'dashboard',
@@ -68,7 +70,7 @@ export function projectSnapshotWith(project: string, overrides: Partial<ProjectS
     lastChangedAt: '2026-10-21T10:00:00+02:00',
     lastCommand:   'ticket start',
     pageAvailable: true,
-    pageUrl:       `/projects/tracker-${project}/page/progress.html`,
+    pageUrl:       `${FIXTURE_BOARD_ORIGIN}/projects/tracker-${project}/page/progress.html`,
     readAt:        '2026-10-21T10:00:01+02:00',
     health,
     orchestrator:  null,
@@ -108,8 +110,8 @@ export function fleetSnapshotWith(overrides: Partial<DashboardSnapshot> = {}): D
     projects,
     generatedAt:               '2026-10-21T10:00:00+02:00',
     machineParallelAgentLimit: 8,
-    boardOrigin:               'http://127.0.0.1:4851',
-    boardBridgeUrl:            'http://127.0.0.1:4851/bridge',
+    boardOrigin:               FIXTURE_BOARD_ORIGIN,
+    boardBridgeUrl:            `${FIXTURE_BOARD_ORIGIN}/bridge`,
     watchedOrchestratorsByTracker,
     ...overrides,
   };
