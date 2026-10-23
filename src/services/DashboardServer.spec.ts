@@ -32,8 +32,8 @@ import {
   symlinkSync,
   writeFileSync
 } from 'node:fs';
-import { createServer } from 'node:net';
-import { join }         from 'node:path';
+import { type Server, createServer } from 'node:net';
+import { join }                      from 'node:path';
 import {
   afterAll,
   afterEach,
@@ -471,19 +471,42 @@ test('restart needs POST, its header and no foreign origin, then answers 202, st
 });
 
 test('a port something else holds is reported as in use, not thrown', async () => {
-  const holder = createServer();
-  await new Promise<void>((resolve) => holder.listen(0, '127.0.0.1', resolve));
-  const address = holder.address();
-  const heldPort = typeof address === 'object' && address !== null ? address.port : 0;
+  const { holder, heldPort } = await holdPortWithFreePortBelow();
   try {
     expect(await startDashboardServer({ ...serverOptions, port: heldPort })).toEqual({ kind: 'port-in-use', port: heldPort, role: 'dashboard' });
-    // The port below the held one is free here, so the dashboard binds it and meets the held one as its board port.
+    // The port below the held one was probed free, so the dashboard binds it and meets the held one as its board port.
     expect(await startDashboardServer({ ...serverOptions, port: heldPort - 1 })).toEqual({ kind: 'port-in-use', port: heldPort, role: 'board' });
     expect(await portAccepts(heldPort - 1)).toBe(false);
   } finally {
     holder.close();
   }
 });
+
+async function holdPortWithFreePortBelow(): Promise<{ holder: Server; heldPort: number }> {
+  const maximumAttempts = 20;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    const holder = await listenOn(0);
+    if (holder !== undefined) {
+      const address = holder.address();
+      const heldPort = typeof address === 'object' && address !== null ? address.port : 0;
+      const probe = await listenOn(heldPort - 1);
+      if (probe !== undefined) {
+        await new Promise<void>((resolve) => probe.close(() => { resolve(); }));
+        return { holder, heldPort };
+      }
+      holder.close();
+    }
+  }
+  throw new Error(`no free port pair found in ${String(maximumAttempts)} attempts`);
+}
+
+function listenOn(port: number): Promise<Server | undefined> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', () => { resolve(undefined); });
+    server.listen(port, '127.0.0.1', () => { resolve(server); });
+  });
+}
 
 function portAccepts(port: number): Promise<boolean> {
   return new Promise((resolve) => {
