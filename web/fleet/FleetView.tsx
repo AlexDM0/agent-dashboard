@@ -1,14 +1,14 @@
-import { useCallback, useId, useState }     from 'react';
-import type { DashboardSnapshot }           from '../../src/shared/DashboardContract.ts';
-import type { InboxEntry }                  from '../inbox/InboxUtil.ts';
-import { CrewDrawer, type CrewDrawerFocus } from '../orchestrator/CrewDrawer.tsx';
-import { OrchestratorSessionUtil }          from '../orchestrator/OrchestratorSessionUtil.ts';
-import { EmptyRegistryPanel }               from '../overview/EmptyRegistryPanel.tsx';
-import { RegistryUnreadablePanel }          from '../overview/RegistryUnreadablePanel.tsx';
-import { ConnectingPanel }                  from '../shell/ConnectingPanel.tsx';
-import { FleetRow }                         from './FleetRow.tsx';
-import { type FleetFilter, FleetUtil }      from './FleetUtil.ts';
-import { NeedsYouColumn }                   from './NeedsYouColumn.tsx';
+import { useCallback, useId, useState }        from 'react';
+import type { DashboardSnapshot, SessionRole } from '../../src/shared/DashboardContract.ts';
+import type { InboxEntry }                     from '../inbox/InboxUtil.ts';
+import { CrewDrawer, type CrewDrawerFocus }    from '../orchestrator/CrewDrawer.tsx';
+import { OrchestratorSessionUtil }             from '../orchestrator/OrchestratorSessionUtil.ts';
+import { EmptyRegistryPanel }                  from '../overview/EmptyRegistryPanel.tsx';
+import { RegistryUnreadablePanel }             from '../overview/RegistryUnreadablePanel.tsx';
+import { ConnectingPanel }                     from '../shell/ConnectingPanel.tsx';
+import { FleetRow }                            from './FleetRow.tsx';
+import { type FleetFilter, FleetUtil }         from './FleetUtil.ts';
+import { NeedsYouColumn }                      from './NeedsYouColumn.tsx';
 
 interface FleetViewProperties {
   snapshot:     DashboardSnapshot | null;
@@ -19,6 +19,7 @@ interface FleetViewProperties {
 interface OpenDrawer {
   trackerId: string;
   focus:     CrewDrawerFocus;
+  tab?:      SessionRole;
 }
 
 const FILTERS: { filter: FleetFilter; label: string }[] = [
@@ -68,7 +69,8 @@ export function FleetView({ snapshot, inboxEntries, now }: FleetViewProperties) 
               project={project}
               watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(snapshot.watchedOrchestratorsByTracker, project.trackerId)}
               now={now}
-              onOpenChat={() => setOpenDrawer({ trackerId: project.trackerId, focus: 'chat' })}
+              onOpenChat={() => setOpenDrawer({ trackerId: project.trackerId, focus: 'chat', tab: 'orchestrator' })}
+              onOpenProductOwner={() => setOpenDrawer({ trackerId: project.trackerId, focus: 'chat', tab: 'product-owner' })}
             />
           ))}
         </div>
@@ -77,7 +79,7 @@ export function FleetView({ snapshot, inboxEntries, now }: FleetViewProperties) 
       <NeedsYouColumn
         cards={FleetUtil.attentionCardsOf(inboxEntries, snapshot.projects)}
         now={now}
-        onOpenHandoff={(trackerId) => setOpenDrawer({ trackerId, focus: 'close' })}
+        onOpenHandoff={(trackerId) => setOpenDrawer({ trackerId, focus: 'close', tab: 'orchestrator' })}
       />
       {openDrawer === null || drawerProject === undefined
         ? null
@@ -88,6 +90,7 @@ export function FleetView({ snapshot, inboxEntries, now }: FleetViewProperties) 
             project={drawerProject}
             watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(snapshot.watchedOrchestratorsByTracker, drawerProject.trackerId)}
             initialFocus={openDrawer.focus}
+            {...(openDrawer.tab === undefined ? {} : { initialTab: openDrawer.tab })}
             onClose={closeDrawer}
           />
         )}

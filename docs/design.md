@@ -514,19 +514,21 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   reconnecting banner shows until the successor answers. A refusal is shown in the panel. The menu closes as the
   Inbox does: Escape (focus back on the toggle), an outside pointerdown, the window's blur.
 - **Inbox** (in the header on every view): a button with the count of questions every live dashboard-owned
-  orchestrator owes, across all projects (watched desktop sessions' questions stay in the desktop app). It opens a
+  orchestrator and product owner owes, across all projects (watched desktop sessions' questions stay in the desktop app). It opens a
   panel listing them oldest first, each with its project (a link to its board), how long it has waited and the same
   question card the board's crew drawer shows (`web/questions/PendingQuestionForm.tsx`), answered in place
   through the answers route; a card leaves when a snapshot no longer holds the request, wherever it was answered.
   Esc closes the panel before it can leave a board. The panel also closes on a press anywhere outside it and its
   button, and when the dashboard window loses focus (a click into the board frame or another app), so it is never
   left open over a board whose own Esc leaves the board. Each entry opens with who asks: the session's glyph, the
-  project, the role (`orchestrator`), a `hosted` pill and "waiting <age>". Under it a context block, from the question's
+  project, the role (`orchestrator` or `product owner`, `InboxEntry.role`; both roles' questions in one list, oldest
+  first, each answered through its own role's route), a `hosted` pill and "waiting <age>". Under it a context block, from the question's
   `PendingQuestion.context` (`InboxUtil.contextRowsOf`): "Doing" (the dispatcher run id, its first 8 characters),
   "Mentions" (each ticket id a link to the project's board, which opens no ticket) and "Said" (the last assistant line
   in quotation marks); a row with nothing to show is left out, and a context with nothing shows no block. Every
   agent-written text renders as plain text, never markup. Under the question card, "Open conversation" goes to
-  `#/projects/<trackerId>/crew`: the board opens its crew drawer on the orchestrator and drops `/crew` from the hash.
+  `#/projects/<trackerId>/crew`: the board opens its crew drawer (on the Product owner tab while the product owner
+  alone asks, else the orchestrator's) and drops `/crew` from the hash.
   Beside the questions the panel lists an alert for every live dashboard-owned orchestrator at or past
   `CONTEXT_CRITICAL_SHARE` of a known window (`InboxUtil.alertsOf`, computed from the snapshot, never stored, never
   dismissed): "Context at n%: refresh the orchestrator", the drawer's refresh explanation and a "Refresh…"
@@ -582,7 +584,9 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   dot, ringed while a question waits; the name linking to its board, ellipsis with the full name in `title`; the
   dispatcher pill, or the health kind for a board that cannot be read); **Crew** (the leading session's `OR` glyph,
   its state pill, the compact context meter with its share, or "n tokens" for an unknown window, then the
-  `lastAction`'s age and text on the same line; "No orchestrator" and "Start orchestrator" when no session lives);
+  `lastAction`'s age and text on the same line; "No orchestrator" and "Start orchestrator" when no session lives; under
+  it a second line for the product owner, its `PO` glyph, state pill, meter and last action, or "+ Ask PO for a
+  ticket" when none lives, which starts one with `{ "mode": "file" }` and opens its drawer tab over the Fleet view);
   **Agents** (`n/m` and the − / + stepper); **Queue** (`n ready`, then `n low · n review · n held` muted, the zero
   ones left out); **Run** (the board command bar's actions for the dispatcher state, from the same
   `BoardCommandUtil.commandsOf`, then a Chat icon opening that project's crew drawer over the Fleet view on its chat
@@ -590,7 +594,7 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   980 px or wider, below that its cells wrap onto a second line (project, agents and queue; then crew and run), and
   under 600 px they stack. Nothing scrolls sideways.
 - **Needs you** column (320 to 360 px beside the table; under it below 1100 px): the inbox's entries as compact
-  cards in the inbox's order (project, "Orchestrator asks", the question's first line, its age), each opening the
+  cards in the inbox's order (project, "Orchestrator asks" or "Product owner asks", the question's first line, its age), each opening the
   header's inbox; then a "Refresh the orchestrator" card per live dashboard-owned session at or past
   `CONTEXT_CRITICAL_SHARE` (its context caption and the age of the measure), opening the project's crew drawer where
   the orchestrator menu's Refresh orchestrator lives.
@@ -601,8 +605,10 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   34 px line on fixed grid columns, so they line up from row to row: status dot (ringed while a question waits), name
   (ellipsis, full in `title`), the `OR` glyph (`web/orchestrator/SessionGlyph.tsx`: the leading session's state in the
   `[data-state]` palette of `OrchestratorSessionUtil.statePaletteOf`, a dashed border for a watched desktop session,
-  an empty slot for none; hover names the session, its state and its `lastAction`), a reserved slot for the product
-  owner's glyph, agents `2/2` in mono, and a question-count badge, hidden at zero but keeping its width. The selected
+  an empty slot for none; hover names the session, its state and its `lastAction`), the product owner's `PO` glyph
+  (`project.productOwner`, purple, the `delivered` palette, while idle and the session-state palette otherwise; an
+  empty slot for none), agents `2/2` in mono, and a question-count badge counting the orchestrator's and the product
+  owner's pending questions together, hidden at zero but keeping its width. The selected
   row is `--surface-selected`; the rows sit under an "Active" and an "Idle" heading, split and ordered as the
   overview's groups, an empty group without its heading (the top strip drops the headings).
 - A **command bar** over the frame, one row from 1280 px (it wraps under 768 px): back to overview (`←` and Esc, also
@@ -617,13 +623,26 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
 - A **crew strip** under the command bar (`web/orchestrator/CrewStrip.tsx`): the leading orchestrator's glyph,
   "Orchestrator", its state pill and compact context meter, and on a second line its `lastAction` text and age ("No
   action yet" before one); then Chat (opens the drawer on the session's chat box) and, while no dashboard-owned
-  orchestrator lives, "Start orchestrator" (`startBuilding` false). A click anywhere on the strip opens the crew
-  drawer. Under 768 px it shrinks to its glyph and Chat.
+  orchestrator lives, "Start orchestrator" (`startBuilding` false). Beside it, after a divider, the Product owner
+  half: the `PO` glyph, "Product owner", its state pill and meter, its `lastAction` and age ("No product owner runs in
+  this project" for none), and "+ New ticket" (`web/orchestrator/StartProductOwnerButton.tsx`), which, unconfirmed
+  as Start orchestrator is, starts a product owner with `{ "mode": "file" }` when none lives and then opens the
+  drawer's Product owner tab, or only opens the tab when one lives. A click on either half opens the drawer on that
+  role's tab, anywhere else on the strip on the Orchestrator tab. Under 768 px it shrinks to its glyphs and Chat.
 - The **crew drawer** (`web/orchestrator/CrewDrawer.tsx`): a 480 px sheet over the board from the right (the full
   width under 768 px) above a scrim, closed by default and on every board change, never remembered. Its ×, the scrim
   and Esc close it, focus back on the strip; Esc closes the drawer first and a second Esc leaves the board, while Esc
-  in a text field stays in the field. A tab bar heads it, one tab per crew role ("Orchestrator" today), holding every
-  session described below.
+  in a text field stays in the field. A tab bar heads it, one tab per crew role, "Orchestrator" and "Product owner",
+  each with a badge counting its live session's pending questions. It opens on the tab it was asked for, else
+  (`#/projects/<trackerId>/crew`) on the Product owner tab while the product owner alone asks
+  (`OrchestratorSessionUtil.askingRoleOf`), else on the Orchestrator tab.
+- The drawer's **Product owner tab**: "+ New ticket" while no product owner lives, then the project's product owner
+  (the snapshot carries the newest one only, live or ended) as the same session card as the orchestrator's, named
+  "Product owner": its pending questions answered in place through `/product-owner/answers`, its conversation from
+  `/product-owner/events` (the assistant's turns headed "Product owner"), a chat box sending to
+  `/product-owner/messages` only, and a menu ("Product owner menu") holding End session alone (`DELETE
+  /product-owner`), never a refresh or a context warning. Every request of a role goes to that role's routes
+  (`OrchestratorSessionDelivery.ts`), so nothing meant for the product owner can reach the orchestrator.
 - The **frame**: `progress.html` from the board origin in an iframe sandboxed to `allow-scripts allow-same-origin`
   (see "The bridge") filling the rest of the viewport, no border, requested as `progress.html?embedded=dashboard`
   (added to the page URL's query beside any it has; "Open board in a new tab" keeps the plain page) so the board drops

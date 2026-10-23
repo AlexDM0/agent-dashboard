@@ -12,7 +12,7 @@ import { FIXTURE_CONVERSATION } from '../testing/ConversationFixtures.ts';
 import { ConversationLog }      from './ConversationLog.tsx';
 
 function markupOf(messages: ChatMessage[]): string {
-  return renderToStaticMarkup(createElement(ConversationLog, { messages }));
+  return renderToStaticMarkup(createElement(ConversationLog, { role: 'orchestrator', messages }));
 }
 
 function countOf(markup: string, pattern: RegExp): number {

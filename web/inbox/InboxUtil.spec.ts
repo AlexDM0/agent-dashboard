@@ -1,8 +1,9 @@
 /**
- * The inbox gathers every question a live dashboard-owned orchestrator owes, across projects, oldest first, so the
- * longest wait is on top; an ended session's leftovers stay out. A question's context becomes only the rows it has
- * something for. An alert stands for a live dashboard-owned orchestrator at or past the critical share (84% one, 79%
- * none), carrying the refusal the server would give, and counts in the title beside the questions.
+ * The inbox gathers every question a live dashboard-owned orchestrator or product owner owes, across projects, oldest
+ * first, so the longest wait is on top, each saying which role asks; an ended session's leftovers stay out. A
+ * question's context becomes only the rows it has something for. An alert stands for a live dashboard-owned
+ * orchestrator at or past the critical share (84% one, 79% none), carrying the refusal the server would give, and
+ * counts in the title beside the questions.
  */
 import { expect, test }                                             from 'bun:test';
 import type { OrchestratorState, PendingQuestion, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
@@ -14,6 +15,7 @@ import {
   MARKUP_INJECTION_LINE,
   orchestratorSessionWith,
   pendingQuestionWith,
+  productOwnerSnapshotWith,
   projectSnapshotWith
 } from '../testing/SnapshotFixtures.ts';
 import { InboxUtil } from './InboxUtil.ts';
@@ -100,6 +102,26 @@ test('the title counts questions and alerts together', () => {
   const waitingCount = InboxUtil.entriesOf(projects).length + InboxUtil.alertsOf(projects).length;
   expect(waitingCount).toBe(4);
   expect(InboxUtil.documentTitleOf(waitingCount, 'agent-dashboard')).toBe('(4) agent-dashboard');
+});
+
+test('a product owner\'s questions merge with the orchestrators\', oldest first, each with its role', () => {
+  const { projects } = productOwnerSnapshotWith();
+  const entries = InboxUtil.entriesOf(projects);
+  expect(entries.map((entry) => [entry.project, entry.role, entry.pendingQuestion.requestId])).toEqual([
+    ['example-storefront', 'product-owner', 'request-product-owner'],
+    ['example-invoice-service-with-a-long-name', 'orchestrator', 'request-one'],
+  ]);
+  expect(entries[0]?.session.sessionId).toBe('product-owner-asking');
+});
+
+test('a product owner\'s question counts in the title, and leaves it once answered or ended', () => {
+  const { projects } = productOwnerSnapshotWith();
+  const waitingCount = InboxUtil.entriesOf(projects).length + InboxUtil.alertsOf(projects).length;
+  expect(InboxUtil.documentTitleOf(waitingCount, 'agent-dashboard')).toBe('(3) agent-dashboard');
+  const answered = projects.map((project) => (project.productOwner === null ? project : { ...project, productOwner: { ...project.productOwner, pendingQuestions: [] } }));
+  expect(InboxUtil.entriesOf(answered).map((entry) => entry.role)).toEqual(['orchestrator']);
+  const ended = projects.map((project) => (project.productOwner === null ? project : { ...project, productOwner: { ...project.productOwner, state: 'ended' as const } }));
+  expect(InboxUtil.entriesOf(ended).map((entry) => entry.role)).toEqual(['orchestrator']);
 });
 
 test('the title carries the count while above zero and is bare at zero', () => {

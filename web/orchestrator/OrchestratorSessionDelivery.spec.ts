@@ -1,15 +1,16 @@
 /**
- * The four session requests against #017 and #018's routes: each asks for the launch token first and carries it in
- * its header, with the method, path and body the server expects; a refused token, a 403 or any other refusal comes
- * back with the server's text, and a network failure is a refusal too, never a throw.
+ * The session requests against #017, #018 and #042's routes: each asks for the launch token first and carries it in
+ * its header, with the method, path and body the server expects; a product owner's requests take its own routes only;
+ * a refused token, a 403 or any other refusal comes back with the server's text, and a network failure is a refusal too.
  */
 import { expect, test } from 'bun:test';
 import {
-  orchestratorEventsPathOf,
-  sendOrchestratorAnswer,
-  sendOrchestratorChat,
+  sendSessionAnswer,
+  sendSessionChat,
+  sessionEventsPathOf,
   startOrchestrator,
-  stopOrchestrator
+  startProductOwner,
+  stopSession
 } from './OrchestratorSessionDelivery.ts';
 
 interface SentRequest { path: string; init: RequestInit }
@@ -38,14 +39,19 @@ test('each request takes the launch token, then carries it to its route with its
       body:    '{"startBuilding":false}',
     },
     {
-      deliver: (sender: Sender) => sendOrchestratorChat('tracker-example', { text: 'Hello', sessionId: 'session-example' }, sender),
+      deliver: (sender: Sender) => sendSessionChat('orchestrator', 'tracker-example', { text: 'Hello', sessionId: 'session-example' }, sender),
       path:    '/api/projects/tracker-example/orchestrator/messages',
       body:    '{"text":"Hello","sessionId":"session-example"}',
     },
     {
-      deliver: (sender: Sender) => sendOrchestratorAnswer('tracker-example', { requestId: 'request-example', answers: { 'Which?': 'Red' } }, sender),
+      deliver: (sender: Sender) => sendSessionAnswer('orchestrator', 'tracker-example', { requestId: 'request-example', answers: { 'Which?': 'Red' } }, sender),
       path:    '/api/projects/tracker-example/orchestrator/answers',
       body:    '{"requestId":"request-example","answers":{"Which?":"Red"}}',
+    },
+    {
+      deliver: (sender: Sender) => startProductOwner('tracker-example', { mode: 'file' }, sender),
+      path:    '/api/projects/tracker-example/product-owner',
+      body:    '{"mode":"file"}',
     },
   ];
   for (const requestCase of cases) {
@@ -59,9 +65,22 @@ test('each request takes the launch token, then carries it to its route with its
   }
 });
 
+test('a product owner\'s chat, answer and stop reach only its own routes, never the orchestrator\'s', async () => {
+  const { sentRequests, sendRequest } = recordingSender(() => new Response(null, { status: 204 }));
+  await sendSessionChat('product-owner', 'tracker-example', { text: 'Hello', sessionId: 'session-example' }, sendRequest);
+  await sendSessionAnswer('product-owner', 'tracker-example', { requestId: 'request-example', answers: {} }, sendRequest);
+  await stopSession('product-owner', 'tracker-example', sendRequest);
+  expect(sentRequests.map((request) => request.path).filter((path) => path !== '/api/launch-token')).toEqual([
+    '/api/projects/tracker-example/product-owner/messages',
+    '/api/projects/tracker-example/product-owner/answers',
+    '/api/projects/tracker-example/product-owner',
+  ]);
+  expect(sessionEventsPathOf('product-owner', 'tracker-example')).toBe('/api/projects/tracker-example/product-owner/events');
+});
+
 test('a stop is a DELETE without a body, carrying the token', async () => {
   const { sentRequests, sendRequest } = recordingSender(() => new Response(null, { status: 204 }));
-  expect(await stopOrchestrator('tracker-example', sendRequest)).toEqual({ kind: 'sent' });
+  expect(await stopSession('orchestrator', 'tracker-example', sendRequest)).toEqual({ kind: 'sent' });
   expect(sentRequests[1]?.init.method).toBe('DELETE');
   expect(sentRequests[1]?.init.body).toBeUndefined();
   expect(headerOf(sentRequests[1]?.init, 'X-Agent-Dashboard-Launch-Token')).toBe('token-example');
@@ -77,7 +96,7 @@ test('a 403 or a 409 refusal carries the server text', async () => {
 
 test('a refused launch token stops the request before it is sent', async () => {
   const sentPaths: string[] = [];
-  const verdict = await stopOrchestrator('tracker-example', (path) => {
+  const verdict = await stopSession('orchestrator', 'tracker-example', (path) => {
     sentPaths.push(path);
     return Promise.resolve(new Response('Forbidden', { status: 403 }));
   });
@@ -87,11 +106,11 @@ test('a refused launch token stops the request before it is sent', async () => {
 
 test('a refusal without text names its status, and a network failure is a refusal', async () => {
   const { sendRequest } = recordingSender(() => new Response('', { status: 502 }));
-  expect(await sendOrchestratorChat('tracker-example', { text: 'Hello' }, sendRequest)).toEqual({ kind: 'refused', reason: 'Refused with status 502' });
-  const failedVerdict = await sendOrchestratorChat('tracker-example', { text: 'Hello' }, () => Promise.reject(new TypeError('Failed to fetch')));
+  expect(await sendSessionChat('orchestrator', 'tracker-example', { text: 'Hello' }, sendRequest)).toEqual({ kind: 'refused', reason: 'Refused with status 502' });
+  const failedVerdict = await sendSessionChat('orchestrator', 'tracker-example', { text: 'Hello' }, () => Promise.reject(new TypeError('Failed to fetch')));
   expect(failedVerdict).toEqual({ kind: 'refused', reason: 'Could not reach the dashboard server' });
 });
 
 test('the events path encodes the tracker id', () => {
-  expect(orchestratorEventsPathOf('example project/one')).toBe('/api/projects/example%20project%2Fone/orchestrator/events');
+  expect(sessionEventsPathOf('orchestrator', 'example project/one')).toBe('/api/projects/example%20project%2Fone/orchestrator/events');
 });

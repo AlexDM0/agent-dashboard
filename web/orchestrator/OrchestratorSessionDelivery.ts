@@ -2,12 +2,30 @@ import type {
   LaunchToken,
   OrchestratorAnswerRequest,
   OrchestratorChatRequest,
-  OrchestratorStartRequest
+  OrchestratorStartRequest,
+  ProductOwnerStartRequest,
+  SessionRole
 } from '../../src/shared/DashboardContract.ts';
 import { DASHBOARD_ENDPOINTS }             from '../constants/DashboardEndpoints.ts';
 import type { OrchestratorRequestVerdict } from '../shell/OrchestratorRequestDelivery.ts';
 
 type RequestSender = (path: string, init: RequestInit) => Promise<Response>;
+
+/** Each role's own routes, so a chat, an answer or a stop for one role can never reach the other's session. */
+const ROLE_PATH_SUFFIXES: Record<SessionRole, { session: string; messages: string; answers: string; events: string }> = {
+  'orchestrator': {
+    session:  DASHBOARD_ENDPOINTS.ORCHESTRATOR_PATH_SUFFIX,
+    messages: DASHBOARD_ENDPOINTS.ORCHESTRATOR_MESSAGES_PATH_SUFFIX,
+    answers:  DASHBOARD_ENDPOINTS.ORCHESTRATOR_ANSWERS_PATH_SUFFIX,
+    events:   DASHBOARD_ENDPOINTS.ORCHESTRATOR_EVENTS_PATH_SUFFIX,
+  },
+  'product-owner': {
+    session:  DASHBOARD_ENDPOINTS.PRODUCT_OWNER_PATH_SUFFIX,
+    messages: DASHBOARD_ENDPOINTS.PRODUCT_OWNER_MESSAGES_PATH_SUFFIX,
+    answers:  DASHBOARD_ENDPOINTS.PRODUCT_OWNER_ANSWERS_PATH_SUFFIX,
+    events:   DASHBOARD_ENDPOINTS.PRODUCT_OWNER_EVENTS_PATH_SUFFIX,
+  },
+};
 
 const UNREACHABLE_REASON = 'Could not reach the dashboard server';
 
@@ -49,16 +67,25 @@ export function startOrchestrator(trackerId: string, startRequest: OrchestratorS
   return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_PATH_SUFFIX), 'POST', startRequest);
 }
 
-export function stopOrchestrator(trackerId: string, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
-  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_PATH_SUFFIX), 'DELETE', undefined);
+export function startProductOwner(trackerId: string, startRequest: ProductOwnerStartRequest, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
+  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.PRODUCT_OWNER_PATH_SUFFIX), 'POST', startRequest);
 }
 
-export function sendOrchestratorChat(trackerId: string, chatRequest: OrchestratorChatRequest, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
-  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_MESSAGES_PATH_SUFFIX), 'POST', chatRequest);
+export function stopSession(role: SessionRole, trackerId: string, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
+  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, ROLE_PATH_SUFFIXES[role].session), 'DELETE', undefined);
 }
 
-export function sendOrchestratorAnswer(trackerId: string, answerRequest: OrchestratorAnswerRequest, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
-  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_ANSWERS_PATH_SUFFIX), 'POST', answerRequest);
+export function sendSessionChat(role: SessionRole, trackerId: string, chatRequest: OrchestratorChatRequest, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
+  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, ROLE_PATH_SUFFIXES[role].messages), 'POST', chatRequest);
+}
+
+export function sendSessionAnswer(
+  role: SessionRole,
+  trackerId: string,
+  answerRequest: OrchestratorAnswerRequest,
+  sendRequest = defaultSender
+): Promise<OrchestratorRequestVerdict> {
+  return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, ROLE_PATH_SUFFIXES[role].answers), 'POST', answerRequest);
 }
 
 /** Answers only once the fresh session runs or the handoff failed, so it may take as long as the session's note does. */
@@ -66,6 +93,6 @@ export function handOffOrchestrator(trackerId: string, sendRequest = defaultSend
   return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_HANDOFF_PATH_SUFFIX), 'POST', undefined);
 }
 
-export function orchestratorEventsPathOf(trackerId: string): string {
-  return projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_EVENTS_PATH_SUFFIX);
+export function sessionEventsPathOf(role: SessionRole, trackerId: string): string {
+  return projectPathOf(trackerId, ROLE_PATH_SUFFIXES[role].events);
 }

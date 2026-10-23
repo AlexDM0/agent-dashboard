@@ -422,6 +422,12 @@ ul { padding: 0; list-style: none; }
 .ap-crew-action { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 100%; padding-left: 32px; font-size: var(--fs-small); }
 .ap-crew-action-age { flex: none; font-size: var(--fs-micro); }
 .ap-crew-strip-actions { flex: none; display: flex; align-items: center; gap: 6px; }
+.ap-crew-strip-divider { flex: none; align-self: stretch; width: 1px; margin-block: 4px; background: var(--line); }
+.ap-crew-tab { display: inline-flex; align-items: center; gap: 6px; }
+.ap-crew-tab-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;
+  font: 600 var(--fs-micro)/1 var(--font-mono); color: var(--surface); background: var(--link); border-radius: var(--r-pill);
+}
 
 .ap-crew-scrim { position: fixed; inset: 0; z-index: 29; background: color-mix(in srgb, var(--ink) 14%, transparent); }
 .ap-crew-drawer {
@@ -542,6 +548,7 @@ ul { padding: 0; list-style: none; }
   .ap-toolbar-divider, .ap-back .ap-kbd { display: none; }
   .ap-crew-role, .ap-crew-member .ap-pill, .ap-crew-member .ap-context-meter, .ap-crew-action, .ap-crew-strip-actions .ap-orchestrator-request { display: none; }
   .ap-crew-strip { align-self: flex-start; }
+  .ap-crew-strip-divider { display: none; }
   .ap-crew-member { flex: none; }
   .ap-crew-drawer { width: 100vw; border-left: 0; }
 }
@@ -562,6 +569,8 @@ ul { padding: 0; list-style: none; }
 .ap-fleet-project .ap-pill, .ap-fleet-crew .ap-pill { flex: none; }
 /* The two flexible columns clip rather than widen the table; the Run cell may not, its popover opens out of it. */
 .ap-fleet-project, .ap-fleet-crew { overflow: hidden; }
+.ap-fleet-crew { flex-direction: column; align-items: stretch; gap: 4px; }
+.ap-fleet-crew-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ap-fleet-action { display: flex; flex: 1 1 0; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; }
 .ap-fleet-action-age { flex: none; font-size: var(--fs-micro); }
 .ap-fleet-unreadable { grid-column: span 3; }
@@ -606,6 +615,9 @@ ul { padding: 0; list-style: none; }
 @container fleet-table (max-width: 600px) {
   .ap-fleet-row { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "project project" "crew crew" "agents queue" "run run"; }
   .ap-fleet-cell { flex-wrap: wrap; white-space: normal; }
+  /* The crew cell stacks its lines; each line wraps within the cell's width instead. */
+  .ap-fleet-crew { flex-wrap: nowrap; }
+  .ap-fleet-crew-line { flex-wrap: wrap; }
   .ap-fleet-run { justify-content: flex-start; }
 }
 

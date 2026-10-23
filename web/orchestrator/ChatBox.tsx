@@ -1,17 +1,24 @@
 import { type KeyboardEvent, useId, useState } from 'react';
-import { sendOrchestratorChat }                from './OrchestratorSessionDelivery.ts';
+import type { SessionRole }                    from '../../src/shared/DashboardContract.ts';
+import { sendSessionChat }                     from './OrchestratorSessionDelivery.ts';
 import { useSessionRequest }                   from './UseSessionRequest.ts';
 
 interface ChatBoxProperties {
+  role:        SessionRole;
   trackerId:   string;
   sessionId:   string;
   sessionName: string;
   hasEnded:    boolean;
 }
 
+const PLACEHOLDERS: Record<SessionRole, string> = {
+  'orchestrator':  'Message the orchestrator (Enter sends)',
+  'product-owner': 'Message the product owner (Enter sends)',
+};
+
 /** Enter sends, Shift+Enter is a newline; the text stays put on a refusal so nothing typed is lost. */
 export function ChatBox({
-  trackerId, sessionId, sessionName, hasEnded
+  role, trackerId, sessionId, sessionName, hasEnded
 }: ChatBoxProperties) {
   const [text, setText] = useState('');
   const { isSending, refusal, send } = useSessionRequest();
@@ -20,7 +27,7 @@ export function ChatBox({
 
   async function sendText(): Promise<void> {
     if (isDisabled || text.trim() === '') return;
-    const wasSent = await send(() => sendOrchestratorChat(trackerId, { text, sessionId }));
+    const wasSent = await send(() => sendSessionChat(role, trackerId, { text, sessionId }));
     if (wasSent) setText('');
   }
 
@@ -36,7 +43,7 @@ export function ChatBox({
         className="ap-chat-input"
         rows={2}
         value={text}
-        placeholder={hasEnded ? 'This session has ended' : 'Message the orchestrator (Enter sends)'}
+        placeholder={hasEnded ? 'This session has ended' : PLACEHOLDERS[role]}
         aria-label={`Message ${sessionName}`}
         disabled={isDisabled}
         onChange={(event) => setText(event.target.value)}

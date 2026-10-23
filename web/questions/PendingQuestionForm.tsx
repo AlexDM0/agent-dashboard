@@ -1,13 +1,16 @@
-import { type FormEvent, useId, useState }        from 'react';
-import type { PendingQuestion, Question }         from '../../src/shared/DashboardContract.ts';
-import { sendOrchestratorAnswer }                 from '../orchestrator/OrchestratorSessionDelivery.ts';
-import { useSessionRequest }                      from '../orchestrator/UseSessionRequest.ts';
-import { type QuestionDraft, QuestionAnswerUtil } from './QuestionAnswerUtil.ts';
+import { type FormEvent, useId, useState }             from 'react';
+import type { PendingQuestion, Question, SessionRole } from '../../src/shared/DashboardContract.ts';
+import { sendSessionAnswer }                           from '../orchestrator/OrchestratorSessionDelivery.ts';
+import { useSessionRequest }                           from '../orchestrator/UseSessionRequest.ts';
+import { type QuestionDraft, QuestionAnswerUtil }      from './QuestionAnswerUtil.ts';
 
 interface PendingQuestionFormProperties {
+  role:            SessionRole;
   trackerId:       string;
   pendingQuestion: PendingQuestion;
 }
+
+const FORM_LABELS: Record<SessionRole, string> = { 'orchestrator': 'Question from the orchestrator', 'product-owner': 'Question from the product owner' };
 
 interface QuestionFieldProperties {
   question:      Question;
@@ -63,7 +66,7 @@ function QuestionField({
 }
 
 /** Answered once for every question together; the card leaves when a snapshot no longer holds the request. */
-export function PendingQuestionForm({ trackerId, pendingQuestion }: PendingQuestionFormProperties) {
+export function PendingQuestionForm({ role, trackerId, pendingQuestion }: PendingQuestionFormProperties) {
   const [drafts, setDrafts] = useState(() => QuestionAnswerUtil.emptyDraftsOf(pendingQuestion));
   const [wasAnswered, setWasAnswered] = useState(false);
   const { isSending, refusal, send } = useSessionRequest();
@@ -74,12 +77,12 @@ export function PendingQuestionForm({ trackerId, pendingQuestion }: PendingQuest
   async function submitAnswer(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (answerRequest === null || isDisabled) return;
-    const wasSent = await send(() => sendOrchestratorAnswer(trackerId, answerRequest));
+    const wasSent = await send(() => sendSessionAnswer(role, trackerId, answerRequest));
     if (wasSent) setWasAnswered(true);
   }
 
   return (
-    <form className="ap-question-card" aria-label="Question from the orchestrator" onSubmit={(event) => void submitAnswer(event)}>
+    <form className="ap-question-card" aria-label={FORM_LABELS[role]} onSubmit={(event) => void submitAnswer(event)}>
       {pendingQuestion.questions.map((question, index) => (
         <QuestionField
           key={question.question}

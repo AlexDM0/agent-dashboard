@@ -40,4 +40,18 @@ export const OrchestratorMenuUtil = Object.freeze({
       },
     ];
   },
+
+  /** A product owner hands nothing on, so its menu holds End session alone. */
+  productOwnerEntriesOf(): OrchestratorMenuEntry[] {
+    return [
+      {
+        id:            'stop',
+        label:         'End session',
+        description:   'Ends this product owner session; the tickets it filed stay on the board.',
+        question:      'End this product owner session?',
+        confirmLabel:  'End session',
+        isHighlighted: false,
+      },
+    ];
+  },
 });

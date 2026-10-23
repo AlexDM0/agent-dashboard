@@ -1,4 +1,4 @@
-import type { OrchestratorSession }               from '../../src/shared/DashboardContract.ts';
+import type { OrchestratorSession, SessionRole }  from '../../src/shared/DashboardContract.ts';
 import { PendingQuestionForm }                    from '../questions/PendingQuestionForm.tsx';
 import { TimeUtil }                               from '../time/TimeUtil.ts';
 import { ChatBox }                                from './ChatBox.tsx';
@@ -12,16 +12,20 @@ import { useOrchestratorConversation }            from './UseOrchestratorConvers
 import { type SessionRequest, useSessionRequest } from './UseSessionRequest.ts';
 
 interface SessionCardProperties {
+  role:      SessionRole;
   trackerId: string;
   session:   OrchestratorSession;
 }
 
 interface DashboardSessionDetailsProperties {
+  role:           SessionRole;
   trackerId:      string;
   session:        OrchestratorSession;
   refreshRequest: SessionRequest;
   stopRequest:    SessionRequest;
 }
+
+const STOPPING_TEXTS: Record<SessionRole, string> = { 'orchestrator': 'Stopping…', 'product-owner': 'Ending…' };
 
 function RequestNote({ request, sendingText }: { request: SessionRequest; sendingText: string }) {
   if (request.isSending) return <span className="muted ap-session-request-note" role="status">{sendingText}</span>;
@@ -29,20 +33,21 @@ function RequestNote({ request, sendingText }: { request: SessionRequest; sendin
 }
 
 function DashboardSessionDetails({
-  trackerId, session, refreshRequest, stopRequest
+  role, trackerId, session, refreshRequest, stopRequest
 }: DashboardSessionDetailsProperties) {
-  const messages = useOrchestratorConversation(trackerId);
+  const messages = useOrchestratorConversation(role, trackerId);
   const hasEnded = session.state === 'ended';
-  const isRefreshSuggested = ContextUsageUtil.suggestsHandoff(session.context);
+  // Only an orchestrator is refreshed; a product owner near its limit is ended and started afresh.
+  const isRefreshSuggested = role === 'orchestrator' && ContextUsageUtil.suggestsHandoff(session.context);
   const hasNotes = isRefreshSuggested || [refreshRequest, stopRequest].some((request) => request.isSending || request.refusal !== null);
   return (
     <>
       {hasEnded
         ? null
         : session.pendingQuestions.map((pendingQuestion) => (
-          <PendingQuestionForm key={pendingQuestion.requestId} trackerId={trackerId} pendingQuestion={pendingQuestion} />
+          <PendingQuestionForm key={pendingQuestion.requestId} role={role} trackerId={trackerId} pendingQuestion={pendingQuestion} />
         ))}
-      <ConversationLog messages={messages} />
+      <ConversationLog role={role} messages={messages} />
       {hasEnded || !hasNotes
         ? null
         : (
@@ -54,7 +59,7 @@ function DashboardSessionDetails({
                 </p>
               )
               : null}
-            <RequestNote request={stopRequest} sendingText="Stopping…" />
+            <RequestNote request={stopRequest} sendingText={STOPPING_TEXTS[role]} />
             <RequestNote request={refreshRequest} sendingText="Refreshing…" />
           </div>
         )}
@@ -63,8 +68,8 @@ function DashboardSessionDetails({
 }
 
 /** A watched session offers neither the menu nor answers: it was not started here, and its questions are answered in its own app. */
-export function SessionCard({ trackerId, session }: SessionCardProperties) {
-  const sessionName = OrchestratorSessionUtil.nameOf(session);
+export function SessionCard({ role, trackerId, session }: SessionCardProperties) {
+  const sessionName = OrchestratorSessionUtil.nameOf(session, role);
   const refreshRequest = useSessionRequest();
   const stopRequest = useSessionRequest();
   const isDashboardOwned = session.ownership === 'dashboard';
@@ -72,10 +77,10 @@ export function SessionCard({ trackerId, session }: SessionCardProperties) {
     <section className="ap-session" aria-label={sessionName}>
       <header className="ap-session-head">
         {isDashboardOwned && session.state !== 'ended'
-          ? <OrchestratorMenu trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
+          ? <OrchestratorMenu role={role} trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
           : null}
         <span className="ap-session-name ellipsis" title={sessionName}>{sessionName}</span>
-        <SessionStateBadge session={session} />
+        <SessionStateBadge role={role} session={session} />
       </header>
       <div className="ap-session-meta">
         <ContextMeter context={session.context} />
@@ -84,9 +89,9 @@ export function SessionCard({ trackerId, session }: SessionCardProperties) {
           : <span className="mono muted ap-session-started" title={session.startedAt}>started {TimeUtil.clockOfInstant(Date.parse(session.startedAt))}</span>}
       </div>
       {isDashboardOwned
-        ? <DashboardSessionDetails trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
+        ? <DashboardSessionDetails role={role} trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
         : null}
-      <ChatBox trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={session.state === 'ended'} />
+      <ChatBox role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={session.state === 'ended'} />
     </section>
   );
 }

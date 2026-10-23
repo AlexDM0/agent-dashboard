@@ -134,6 +134,28 @@ export function fleetSnapshotWith(overrides: Partial<DashboardSnapshot> = {}): D
   };
 }
 
+/**
+ * The fleet with a product owner on two projects: on the storefront a live one asking one question (older than the
+ * invoice orchestrator's), on the agency site an idle one; the others have none, so they offer to start one.
+ */
+export function productOwnerSnapshotWith(): DashboardSnapshot {
+  const fleet = fleetSnapshotWith();
+  const productOwnersByProject: Record<string, OrchestratorSession> = {
+    'example-storefront': orchestratorSessionWith({
+      sessionId:        'product-owner-asking',
+      pid:              4343,
+      state:            'waiting-for-answer',
+      lastAction:       { at: '2026-10-21T09:57:00+02:00', text: 'Drafted a ticket for the checkout copy' },
+      pendingQuestions: [pendingQuestionWith('request-product-owner', '2026-10-21T09:58:00+02:00')],
+    }),
+    'example-agency-site': orchestratorSessionWith({ sessionId: 'product-owner-idle', pid: 4344, lastAction: { at: '2026-10-21T09:40:00+02:00', text: 'Filed #061' } }),
+  };
+  const projects = fleet.projects.map((project) => (Object.hasOwn(productOwnersByProject, project.project)
+    ? { ...project, productOwner: productOwnersByProject[project.project] ?? null }
+    : project));
+  return { ...fleet, projects };
+}
+
 export const MARKUP_INJECTION_LINE = 'Checking the build <img src=x onerror=alert(1)> before asking';
 
 /**

@@ -59,6 +59,37 @@ test('a glyph names its session and state on hover, and the last action once the
   expect(OrchestratorSessionUtil.hoverTextOf(acting)).toBe('Dashboard orchestrator · busy · Started #042');
 });
 
+test('the product owner is named, marked and coloured as its own role: purple when idle, the state colour otherwise', () => {
+  expect(OrchestratorSessionUtil.nameOf(orchestratorSessionWith(), 'product-owner')).toBe('Product owner');
+  expect(OrchestratorSessionUtil.markOf('product-owner')).toBe('PO');
+  expect(OrchestratorSessionUtil.statePaletteOf('idle', 'product-owner')).toBe('delivered');
+  expect(OrchestratorSessionUtil.statePaletteOf('waiting-for-answer', 'product-owner')).toBe('in-review');
+  expect(OrchestratorSessionUtil.statePaletteOf('idle')).toBe('pending');
+});
+
+test('the rail badge counts the product owner\'s questions beside the orchestrator\'s', () => {
+  const productOwner = orchestratorSessionWith({ state: 'waiting-for-answer', pendingQuestions: [PENDING_QUESTION] });
+  const asking = projectSnapshotWith('example', { productOwner });
+  expect(OrchestratorSessionUtil.questionCountOf(asking)).toBe(1);
+  expect(OrchestratorSessionUtil.roleQuestionCountOf(asking, 'product-owner')).toBe(1);
+  expect(OrchestratorSessionUtil.roleQuestionCountOf(asking, 'orchestrator')).toBe(0);
+  expect(OrchestratorSessionUtil.questionCountOf(projectSnapshotWith('example', { productOwner, orchestrator: productOwner }))).toBe(2);
+  expect(OrchestratorSessionUtil.questionCountOf(projectSnapshotWith('example', { productOwner: { ...productOwner, state: 'ended' } }))).toBe(0);
+});
+
+test('the drawer leads with the product owner only while it alone asks', () => {
+  const asking = orchestratorSessionWith({ state: 'waiting-for-answer', pendingQuestions: [PENDING_QUESTION] });
+  expect(OrchestratorSessionUtil.askingRoleOf(projectSnapshotWith('example', { productOwner: asking }))).toBe('product-owner');
+  expect(OrchestratorSessionUtil.askingRoleOf(projectSnapshotWith('example', { productOwner: asking, orchestrator: asking }))).toBe('orchestrator');
+  expect(OrchestratorSessionUtil.askingRoleOf(projectSnapshotWith('example'))).toBe('orchestrator');
+});
+
+test('a product owner Start is offered while none lives, whatever the orchestrator does', () => {
+  expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example', { orchestrator: orchestratorSessionWith() }), 'product-owner')).toBe(true);
+  expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example', { productOwner: orchestratorSessionWith({ state: 'ended' }) }), 'product-owner')).toBe(true);
+  expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example', { productOwner: orchestratorSessionWith() }), 'product-owner')).toBe(false);
+});
+
 test('a Start is offered with no dashboard-owned session or an ended one', () => {
   expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example'))).toBe(true);
   expect(OrchestratorSessionUtil.canStart(projectSnapshotWith('example', { orchestrator: orchestratorSessionWith({ state: 'ended' }) }))).toBe(true);

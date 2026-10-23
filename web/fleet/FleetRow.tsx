@@ -1,37 +1,36 @@
-import type { BoardSummary, OrchestratorSession, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
-import { ContextMeter }                                            from '../orchestrator/ContextMeter.tsx';
-import { OrchestratorSessionUtil }                                 from '../orchestrator/OrchestratorSessionUtil.ts';
-import { SessionGlyph }                                            from '../orchestrator/SessionGlyph.tsx';
-import { StartOrchestratorButton }                                 from '../orchestrator/StartOrchestratorButton.tsx';
-import { ConcurrencyStepper }                                      from '../shell/ConcurrencyStepper.tsx';
-import { DispatcherPill }                                          from '../shell/DispatcherPill.tsx';
-import { boardHashOf }                                             from '../shell/HashRoute.ts';
-import { projectActivityOf }                                       from '../shell/ProjectActivity.ts';
-import { ProjectDot }                                              from '../shell/ProjectDot.tsx';
-import { TimeUtil }                                                from '../time/TimeUtil.ts';
-import { FleetRunCell }                                            from './FleetRunCell.tsx';
-import { FleetUtil }                                               from './FleetUtil.ts';
+import type {
+  BoardSummary,
+  OrchestratorSession,
+  ProjectSnapshot,
+  SessionRole
+} from '../../src/shared/DashboardContract.ts';
+import { ContextMeter }            from '../orchestrator/ContextMeter.tsx';
+import { OrchestratorSessionUtil } from '../orchestrator/OrchestratorSessionUtil.ts';
+import { SessionGlyph }            from '../orchestrator/SessionGlyph.tsx';
+import { StartOrchestratorButton } from '../orchestrator/StartOrchestratorButton.tsx';
+import { StartProductOwnerButton } from '../orchestrator/StartProductOwnerButton.tsx';
+import { ConcurrencyStepper }      from '../shell/ConcurrencyStepper.tsx';
+import { DispatcherPill }          from '../shell/DispatcherPill.tsx';
+import { boardHashOf }             from '../shell/HashRoute.ts';
+import { projectActivityOf }       from '../shell/ProjectActivity.ts';
+import { ProjectDot }              from '../shell/ProjectDot.tsx';
+import { TimeUtil }                from '../time/TimeUtil.ts';
+import { FleetRunCell }            from './FleetRunCell.tsx';
+import { FleetUtil }               from './FleetUtil.ts';
 
 interface FleetRowProperties {
-  project:         ProjectSnapshot;
-  watchedSessions: OrchestratorSession[];
-  now:             number;
-  onOpenChat:      () => void;
+  project:            ProjectSnapshot;
+  watchedSessions:    OrchestratorSession[];
+  now:                number;
+  onOpenChat:         () => void;
+  onOpenProductOwner: () => void;
 }
 
-function CrewCell({ project, session, now }: { project: ProjectSnapshot; session: OrchestratorSession | null; now: number }) {
-  if (session === null) {
-    return (
-      <div className="ap-fleet-cell ap-fleet-crew" role="cell">
-        <span className="muted">No orchestrator</span>
-        {OrchestratorSessionUtil.canStart(project) ? <StartOrchestratorButton project={project} /> : null}
-      </div>
-    );
-  }
+function SessionLine({ role, session, now }: { role: SessionRole; session: OrchestratorSession; now: number }) {
   return (
-    <div className="ap-fleet-cell ap-fleet-crew" role="cell">
-      <SessionGlyph mark="OR" session={session} />
-      <span className="ap-pill" data-state={OrchestratorSessionUtil.statePaletteOf(session.state)}>{OrchestratorSessionUtil.stateWordOf(session.state)}</span>
+    <div className="ap-fleet-crew-line" data-role={role}>
+      <SessionGlyph role={role} session={session} />
+      <span className="ap-pill" data-state={OrchestratorSessionUtil.statePaletteOf(session.state, role)}>{OrchestratorSessionUtil.stateWordOf(session.state)}</span>
       <ContextMeter context={session.context} compact />
       {session.lastAction === null
         ? null
@@ -42,6 +41,38 @@ function CrewCell({ project, session, now }: { project: ProjectSnapshot; session
             <span className="ellipsis">{session.lastAction.text}</span>
           </span>
         )}
+    </div>
+  );
+}
+
+interface CrewCellProperties {
+  project:            ProjectSnapshot;
+  session:            OrchestratorSession | null;
+  now:                number;
+  onOpenProductOwner: () => void;
+}
+
+/** The orchestrator's line, then the product owner's, or the offer to start one when none lives. */
+function CrewCell({
+  project, session, now, onOpenProductOwner
+}: CrewCellProperties) {
+  return (
+    <div className="ap-fleet-cell ap-fleet-crew" role="cell">
+      {session === null
+        ? (
+          <div className="ap-fleet-crew-line">
+            <span className="muted">No orchestrator</span>
+            {OrchestratorSessionUtil.canStart(project) ? <StartOrchestratorButton project={project} /> : null}
+          </div>
+        )
+        : <SessionLine role="orchestrator" session={session} now={now} />}
+      {project.productOwner === null || OrchestratorSessionUtil.canStart(project, 'product-owner')
+        ? (
+          <div className="ap-fleet-crew-line" data-role="product-owner">
+            <StartProductOwnerButton project={project} label="+ Ask PO for a ticket" onOpened={onOpenProductOwner} />
+          </div>
+        )
+        : <SessionLine role="product-owner" session={project.productOwner} now={now} />}
     </div>
   );
 }
@@ -58,7 +89,7 @@ function QueueCell({ board }: { board: BoardSummary }) {
 
 /** One project on one line from about 950 px; under it the cells wrap onto a second line, never wider than the table. */
 export function FleetRow({
-  project, watchedSessions, now, onOpenChat
+  project, watchedSessions, now, onOpenChat, onOpenProductOwner
 }: FleetRowProperties) {
   const leadingSession = OrchestratorSessionUtil.sessionsOf(project, watchedSessions)[0] ?? null;
   const board = project.health.kind === 'ready' ? project.health.board : null;
@@ -69,7 +100,7 @@ export function FleetRow({
         <a className="ap-fleet-name" href={boardHashOf(project.trackerId)} title={project.project}>{project.project}</a>
         {board === null ? <span className="ap-pill is-error">{project.health.kind}</span> : <DispatcherPill dispatcherState={board.dispatcherState} />}
       </div>
-      <CrewCell project={project} session={leadingSession} now={now} />
+      <CrewCell project={project} session={leadingSession} now={now} onOpenProductOwner={onOpenProductOwner} />
       {board === null
         ? <div className="ap-fleet-cell ap-fleet-unreadable" role="cell"><span className="muted">Board not readable</span></div>
         : (

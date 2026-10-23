@@ -1,3 +1,4 @@
+import type { SessionRole }                                 from '../../src/shared/DashboardContract.ts';
 import { SessionGlyph }                                     from '../orchestrator/SessionGlyph.tsx';
 import { PendingQuestionForm }                              from '../questions/PendingQuestionForm.tsx';
 import { boardHashOf, crewDrawerHashOf }                    from '../shell/HashRoute.ts';
@@ -24,6 +25,8 @@ function ContextRowValue({ row, trackerId, onLeave }: { row: InboxContextRow; tr
 
 const CONTEXT_ROW_LABELS: Record<InboxContextRow['kind'], string> = { doing: 'Doing', mentions: 'Mentions', said: 'Said' };
 
+const ROLE_WORDS: Record<SessionRole, string> = { 'orchestrator': 'orchestrator', 'product-owner': 'product owner' };
+
 /** Who asks and why above the shared question card, and a way into the conversation under it. */
 export function InboxQuestionCard({ entry, now, onLeave }: InboxQuestionCardProperties) {
   const age = TimeUtil.relativeAgeOfStamp(entry.pendingQuestion.askedAt, now);
@@ -31,9 +34,9 @@ export function InboxQuestionCard({ entry, now, onLeave }: InboxQuestionCardProp
   return (
     <li className="ap-inbox-entry" data-kind="question">
       <div className="ap-inbox-entry-head">
-        <SessionGlyph mark="OR" session={entry.session} />
+        <SessionGlyph role={entry.role} session={entry.session} />
         <a className="ap-inbox-project" href={boardHashOf(entry.trackerId)} onClick={onLeave}>{entry.project}</a>
-        <span className="muted">orchestrator</span>
+        <span className="muted ap-inbox-role">{ROLE_WORDS[entry.role]}</span>
         <span className="ap-inbox-hosted">hosted</span>
         {age === '' ? null : <span className="muted ap-inbox-age">waiting {age}</span>}
       </div>
@@ -49,7 +52,7 @@ export function InboxQuestionCard({ entry, now, onLeave }: InboxQuestionCardProp
             ))}
           </dl>
         )}
-      <PendingQuestionForm trackerId={entry.trackerId} pendingQuestion={entry.pendingQuestion} />
+      <PendingQuestionForm role={entry.role} trackerId={entry.trackerId} pendingQuestion={entry.pendingQuestion} />
       <a className="ap-inbox-open-conversation" href={crewDrawerHashOf(entry.trackerId)} onClick={onLeave}>Open conversation</a>
     </li>
   );

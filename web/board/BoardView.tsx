@@ -5,18 +5,18 @@ import {
   useRef,
   useState
 } from 'react';
-import type { DashboardSnapshot }           from '../../src/shared/DashboardContract.ts';
-import { CrewDrawer, type CrewDrawerFocus } from '../orchestrator/CrewDrawer.tsx';
-import { CrewStrip }                        from '../orchestrator/CrewStrip.tsx';
-import { OrchestratorSessionUtil }          from '../orchestrator/OrchestratorSessionUtil.ts';
-import { ConnectingPanel }                  from '../shell/ConnectingPanel.tsx';
-import { boardHashOf, OVERVIEW_HASH }       from '../shell/HashRoute.ts';
-import { BoardToolbar }                     from './BoardToolbar.tsx';
-import { NoPagePanel }                      from './NoPagePanel.tsx';
-import { PageFrame }                        from './PageFrame.tsx';
-import { ProjectRail }                      from './ProjectRail.tsx';
-import { RootPathUtil }                     from './RootPathUtil.ts';
-import { UnknownProjectPanel }              from './UnknownProjectPanel.tsx';
+import type { DashboardSnapshot, SessionRole } from '../../src/shared/DashboardContract.ts';
+import { CrewDrawer, type CrewDrawerFocus }    from '../orchestrator/CrewDrawer.tsx';
+import { CrewStrip }                           from '../orchestrator/CrewStrip.tsx';
+import { OrchestratorSessionUtil }             from '../orchestrator/OrchestratorSessionUtil.ts';
+import { ConnectingPanel }                     from '../shell/ConnectingPanel.tsx';
+import { boardHashOf, OVERVIEW_HASH }          from '../shell/HashRoute.ts';
+import { BoardToolbar }                        from './BoardToolbar.tsx';
+import { NoPagePanel }                         from './NoPagePanel.tsx';
+import { PageFrame }                           from './PageFrame.tsx';
+import { ProjectRail }                         from './ProjectRail.tsx';
+import { RootPathUtil }                        from './RootPathUtil.ts';
+import { UnknownProjectPanel }                 from './UnknownProjectPanel.tsx';
 
 interface BoardViewProperties {
   snapshot:        DashboardSnapshot | null;
@@ -28,7 +28,8 @@ export function BoardView({ snapshot, trackerId, opensCrewDrawer }: BoardViewPro
   const frameReference = useRef<HTMLIFrameElement | null>(null);
   const crewStripReference = useRef<HTMLButtonElement | null>(null);
   const drawerId = useId();
-  const [drawerFocus, setDrawerFocus] = useState<CrewDrawerFocus | null>(null);
+  const [openDrawer, setOpenDrawer] = useState<{ focus: CrewDrawerFocus; tab?: SessionRole } | null>(null);
+  const openDrawerOn = useCallback((focus: CrewDrawerFocus, tab: SessionRole) => setOpenDrawer({ focus, tab }), []);
 
   useEffect(() => {
     const backOnEscape = (event: KeyboardEvent): void => {
@@ -43,16 +44,17 @@ export function BoardView({ snapshot, trackerId, opensCrewDrawer }: BoardViewPro
   }, []);
 
   // Another project's board opens with the drawer closed, unless its hash asked for it.
-  useEffect(() => setDrawerFocus(null), [trackerId]);
+  useEffect(() => setOpenDrawer(null), [trackerId]);
   useEffect(() => {
     if (!opensCrewDrawer) return;
-    setDrawerFocus('chat');
+    // No tab named: the drawer opens on the role whose questions alone wait.
+    setOpenDrawer({ focus: 'chat' });
     // Dropping the request from the hash lets the same link open the drawer again after it was closed.
     window.location.replace(boardHashOf(trackerId));
   }, [trackerId, opensCrewDrawer]);
 
   const closeDrawer = useCallback(() => {
-    setDrawerFocus(null);
+    setOpenDrawer(null);
     crewStripReference.current?.focus();
   }, []);
 
@@ -79,10 +81,10 @@ export function BoardView({ snapshot, trackerId, opensCrewDrawer }: BoardViewPro
               <CrewStrip
                 project={project}
                 watchedSessions={watchedSessions}
-                isDrawerOpen={drawerFocus !== null}
+                isDrawerOpen={openDrawer !== null}
                 drawerId={drawerId}
                 stripReference={crewStripReference}
-                onOpenDrawer={setDrawerFocus}
+                onOpenDrawer={openDrawerOn}
               />
               {project.pageAvailable
                 ? (
@@ -96,9 +98,18 @@ export function BoardView({ snapshot, trackerId, opensCrewDrawer }: BoardViewPro
                   />
                 )
                 : <NoPagePanel root={project.root} />}
-              {drawerFocus === null
+              {openDrawer === null
                 ? null
-                : <CrewDrawer drawerId={drawerId} project={project} watchedSessions={watchedSessions} initialFocus={drawerFocus} onClose={closeDrawer} />}
+                : (
+                  <CrewDrawer
+                    drawerId={drawerId}
+                    project={project}
+                    watchedSessions={watchedSessions}
+                    initialFocus={openDrawer.focus}
+                    {...(openDrawer.tab === undefined ? {} : { initialTab: openDrawer.tab })}
+                    onClose={closeDrawer}
+                  />
+                )}
             </>
           )}
       </main>

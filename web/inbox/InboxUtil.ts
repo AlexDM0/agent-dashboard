@@ -2,13 +2,19 @@ import type {
   OrchestratorSession,
   PendingQuestion,
   ProjectSnapshot,
-  QuestionContext
+  QuestionContext,
+  SessionRole
 } from '../../src/shared/DashboardContract.ts';
-import { ContextUsageUtil } from '../orchestrator/ContextUsageUtil.ts';
+import { ContextUsageUtil }        from '../orchestrator/ContextUsageUtil.ts';
+import { OrchestratorSessionUtil } from '../orchestrator/OrchestratorSessionUtil.ts';
+
+const SESSION_ROLES: SessionRole[] = ['orchestrator', 'product-owner'];
 
 export interface InboxEntry {
   trackerId:       string;
   project:         string;
+  /** Who asks: the project's orchestrator or its product owner. */
+  role:            SessionRole;
   session:         OrchestratorSession;
   pendingQuestion: PendingQuestion;
 }
@@ -45,22 +51,24 @@ function compareByAskedAt(a: InboxEntry, b: InboxEntry): number {
   return a.trackerId.localeCompare(b.trackerId) || a.pendingQuestion.requestId.localeCompare(b.pendingQuestion.requestId);
 }
 
-function liveDashboardSessionOf(project: ProjectSnapshot): OrchestratorSession | null {
-  const session = project.orchestrator;
+function liveDashboardSessionOf(project: ProjectSnapshot, role: SessionRole = 'orchestrator'): OrchestratorSession | null {
+  const session = OrchestratorSessionUtil.dashboardSessionOf(project, role);
   if (session === null || session.state === 'ended' || session.ownership !== 'dashboard') return null;
   return session;
 }
 
-/** Every pending question of a live dashboard-owned session, across every project, the longest waiting first. */
+/** Every pending question of a live dashboard-owned orchestrator or product owner, across every project, the longest waiting first. */
 function entriesOf(projects: ProjectSnapshot[]): InboxEntry[] {
   const entries: InboxEntry[] = [];
   for (const project of projects) {
-    const session = liveDashboardSessionOf(project);
-    if (session === null) continue;
-    for (const pendingQuestion of session.pendingQuestions) {
-      entries.push({
-        trackerId: project.trackerId, project: project.project, session, pendingQuestion
-      });
+    for (const role of SESSION_ROLES) {
+      const session = liveDashboardSessionOf(project, role);
+      if (session === null) continue;
+      for (const pendingQuestion of session.pendingQuestions) {
+        entries.push({
+          trackerId: project.trackerId, project: project.project, role, session, pendingQuestion
+        });
+      }
     }
   }
   return entries.sort(compareByAskedAt);

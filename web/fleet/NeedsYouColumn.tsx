@@ -28,7 +28,7 @@ function AttentionCardButton({ card, now, onOpenHandoff }: { card: AttentionCard
           <span className="ap-attention-project">{card.project}</span>
           <span className="mono muted ap-attention-age">{TimeUtil.relativeAgeOfStamp(card.askedAt, now)}</span>
         </span>
-        <span className="muted ap-attention-who">Orchestrator asks</span>
+        <span className="muted ap-attention-who">{card.role === 'product-owner' ? 'Product owner asks' : 'Orchestrator asks'}</span>
         <span className="ap-attention-text">{card.firstLine}</span>
       </button>
     );

@@ -20,7 +20,7 @@ function countPhraseOf(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-/** Every question the orchestrators owe, answerable in place, and every critical context; an entry leaves when a snapshot no longer holds it. */
+/** Every question the orchestrators and product owners owe, answerable in place, and every critical context; each leaves once a snapshot drops it. */
 export function Inbox({ entries, alerts, now }: InboxProperties) {
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<InboxFilter>('all');
@@ -64,7 +64,7 @@ export function Inbox({ entries, alerts, now }: InboxProperties) {
               </div>
             </div>
             {shownEntries.length + shownAlerts.length === 0
-              ? <p className="muted ap-inbox-empty">No orchestrator is waiting for an answer or a refresh.</p>
+              ? <p className="muted ap-inbox-empty">No orchestrator or product owner is waiting for an answer or a refresh.</p>
               : (
                 <ol className="ap-inbox-list">
                   {shownAlerts.map((alert) => <InboxAlertCard key={`alert:${alert.trackerId}`} alert={alert} onLeave={close} />)}

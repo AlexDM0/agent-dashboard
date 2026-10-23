@@ -1,19 +1,20 @@
-import { useEffect, useRef }          from 'react';
-import type { ChatMessage, ChatRole } from '../../src/shared/DashboardContract.ts';
-import { ConversationItemUtil }       from './ConversationItemUtil.ts';
-import { MarkdownText }               from './MarkdownText.tsx';
-import { ToolCallGroup }              from './ToolCallGroup.tsx';
+import { useEffect, useRef }                       from 'react';
+import type { ChatMessage, ChatRole, SessionRole } from '../../src/shared/DashboardContract.ts';
+import { ConversationItemUtil }                    from './ConversationItemUtil.ts';
+import { MarkdownText }                            from './MarkdownText.tsx';
+import { ToolCallGroup }                           from './ToolCallGroup.tsx';
 
 interface ConversationLogProperties {
+  /** Whose conversation it is, so the assistant's turns carry that role's word. */
+  role:     SessionRole;
   messages: ChatMessage[];
 }
 
-const ROLE_WORD: Record<ChatRole, string> = {
-  user: 'You', assistant: 'Orchestrator', tool: 'Tool', system: 'System'
-};
+const ROLE_WORD: Record<Exclude<ChatRole, 'assistant'>, string> = { user: 'You', tool: 'Tool', system: 'System' };
+const ASSISTANT_WORD: Record<SessionRole, string> = { 'orchestrator': 'Orchestrator', 'product-owner': 'Product owner' };
 
 /** Every agent-written text here is a React text node or Markdown without raw HTML: nothing is read as markup. */
-export function ConversationLog({ messages }: ConversationLogProperties) {
+export function ConversationLog({ role, messages }: ConversationLogProperties) {
   const listReference = useRef<HTMLOListElement | null>(null);
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export function ConversationLog({ messages }: ConversationLogProperties) {
         ? <ToolCallGroup key={item.key} calls={item.calls} />
         : (
           <li key={item.key} className="ap-turn" data-role={item.message.role}>
-            <span className="ap-turn-role">{ROLE_WORD[item.message.role]}</span>
+            <span className="ap-turn-role">{item.message.role === 'assistant' ? ASSISTANT_WORD[role] : ROLE_WORD[item.message.role]}</span>
             <MarkdownText text={item.message.text} />
           </li>
         )))}

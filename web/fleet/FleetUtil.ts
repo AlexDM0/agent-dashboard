@@ -1,14 +1,14 @@
-import type { BoardSummary, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
-import type { InboxEntry }                    from '../inbox/InboxUtil.ts';
-import { ContextUsageUtil }                   from '../orchestrator/ContextUsageUtil.ts';
-import { OrchestratorSessionUtil }            from '../orchestrator/OrchestratorSessionUtil.ts';
-import { ProjectOrdering }                    from '../overview/ProjectOrdering.ts';
+import type { BoardSummary, ProjectSnapshot, SessionRole } from '../../src/shared/DashboardContract.ts';
+import type { InboxEntry }                                 from '../inbox/InboxUtil.ts';
+import { ContextUsageUtil }                                from '../orchestrator/ContextUsageUtil.ts';
+import { OrchestratorSessionUtil }                         from '../orchestrator/OrchestratorSessionUtil.ts';
+import { ProjectOrdering }                                 from '../overview/ProjectOrdering.ts';
 
 export type FleetFilter = 'all' | 'running' | 'needs-you';
 
 /** One card of the Needs you column: a question the inbox holds, or a dashboard-owned session due a refresh. */
 export type AttentionCard =
-  | { kind: 'question'; trackerId: string; project: string; requestId: string; firstLine: string; askedAt: string }
+  | { kind: 'question'; trackerId: string; project: string; role: SessionRole; requestId: string; firstLine: string; askedAt: string }
   | { kind: 'handoff'; trackerId: string; project: string; contextCaption: string; measuredAt: string };
 
 export interface QueueSummary {
@@ -54,6 +54,7 @@ function attentionCardsOf(inboxEntries: InboxEntry[], projects: ProjectSnapshot[
     kind:      'question',
     trackerId: entry.trackerId,
     project:   entry.project,
+    role:      entry.role,
     requestId: entry.pendingQuestion.requestId,
     firstLine: firstLineOf(entry.pendingQuestion.questions[0]?.question ?? ''),
     askedAt:   entry.pendingQuestion.askedAt,
