@@ -238,6 +238,13 @@ test('a declared package missing from the dashboard folder makes / a 503 page na
   expect((JSON.parse(snapshot.body) as DashboardSnapshot).projects.map((project) => project.trackerId)).toEqual([TRACKER_ID]);
 });
 
+test('the missing-packages page names a local folder, so a foreign Host is refused it as the API refuses one', async () => {
+  const unbuildable = await serverOverDashboardFolder('dashboard-missing-package-foreign-host', { declared: ['example-missing-package'], installed: [] });
+  const answer = await sendRawHttpRequest({ port: unbuildable.port, target: '/', headers: { Host: 'evil.example' } });
+  expect(answer.status).toBe(403);
+  expect(answer.body).not.toContain(scratchDirectory);
+});
+
 test('with every declared package installed / serves the dashboard shell as before', async () => {
   const buildable = await serverOverDashboardFolder('dashboard-installed', { declared: ['example-installed-package'], installed: ['example-installed-package'] });
   expect(buildable.dependencyResolution).toEqual({ kind: 'resolvable' });

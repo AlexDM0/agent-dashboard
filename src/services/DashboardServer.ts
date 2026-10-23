@@ -75,7 +75,7 @@ export interface RunningDashboardServer {
   port:                 number;
   boardOrigin:          string;
   boardPort:            number;
-  stop():      Promise<void>;
+  stop():               Promise<void>;
   stopped:              Promise<void>;
   /** Read at the start; an unresolvable one makes `/` the page naming the missing packages. */
   dependencyResolution: DependencyResolution;
@@ -200,13 +200,6 @@ const HTTP_STATUS = {
   BAD_GATEWAY:           502,
   SERVICE_UNAVAILABLE:   503,
 } as const;
-
-/** Bun answers an HTML-import route whose bundle fails with an empty body and calls no error handler, so a missing install is caught before. */
-function applicationRouteOf(dependencyResolution: DependencyResolution, dashboardDirectory: string): Bun.HTMLBundle | (() => Response) {
-  if (dependencyResolution.kind !== 'unresolvable') return dashboardApplication;
-  const page = missingDependenciesPageOf(dependencyResolution.packageNames, dashboardDirectory);
-  return () => new Response(page, { status: HTTP_STATUS.SERVICE_UNAVAILABLE, headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE_HEADERS } });
-}
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' } as const;
 
@@ -464,6 +457,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   });
 
   const dependencyResolution = readDependencyResolution(options.dashboardDirectory);
+  // Bun answers an HTML-import route whose bundle fails with an empty body and no error handler call, so a missing
+  // install leaves `/` to `fetch`, behind the Host guard, since the page names a local folder.
+  const missingDependenciesPage = dependencyResolution.kind === 'unresolvable' ? missingDependenciesPageOf(dependencyResolution.packageNames, options.dashboardDirectory) : null;
+  const applicationRoute: Record<string, Bun.HTMLBundle> = missingDependenciesPage === null ? { '/': dashboardApplication } : {};
   let server: Bun.Server<undefined>;
   try {
     server = Bun.serve({
@@ -472,7 +469,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       development: false,
       // Bun turns SO_REUSEPORT on without development mode, which would let a second dashboard share the port.
       reusePort:   false,
-      routes:      { '/': applicationRouteOf(dependencyResolution, options.dashboardDirectory), ...installIconRoutes() },
+      routes:      { ...applicationRoute, ...installIconRoutes() },
       fetch:       (request, servingServer) => answer(request, servingServer),
     });
   } catch (error) {
@@ -1021,6 +1018,10 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const { pathname } = new URL(request.url);
     const isRead = request.method === 'GET' || request.method === 'HEAD';
 
+    if (pathname === '/' && missingDependenciesPage !== null) {
+      if (!isRead) return methodNotAllowed('GET, HEAD');
+      return new Response(missingDependenciesPage, { status: HTTP_STATUS.SERVICE_UNAVAILABLE, headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE_HEADERS } });
+    }
     if (pathname === DASHBOARD_PROTOCOL.SHUTDOWN_PATH) return request.method === 'POST' ? shutdownResponse(request) : methodNotAllowed('POST');
     if (pathname === DASHBOARD_PROTOCOL.RESTART_PATH) return request.method === 'POST' ? restartResponse(request) : methodNotAllowed('POST');
     if (pathname === DASHBOARD_PROTOCOL.IDENTITY_PATH) return isRead ? identityResponse() : methodNotAllowed('GET, HEAD');
