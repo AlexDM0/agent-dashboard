@@ -8,14 +8,17 @@ import { DASHBOARD_LIMITS }                                     from '../shared/
 export const ORCHESTRATOR_REQUEST_BODY_REFUSAL = 'The body must be { "kind": "start-building" } or '
   + `{ "kind": "clear-low-tickets", "ticketIds": [...] } with 1 to ${DASHBOARD_LIMITS.MAXIMUM_CLEARED_TICKET_COUNT} non-empty ticket ids`;
 
+/** The skill refuses model invocation, so a started session's first user turn opens with its slash command instead. */
+export const ORCHESTRATE_SKILL_COMMAND = '/agent-progress-orchestrate';
+
 const RELAY_OPENING = 'This message relays the user\'s click in the agent-dashboard, for the project';
 
 const START_BUILDING_INSTRUCTION = 'The user asks you to start building: run this board through the agent-progress '
-  + 'dispatcher (the agent-progress-orchestrate skill and `.agent-progress/agent-progress-dispatch.js`). If a dispatcher '
+  + 'dispatcher (`.agent-progress/agent-progress-dispatch.js`). If a dispatcher '
   + 'run is already in flight, leave it running and start no second one.';
 
-const START_ORCHESTRATING_INSTRUCTION = 'The user started you as this board\'s orchestrator: load the '
-  + 'agent-progress-orchestrate skill and read the board. Launch no dispatcher run until the user asks you to start building.';
+const START_ORCHESTRATING_INSTRUCTION = 'The user started you as this board\'s orchestrator: read the board. '
+  + 'Launch no dispatcher run until the user asks you to start building.';
 
 const CLEAR_LOW_TICKETS_INSTRUCTION = 'The user cleared these low-priority tickets to run. Triage them, then launch the '
   + 'agent-progress dispatcher with `includeLowPriority: true` once no dispatcher run is in flight. Never stop a running '
@@ -49,7 +52,12 @@ export function orchestratorMessageTextOf(request: OrchestratorRequest, project:
 
 /** The first message of an orchestrator started without the go to build. */
 export function orchestratorStartTextOf(project: string): string {
-  return `${RELAY_OPENING} ${project}. ${START_ORCHESTRATING_INSTRUCTION}`;
+  return `${ORCHESTRATE_SKILL_COMMAND}\n${RELAY_OPENING} ${project}. ${START_ORCHESTRATING_INSTRUCTION}`;
+}
+
+/** The first message of an orchestrator started with the go to build. */
+export function orchestratorStartBuildingTextOf(project: string): string {
+  return `${ORCHESTRATE_SKILL_COMMAND}\n${requestTextOf({ kind: 'start-building' }, project)}`;
 }
 
 function requestTextOf(request: OrchestratorRequest, project: string): string {

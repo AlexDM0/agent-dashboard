@@ -49,6 +49,7 @@ import {
   ORCHESTRATOR_REQUEST_BODY_REFUSAL,
   orchestratorMessageTextOf,
   orchestratorRequestOf,
+  orchestratorStartBuildingTextOf,
   orchestratorStartTextOf
 } from './OrchestratorRequestMessage.ts';
 import { type OrchestratorLaunch, type OrchestratorSessions, createOrchestratorSessions } from './OrchestratorSessions.ts';
@@ -881,7 +882,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
     const projectName = project?.project ?? trackerId;
-    const firstMessage = startBuilding ? orchestratorMessageTextOf({ kind: 'start-building' }, projectName, 'dashboard-session') : orchestratorStartTextOf(projectName);
+    const firstMessage = startBuilding ? orchestratorStartBuildingTextOf(projectName) : orchestratorStartTextOf(projectName);
     return launchedSessionResponse(await orchestratorSessions.launch(trackerId, root, firstMessage), 'orchestrator');
   }
 

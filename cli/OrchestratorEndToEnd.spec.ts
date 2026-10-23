@@ -4,8 +4,8 @@
  * app shell, the log or the server record, that a started session runs in the project root in auto mode and is still
  * listed and reachable after the server process is killed and started again, and that a session ending, by Stop or by
  * itself, shows `ended` in the next snapshot, and that two simultaneous starts spawn one supervisor. Chat and answers
- * take the same token and Origin and write nothing when refused; a plain start's first user turn has it load the
- * orchestrate skill, a chat is the session's user turn, a stream opened late
+ * take the same token and Origin and write nothing when refused; a plain start's first user turn opens with the
+ * `/agent-progress-orchestrate` command, a chat is the session's user turn, a stream opened late
  * replays the conversation in order, and a pending question is answered once, a second answer writing nothing. The
  * session's own `~/.claude/sessions/` record never lists it as watched, even holding the board's dispatcher run, and a
  * watched session, a desktop holder of that run, borrows its context window.
@@ -284,6 +284,8 @@ test('a session that exits by itself shows ended in the next snapshot, and the p
   if (latestStart?.event !== 'started') throw new Error('the second fake claude did not start');
   const stdinLineCount = (): number => readFakeClaudeTranscript(home).filter((entry) => entry.event === 'stdin').length;
   await waitUntil(() => stdinLineCount() >= 2, 'the start-building first message arrived', SESSION_WAIT_MILLISECONDS);
+  await waitUntil(() => sessionStdinLines().length > 0, 'the second session read its first turn', SESSION_WAIT_MILLISECONDS);
+  expect(firstUserTurnText().startsWith('/agent-progress-orchestrate\n')).toBe(true);
 
   process.kill(latestStart.pid, 'SIGKILL');
   await waitForOrchestratorState('ended');
@@ -332,6 +334,12 @@ function sessionStdinLines(): string[] {
   return readFakeClaudeTranscript(home).slice(latestStartIndex).flatMap((entry) => (entry.event === 'stdin' ? [entry.line] : []));
 }
 
+function firstUserTurnText(): string {
+  const [firstLine = '{"message":{"content":""}}'] = sessionStdinLines();
+  const { message } = JSON.parse(firstLine) as { message: { content: string } };
+  return message.content;
+}
+
 function chat(text: string, headers: Record<string, string> = launchHeaders()): Promise<Response> {
   return fetch(conversationPath(DASHBOARD_PROTOCOL.ORCHESTRATOR_MESSAGES_PATH_SUFFIX), { method: 'POST', headers, body: JSON.stringify({ text }) });
 }
@@ -350,6 +358,7 @@ test('chat and answers without the launch token or this server\'s own Origin are
   expect(start.status).toBe(201);
   await waitForOrchestratorState('idle', (orchestrator) => orchestrator.context !== null);
   expect(sessionStdinLines()).toEqual([START_LINE]);
+  expect(firstUserTurnText().startsWith('/agent-progress-orchestrate\n')).toBe(true);
   const refusedHeaders = [
     launchHeaders({ [DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME]: null }),
     launchHeaders({ [DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME]: 'not-the-token' }),

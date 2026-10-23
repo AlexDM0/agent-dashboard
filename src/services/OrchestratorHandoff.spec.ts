@@ -2,8 +2,8 @@
  * The handoff route on an in-process server over a scratch home, its supervisors started with a scratch environment and
  * a fake `claude`, its board read by a fake agent-progress keeping a dispatcher state. What matters: a handoff asks the
  * running session one fixed message, keeps the reply as the note in the dashboard's own handoffs folder (never the
- * project), stops that session and starts a fresh one whose first message has it load the agent-progress-orchestrate
- * skill and carries the note, listed with the previous session id; and a refused (pending question, a busy session, a
+ * project), stops that session and starts a fresh one whose first message opens with the user-only
+ * `/agent-progress-orchestrate` command and carries the note, listed with the previous session id; and a refused (pending question, a busy session, a
  * running dispatcher) or failed one (the session ends, or gives no reply in time) changes nothing: the old session is
  * left as it was and no session is started.
  */
@@ -235,12 +235,12 @@ test('a handoff keeps the reply as the note outside the project, stops the sessi
   expect(projectFiles.filter((fileName) => fileName.endsWith('.md'))).toEqual([]);
 }, SPEC_TIMEOUT_MILLISECONDS);
 
-test('the fresh session is told to load the agent-progress-orchestrate skill before the note it acts on', () => {
+test('the fresh session\'s first message opens with the orchestrate slash command and never asks the model to load a skill', () => {
   const note = 'Example note: ticket #001 is in review.';
   const firstMessage = freshSessionMessageOf('example-previous-session', '/example/handoffs/note.md', note);
-  const skillInstructionIndex = firstMessage.indexOf('Load the agent-progress-orchestrate skill');
-  expect(skillInstructionIndex).toBeGreaterThan(-1);
-  expect(skillInstructionIndex).toBeLessThan(firstMessage.indexOf(note));
+  expect(firstMessage.startsWith('/agent-progress-orchestrate\n')).toBe(true);
+  expect(firstMessage.replace(note, '')).not.toMatch(/\bskill\b/i);
+  expect(firstMessage.endsWith(note)).toBe(true);
 });
 
 test('a handoff is 409 and changes nothing while a question is pending, while the session is busy, or while the dispatcher runs', async () => {

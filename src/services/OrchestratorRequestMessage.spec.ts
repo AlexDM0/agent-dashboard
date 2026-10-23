@@ -5,8 +5,13 @@
  */
 import { expect, test } from 'bun:test';
 
-import type { OrchestratorRequest }                                                  from '../shared/DashboardContract.ts';
-import { orchestratorMessageTextOf, orchestratorRequestOf, orchestratorStartTextOf } from './OrchestratorRequestMessage.ts';
+import type { OrchestratorRequest } from '../shared/DashboardContract.ts';
+import {
+  orchestratorMessageTextOf,
+  orchestratorRequestOf,
+  orchestratorStartBuildingTextOf,
+  orchestratorStartTextOf
+} from './OrchestratorRequestMessage.ts';
 
 test('the two kinds parse, ticket ids kept in the order given', () => {
   expect(orchestratorRequestOf(JSON.stringify({ kind: 'start-building' }))).toEqual({ kind: 'start-building' });
@@ -34,12 +39,28 @@ test('an unknown kind, missing, empty, non-string or more than 50 ids, and non-J
   for (const body of badBodies) expect(orchestratorRequestOf(body), body).toBeNull();
 });
 
-test('the start text relays the click, names the project, loads the orchestrate skill and holds the dispatcher back', () => {
+test('the start text opens with the orchestrate slash command, relays the click, names the project and holds the dispatcher back', () => {
   const text = orchestratorStartTextOf('example-storefront');
+  expect(text.startsWith('/agent-progress-orchestrate\n')).toBe(true);
   expect(text).toContain('relays the user\'s click in the agent-dashboard');
   expect(text).toContain('example-storefront');
-  expect(text).toContain('load the agent-progress-orchestrate skill');
   expect(text).toContain('Launch no dispatcher run until the user asks you to start building');
+});
+
+test('the started-to-build text opens with the orchestrate slash command, then the dashboard session\'s start-building text', () => {
+  expect(orchestratorStartBuildingTextOf('example-storefront')).toBe(
+    `/agent-progress-orchestrate\n${orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront', 'dashboard-session')}`
+  );
+});
+
+test('no message text asks the model to load a skill, which a user-only skill refuses', () => {
+  const texts = [
+    orchestratorStartTextOf('example-storefront'),
+    orchestratorStartBuildingTextOf('example-storefront'),
+    orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront', 'desktop-session'),
+    orchestratorMessageTextOf({ kind: 'clear-low-tickets', ticketIds: ['012'] }, 'example-storefront', 'desktop-session'),
+  ];
+  for (const text of texts) expect(text, text).not.toMatch(/\bskill\b/i);
 });
 
 test('the start-building text relays the click, names the project, and leaves a run in flight running', () => {
@@ -63,9 +84,8 @@ test('the clear-low-tickets text names every ticket and asks for includeLowPrior
 test('a dashboard-owned session gets the start-building text exactly as before, with no confirm request', () => {
   expect(orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront', 'dashboard-session')).toBe(
     'This message relays the user\'s click in the agent-dashboard, for the project example-storefront. The user asks you '
-    + 'to start building: run this board through the agent-progress dispatcher (the agent-progress-orchestrate skill and '
-    + '`.agent-progress/agent-progress-dispatch.js`). If a dispatcher run is already in flight, leave it running and start '
-    + 'no second one.'
+    + 'to start building: run this board through the agent-progress dispatcher (`.agent-progress/agent-progress-dispatch.js`). '
+    + 'If a dispatcher run is already in flight, leave it running and start no second one.'
   );
 });
 
