@@ -106,11 +106,6 @@ function liveCountOf(conversations: ChatConversation[]): number {
   return conversations.filter((conversation) => isLive(conversation)).length;
 }
 
-/** Sessions owing the user an answer, however many questions each owes: the header's badge. */
-function waitingCountOf(conversations: ChatConversation[]): number {
-  return conversations.filter((conversation) => isWaitingForAnswer(conversation)).length;
-}
-
 function oldestQuestionTimeOf(conversation: ChatConversation): number {
   const times = conversation.session.pendingQuestions.map((pendingQuestion) => Date.parse(pendingQuestion.askedAt)).filter((time) => !Number.isNaN(time));
   return times.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...times);
@@ -140,7 +135,6 @@ export const ChatConversationListUtil = Object.freeze({
   isLive,
   isWaitingForAnswer,
   liveCountOf,
-  waitingCountOf,
   openingKeyOf,
   crewSessionKeyOf,
 });

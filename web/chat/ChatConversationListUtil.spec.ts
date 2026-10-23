@@ -1,7 +1,7 @@
 /**
  * The overlay's list order (A2): live sessions owing a question first, then live ones by `lastAction.at` newest first
  * (none last), then the ended ones; a watched desktop orchestrator is listed send-only; each line says what matters.
- * The header's Chat button (#066 A2): its live count and waiting badge, and the session it opens on.
+ * The header's Chat button (#066 A2): its live count, and the session it opens on.
  */
 import { expect, test } from 'bun:test';
 
@@ -45,10 +45,8 @@ test('a watched session is send-only, an ended one names its last action, an ask
   expect(statusByKey['product-owner:tracker-example-agency-site']).toEqual({ status: 'Filed #061', isSendOnly: false });
 });
 
-test('the Chat button counts the live sessions and badges the ones owing an answer, the ended one counted in neither', () => {
-  const conversations = conversationsOfChatSnapshot();
-  expect(ChatConversationListUtil.liveCountOf(conversations)).toBe(6);
-  expect(ChatConversationListUtil.waitingCountOf(conversations)).toBe(2);
+test('the Chat button counts the live sessions, the ended one not counted', () => {
+  expect(ChatConversationListUtil.liveCountOf(conversationsOfChatSnapshot())).toBe(6);
 });
 
 test('the Chat button opens on the session waiting longest, ahead of the last one opened', () => {
