@@ -715,10 +715,16 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     }
 
     const search = await findOrchestratorSession({
-      homeDirectory:   options.homeDirectory,
-      projectRoot:     root,
-      dispatcherRunId: board?.dispatcherRunId ?? null,
-      socketAccepts:   (socketPath) => sessionSocketAccepts(socketPath, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS),
+      homeDirectory:          options.homeDirectory,
+      projectRoot:            root,
+      dispatcherRunId:        board?.dispatcherRunId ?? null,
+      socketAccepts:          (socketPath) => sessionSocketAccepts(socketPath, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS),
+      isNeverTheOrchestrator: (session) => {
+        const productOwners = monitor.snapshot().projects
+          .map((projectSnapshot) => productOwnerSessions.sessionOf(projectSnapshot.trackerId))
+          .filter((productOwner): productOwner is OrchestratorSession => productOwner !== null);
+        return productOwners.some((productOwner) => productOwner.pid === session.pid || productOwner.sessionId === session.sessionId);
+      },
     });
     if (search.kind === 'refused') return { kind: 'refused', response: plainResponse(HTTP_STATUS.CONFLICT, search.reason) };
     const delivery = await writeSessionMessage(

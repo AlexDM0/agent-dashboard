@@ -1,7 +1,8 @@
 /**
  * The lookup decides whose session a click reaches, so it must never guess: the session holding the board's dispatcher
  * run wins even beside others in the root, the root's only live session is the fallback, and zero or several candidates
- * are refusals. A record whose pid is gone or whose socket refuses is no candidate, and a run id that is not a plain
+ * are refusals. A record whose pid is gone, whose socket refuses or that is never the orchestrator (a dashboard-owned
+ * product owner in the root) is no candidate, and a run id that is not a plain
  * folder name never steers the lookup. The watched list is the live holders of the run alone, wherever their folder:
  * never the dashboard-owned session, a gone pid, a root session without the run, nor anyone without a valid run id.
  * Everything lives under a scratch home with scratch socket listeners.
@@ -60,12 +61,13 @@ function liveSession(sessionId: string, cwd: string, pid = process.pid): Example
   return session;
 }
 
-function find(dispatcherRunId: string | null): Promise<OrchestratorSessionVerdict> {
+function find(dispatcherRunId: string | null, neverTheOrchestratorSessionIds: readonly string[] = []): Promise<OrchestratorSessionVerdict> {
   return findOrchestratorSession({
     homeDirectory,
     projectRoot,
     dispatcherRunId,
-    socketAccepts: (socketPath) => sessionSocketAccepts(socketPath, SOCKET_TIMEOUT_MILLISECONDS),
+    socketAccepts:          (socketPath) => sessionSocketAccepts(socketPath, SOCKET_TIMEOUT_MILLISECONDS),
+    isNeverTheOrchestrator: (session) => neverTheOrchestratorSessionIds.includes(session.sessionId),
   });
 }
 
@@ -87,6 +89,13 @@ test('without a run match the only live session in the project root is chosen', 
   liveSession('in-root', projectRoot);
   expect(foundSessionId(await find(null))).toBe('in-root');
   expect(foundSessionId(await find('example-run-nobody-holds'))).toBe('in-root');
+});
+
+test('a session that is never the orchestrator, such as a product owner in the root, is no candidate, alone or beside another', async () => {
+  liveSession('product-owner', projectRoot);
+  expect((await find(null, ['product-owner'])).kind).toBe('refused');
+  liveSession('in-root', projectRoot);
+  expect(foundSessionId(await find(null, ['product-owner']))).toBe('in-root');
 });
 
 test('no candidate is a refusal saying so', async () => {

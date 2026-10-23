@@ -29,10 +29,12 @@ export interface LiveSession {
 export type OrchestratorSessionVerdict = { kind: 'found'; session: LiveSession } | { kind: 'refused'; reason: string };
 
 export interface OrchestratorSearch {
-  homeDirectory:   string;
-  projectRoot:     string;
-  dispatcherRunId: string | null;
-  socketAccepts:   (socketPath: string) => Promise<boolean>;
+  homeDirectory:          string;
+  projectRoot:            string;
+  dispatcherRunId:        string | null;
+  socketAccepts:          (socketPath: string) => Promise<boolean>;
+  /** A session that is never the board's orchestrator however it matches, such as a dashboard-owned product owner. */
+  isNeverTheOrchestrator: (session: LiveSession) => boolean;
 }
 
 export interface WatchedSessionSearch {
@@ -116,7 +118,7 @@ function pidsOf(sessions: LiveSession[]): string {
 }
 
 export async function findOrchestratorSession(search: OrchestratorSearch): Promise<OrchestratorSessionVerdict> {
-  const liveSessions = recordedSessions(search.homeDirectory).filter((session) => processIsAlive(session.pid));
+  const liveSessions = recordedSessions(search.homeDirectory).filter((session) => !search.isNeverTheOrchestrator(session) && processIsAlive(session.pid));
 
   const runId = search.dispatcherRunId;
   if (runId !== null && RUN_ID_PATTERN.test(runId)) {
