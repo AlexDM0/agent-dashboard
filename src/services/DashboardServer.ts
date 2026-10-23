@@ -43,6 +43,7 @@ import { UnknownValueUtil }                        from '../shared/UnknownValueU
 import { DASHBOARD_FILES }                         from '../shared/constants/DashboardFiles.ts';
 import { DASHBOARD_LIMITS }                        from '../shared/constants/DashboardLimits.ts';
 import { DASHBOARD_PROTOCOL }                      from '../shared/constants/DashboardProtocol.ts';
+import { openInClaudeDesktop }                     from './ClaudeDesktopOpener.ts';
 import { missingDependenciesPageOf }               from './MissingDependenciesPage.ts';
 import { handOffOrchestrator, handoffDirectoryOf } from './OrchestratorHandoff.ts';
 import {
@@ -183,6 +184,10 @@ const ORCHESTRATOR_ANSWERS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PRO
 const ORCHESTRATOR_EVENTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_EVENTS_PATH_SUFFIX}$`);
 
 const ORCHESTRATOR_HANDOFF_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_HANDOFF_PATH_SUFFIX}$`);
+
+const ORCHESTRATOR_OPEN_IN_APP_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.ORCHESTRATOR_OPEN_IN_APP_PATH_SUFFIX}$`);
+
+const PRODUCT_OWNER_OPEN_IN_APP_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_OPEN_IN_APP_PATH_SUFFIX}$`);
 
 const PRODUCT_OWNER_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX}$`);
 
@@ -462,6 +467,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   const launchToken = randomUUID();
   const closeOpenStreams = new Set<() => void>();
   const trackersBeingHandedOff = new Set<string>();
+  const sessionsBeingOpenedInApp = new Set<string>();
   let stopping: Promise<void> | null = null;
   let restartIsRequested = false;
   let resolveStopped = (): void => {};
@@ -925,6 +931,41 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
+  /**
+   * Stops the dashboard-owned session exactly as Stop does, waits until it has ended, then resumes it in the Claude desktop
+   * app from the project root; once opened, the server forgets it, so the snapshot shows it as the app's watched session.
+   */
+  async function openInAppResponse(request: Request, encodedTrackerId: string, role: SessionRole): Promise<Response> {
+    if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+    await monitorStarted;
+    const trackerId = decodedOrNull(encodedTrackerId);
+    const root = trackerId === null ? null : monitor.rootOf(trackerId);
+    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const sessions = sessionsByRole[role];
+    const session = sessions.sessionOf(trackerId);
+    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText(role));
+    if (session.state === 'ended') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText(role));
+    if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
+    const openingKey = `${role}:${trackerId}`;
+    if (sessionsBeingOpenedInApp.has(openingKey)) return plainResponse(HTTP_STATUS.CONFLICT, `This ${ROLE_WORDS[role]} is already being opened in the Claude app`);
+    sessionsBeingOpenedInApp.add(openingKey);
+    try {
+      const end = await sessions.stopAndAwaitEnd(trackerId, DASHBOARD_LIMITS.HANDOFF_END_TIMEOUT_MILLISECONDS);
+      if (end.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, end.reason);
+      const opening = await openInClaudeDesktop({
+        claudeExecutable:    options.claudeExecutable,
+        sessionId:           session.sessionId,
+        root,
+        timeoutMilliseconds: DASHBOARD_LIMITS.DESKTOP_OPEN_TIMEOUT_MILLISECONDS,
+      });
+      if (opening.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, opening.reason);
+      sessions.forgetEnded(trackerId);
+      return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
+    } finally {
+      sessionsBeingOpenedInApp.delete(openingKey);
+    }
+  }
+
   /** Why a handoff may not start now, or null; each refusal changes nothing. */
   function handoffRefusalOf(trackerId: string, session: OrchestratorSession): string | null {
     if (session.state === 'ended') return 'The dashboard-owned orchestrator of this project has ended';
@@ -1069,6 +1110,14 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (productOwnerRouteMatch?.[1] !== undefined) {
       if (request.method === 'POST') return productOwnerStartResponse(request, productOwnerRouteMatch[1]);
       return request.method === 'DELETE' ? sessionStopResponse(request, productOwnerRouteMatch[1], 'product-owner') : methodNotAllowed('POST, DELETE');
+    }
+    const orchestratorOpenInAppRouteMatch = ORCHESTRATOR_OPEN_IN_APP_ROUTE_PATTERN.exec(pathname);
+    if (orchestratorOpenInAppRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? openInAppResponse(request, orchestratorOpenInAppRouteMatch[1], 'orchestrator') : methodNotAllowed('POST');
+    }
+    const productOwnerOpenInAppRouteMatch = PRODUCT_OWNER_OPEN_IN_APP_ROUTE_PATTERN.exec(pathname);
+    if (productOwnerOpenInAppRouteMatch?.[1] !== undefined) {
+      return request.method === 'POST' ? openInAppResponse(request, productOwnerOpenInAppRouteMatch[1], 'product-owner') : methodNotAllowed('POST');
     }
     const productOwnerMessagesRouteMatch = PRODUCT_OWNER_MESSAGES_ROUTE_PATTERN.exec(pathname);
     if (productOwnerMessagesRouteMatch?.[1] !== undefined) {

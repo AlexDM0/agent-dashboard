@@ -19,6 +19,7 @@
  * under a scratch home: the exact line a session receives, no write on any refusal (guards, a bad body, an id that is
  * not low-priority waiting, zero or several candidates), and 502 when the chosen session's socket fails; a live
  * dashboard-owned session (stubbed) takes the text as its chat instead, and the answer names which of the two it reached.
+ * Open in Claude app without a resolved `claude` refuses before it stops the stubbed live session.
  * Watched sessions: the snapshot lists only the live holders of the board's dispatcher run, none without a run, with its
  * record's name and status and its transcript's usage (unknown without one) and never probes their sockets; a chat
  * naming one reaches it alone, and a gone session or a root session without the run is 409, a malformed body 400 and a
@@ -47,6 +48,7 @@ import {
   type ChatMessage,
   type DashboardSnapshot,
   type LaunchToken,
+  type OrchestratorSession,
   type ServerIdentity
 } from '../shared/DashboardContract.ts';
 import { DASHBOARD_PROTOCOL }                                                   from '../shared/constants/DashboardProtocol.ts';
@@ -1142,6 +1144,57 @@ test('a live dashboard-owned session gets the request as its chat with no confir
   expect(chattedTexts[0]).not.toContain('confirm');
   expect(desktopSession.connectionCount()).toBe(0);
 }));
+
+test('Open in Claude app with no claude executable is 502 naming that, and the live owned session is never stopped', async () => {
+  const homeDirectory = join(scratchDirectory, 'open-in-app-without-claude-home');
+  mkdirSync(homeDirectory);
+  writeExampleRegistry(homeDirectory, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, 'example-storefront') });
+  const ownedOptions = { ...serverOptions, homeDirectory };
+  const realSessions = createDashboardOrchestratorSessions(ownedOptions, {});
+  let stopCount = 0;
+  const liveOwnedSession: OrchestratorSession = {
+    ownership:         'dashboard',
+    sessionId:         'example-owned',
+    pid:               process.pid,
+    name:              null,
+    state:             'idle',
+    startedAt:         null,
+    context:           null,
+    pendingQuestions:  [],
+    lastAction:        null,
+    previousSessionId: null,
+  };
+  const ownedServer = startedOrThrow(await serveDashboard(ownedOptions, {
+    monitor: createProjectMonitor({
+      homeDirectory,
+      readBoardStatus:              () => Promise.resolve({ kind: 'unreadable', reason: 'Example' }),
+      clock:                        () => EXAMPLE_INSTANT,
+      quietMilliseconds:            SHORT_HEARTBEAT_MILLISECONDS,
+      maximumWaitMilliseconds:      60_000,
+      sweepIntervalMilliseconds:    60_000,
+      maximumConcurrentStatusReads: 1,
+      machineParallelAgentLimit:    EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
+    }),
+    orchestratorSessions: {
+      ...realSessions,
+      sessionOf: (trackerId) => (trackerId === TRACKER_ID ? liveOwnedSession : null),
+      stopAndAwaitEnd() {
+        stopCount += 1;
+        return Promise.resolve({ kind: 'ended' });
+      },
+    },
+    productOwnerSessions:            createDashboardOrchestratorSessions(ownedOptions, {}, 'product-owner'),
+    heartbeatIntervalMilliseconds:   SHORT_HEARTBEAT_MILLISECONDS,
+    handoffReplyTimeoutMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
+  }));
+  extraServers.push(ownedServer);
+  const launchToken = (await (await fetch(`${ownedServer.url}${DASHBOARD_PROTOCOL.LAUNCH_TOKEN_PATH}`)).json() as LaunchToken).token;
+  const launchHeaders = { 'Origin': ownedServer.url, [DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME]: launchToken };
+  const answer = await fetch(`${ownedServer.url}/api/projects/${TRACKER_ID}${DASHBOARD_PROTOCOL.ORCHESTRATOR_OPEN_IN_APP_PATH_SUFFIX}`, { method: 'POST', headers: launchHeaders });
+  expect(answer.status).toBe(502);
+  expect(await answer.text()).toContain('claude is not on PATH');
+  expect(stopCount).toBe(0);
+});
 
 test('a clear-low-tickets request names every id; an id not low-priority waiting is 409 with no write', () => withSocketDirectory(async (socketDirectory, listeners) => {
   const fixture = await startOrchestratorServer('orchestrator-clear');

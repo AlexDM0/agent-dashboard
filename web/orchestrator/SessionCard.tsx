@@ -20,11 +20,12 @@ interface SessionCardProperties {
 }
 
 interface DashboardSessionDetailsProperties {
-  role:           SessionRole;
-  trackerId:      string;
-  session:        OrchestratorSession;
-  refreshRequest: SessionRequest;
-  stopRequest:    SessionRequest;
+  role:             SessionRole;
+  trackerId:        string;
+  session:          OrchestratorSession;
+  refreshRequest:   SessionRequest;
+  openInAppRequest: SessionRequest;
+  stopRequest:      SessionRequest;
 }
 
 const STOPPING_TEXTS: Record<SessionRole, string> = { 'orchestrator': 'Stopping…', 'product-owner': 'Ending…' };
@@ -35,13 +36,14 @@ function RequestNote({ request, sendingText }: { request: SessionRequest; sendin
 }
 
 function DashboardSessionDetails({
-  role, trackerId, session, refreshRequest, stopRequest
+  role, trackerId, session, refreshRequest, openInAppRequest, stopRequest
 }: DashboardSessionDetailsProperties) {
   const messages = useOrchestratorConversation(role, trackerId);
   const hasEnded = session.state === 'ended';
   // Only an orchestrator is refreshed; a product owner near its limit is ended and started afresh.
   const isRefreshSuggested = role === 'orchestrator' && ContextUsageUtil.suggestsHandoff(session.context);
-  const hasNotes = isRefreshSuggested || [refreshRequest, stopRequest].some((request) => request.isSending || request.refusal !== null);
+  const requests = [refreshRequest, openInAppRequest, stopRequest];
+  const hasNotes = isRefreshSuggested || requests.some((request) => request.isSending || request.refusal !== null);
   return (
     <>
       {hasEnded
@@ -63,6 +65,7 @@ function DashboardSessionDetails({
               : null}
             <RequestNote request={stopRequest} sendingText={STOPPING_TEXTS[role]} />
             <RequestNote request={refreshRequest} sendingText="Refreshing…" />
+            <RequestNote request={openInAppRequest} sendingText="Opening in the Claude app…" />
           </div>
         )}
     </>
@@ -75,13 +78,15 @@ export function SessionCard({
 }: SessionCardProperties) {
   const sessionName = OrchestratorSessionUtil.nameOf(session, role);
   const refreshRequest = useSessionRequest();
+  const openInAppRequest = useSessionRequest();
   const stopRequest = useSessionRequest();
   const isDashboardOwned = session.ownership === 'dashboard';
+  const sessionRequests = { refreshRequest, openInAppRequest, stopRequest };
   return (
     <section className="ap-session" aria-label={sessionName}>
       <header className="ap-session-head">
         {isDashboardOwned && session.state !== 'ended'
-          ? <OrchestratorMenu role={role} trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
+          ? <OrchestratorMenu role={role} trackerId={trackerId} session={session} {...sessionRequests} />
           : null}
         <span className="ap-session-name ellipsis" title={sessionName}>{sessionName}</span>
         <SessionStateBadge role={role} session={session} />
@@ -93,7 +98,7 @@ export function SessionCard({
           : <span className="mono muted ap-session-started" title={session.startedAt}>started {TimeUtil.clockOfInstant(Date.parse(session.startedAt))}</span>}
       </div>
       {isDashboardOwned
-        ? <DashboardSessionDetails role={role} trackerId={trackerId} session={session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
+        ? <DashboardSessionDetails role={role} trackerId={trackerId} session={session} {...sessionRequests} />
         : null}
       {isReadOnly && !isDashboardOwned ? <p className="muted ap-caption">This desktop app session&apos;s conversation is in its own app.</p> : null}
       {isReadOnly

@@ -9,6 +9,7 @@ import {
   sendSessionChat,
   startOrchestrator,
   startProductOwner,
+  openSessionInApp,
   stopSession
 } from './OrchestratorSessionDelivery.ts';
 
@@ -74,6 +75,21 @@ test('a product owner\'s chat, answer and stop reach only its own routes, never 
     '/api/projects/tracker-example/product-owner/answers',
     '/api/projects/tracker-example/product-owner',
   ]);
+});
+
+test('Open in Claude app is a POST without a body to the role\'s own open-in-app route, carrying the token, its refusal shown verbatim', async () => {
+  const refusalText = 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path';
+  const { sentRequests, sendRequest } = recordingSender(() => new Response(refusalText, { status: 502 }));
+  expect(await openSessionInApp('product-owner', 'tracker-example', sendRequest)).toEqual({ kind: 'refused', reason: refusalText });
+  expect(await openSessionInApp('orchestrator', 'tracker-example', sendRequest)).toMatchObject({ kind: 'refused' });
+  const openRequests = sentRequests.filter((request) => request.path !== '/api/launch-token');
+  expect(openRequests.map((request) => request.path)).toEqual([
+    '/api/projects/tracker-example/product-owner/open-in-app',
+    '/api/projects/tracker-example/orchestrator/open-in-app',
+  ]);
+  expect(openRequests[0]?.init.method).toBe('POST');
+  expect(openRequests[0]?.init.body).toBeUndefined();
+  expect(headerOf(openRequests[0]?.init, 'X-Agent-Dashboard-Launch-Token')).toBe('token-example');
 });
 
 test('a stop is a DELETE without a body, carrying the token', async () => {

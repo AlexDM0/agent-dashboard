@@ -392,7 +392,7 @@ event (at most the safety sweep's 60 s old while its board is quiet).
 ### Routes
 
 Every route below takes the server's Host guard, 403 for a present foreign `Origin`, and 404 for an unknown tracker.
-Start, stop, messages, answers and handoff are stricter: the server issues a random launch token when it starts, held in memory
+Start, stop, messages, answers, handoff and open-in-app are stricter: the server issues a random launch token when it starts, held in memory
 only (never in the app shell at `/`, which Bun answers before the Host guard, nor the log, the server record or a
 tracked repository), and a start, stop, message, answer or handoff whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
 this server's own, is refused 403 before anything is read, spawned or written to a session. The event stream takes no
@@ -413,6 +413,7 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | `POST /api/projects/<trackerId>/product-owner/messages` | body as the orchestrator's: sent to the product owner as `chat`, 204, never to the orchestrator or a watched session. 400 for any other body, 404 when no product owner ran since this server started, 409 for one that has ended or a `sessionId` that is not the product owner's, 502 when the socket fails |
 | `POST /api/projects/<trackerId>/product-owner/answers` | as the orchestrator's answers, for the product owner's pending questions |
 | `GET /api/projects/<trackerId>/product-owner/events` | as the orchestrator's events, for the product owner's conversation and session. There is no product-owner handoff |
+| `POST /api/projects/<trackerId>/<role>/open-in-app` | `<role>` `orchestrator` or `product-owner`; no body; the launch token and this server's own `Origin` as for a start. Moves the dashboard-owned session into the Claude desktop app (see "Opening in the Claude app") and answers 204. 404 when no dashboard-owned session of the role ran since this server started, 409 for one that has ended or an opening of it already under way, 502 when `claude` is not resolved (nothing is stopped), when the session does not end in time, or when `claude --desktop` exits non-zero (its output in the text; the session has ended by then) |
 
 The `agent-progress-orchestrate` skill carries `disable-model-invocation: true`, so a model asked to load it refuses. A
 user-only skill is invoked by the slash command its user turn opens with, which the session expands as the user's own
@@ -437,6 +438,18 @@ Until the note is kept nothing is stopped: a session that ends, asks a question,
 starts. The wait bounds one request; no clock schedules a handoff.
 A handoff is refused while the board's dispatcher is `running` (read afresh for the request; an unreadable board is
 refused too), since a fresh session is not proven to resume a Workflow run another session launched.
+
+### Opening in the Claude app
+
+"Open in Claude app" does what `/desktop` does in a terminal session: the conversation moves into the desktop app. In
+order: the server stops the dashboard-owned session exactly as Stop does and awaits its `ended` (at most
+`HANDOFF_END_TIMEOUT_MILLISECONDS`), then runs `script -q /dev/null <claude> --desktop --resume <sessionId>` detached,
+with the project root as its working directory (`src/services/ClaudeDesktopOpener.ts`, the `claude` the server already
+resolves). `claude --desktop` refuses to run with its output redirected, so macOS `script` gives it a pseudo-terminal.
+Exit 0, or still running after `DESKTOP_OPEN_TIMEOUT_MILLISECONDS` (15 s), counts as opened; the server then forgets
+the ended session, so the snapshot's `orchestrator` or `productOwner` is null and, once the app writes its
+`~/.claude/sessions/<pid>.json` record, the session is listed as watched like any desktop session. It needs a Claude
+subscription, as `/desktop` does.
 
 The snapshot carries each project's dashboard-owned `orchestrator` and `productOwner` (each live, or `ended` since this
 server started; null for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
@@ -721,7 +734,8 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
     the spar instruction (`ConversationHeadingUtil.isSparring`, shown in this header alone), its state, hosted or
     desktop, the first line of the user's first message, the context meter; Collapse into the board's drawer
     (`#/projects/<trackerId>/crew/<role>`: the board opens its crew drawer on that role's tab), Open board, the role's
-    menu (Refresh orchestrator, the handoff, and Stop for an orchestrator; End session for a product owner), Close.
+    menu (Refresh orchestrator, the handoff, Open in Claude app and Stop for an orchestrator; Open in Claude app and End
+    session for a product owner), Close.
     Then the conversation (`ConversationLog`, plain text, tool calls collapsed to one line, the `spar-table` blocks
     taken out). While the session has a pending question, a "Waiting for your answer" card sits docked between the
     conversation and the composer, with the question's age (`DockedQuestionCard`): a lone single-select question shows
@@ -768,14 +782,16 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   `callId`). A live
   dashboard-owned session's head starts, left of its name, with a hamburger toggle named "Orchestrator menu"
   (`web/orchestrator/OrchestratorMenu.tsx`, on the header's `web/menu/PopoverMenu.tsx`, closing as the header's menu
-  does) whose panel holds "Refresh orchestrator" (the handoff, see "Handing off") and "Stop". Each item carries a
+  does) whose panel holds "Refresh orchestrator" (the handoff, see "Handing off"), "Open in Claude app" (see "Opening in
+  the Claude app"; a product owner's panel holds it before End session) and "Stop". Each item carries a
   one-sentence explanation as its `title` tooltip and its accessible description (`web/orchestrator/OrchestratorMenuUtil.ts`),
   and each confirms in the panel before its request: "Refresh this orchestrator? Refresh asks for a note, stops this
-  session, starts a fresh one with the note." with Refresh / Cancel, "Stop this orchestrator?" with Stop / Cancel;
+  session, starts a fresh one with the note." with Refresh / Cancel, "Open this orchestrator in the Claude app? The
+  dashboard stops its own process first." with Open in app / Cancel, "Stop this orchestrator?" with Stop / Cancel;
   Cancel sends nothing, a confirm sends and closes the panel. From 80% of a known window (`CONTEXT_CRITICAL_SHARE`,
   `web/constants/WebLimits.ts`) the toggle carries an `--err-ink` warning dot, "Refresh orchestrator" is highlighted in
   the panel, and the session warns "Context …: refresh this orchestrator before it compacts." in `--err-ink`; it never
-  acts by itself. "Refreshing…" or "Stopping…" shows beside the session while its request is out. A watched session
+  acts by itself. "Refreshing…", "Opening in the Claude app…" or "Stopping…" shows beside the session while its request is out. A watched session
   offers neither the menu nor answers. Every request carries the launch token; a refusal shows the server's text beside
   the session as `--err-ink`. Every user-facing word for the handoff is "refresh"; the route, types and files keep
   "handoff".

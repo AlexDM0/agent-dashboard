@@ -38,13 +38,22 @@ interface ConversationColumnsProperties extends SelectedConversationProperties {
 
 function SessionMenu({ conversation }: { conversation: ChatConversation }) {
   const refreshRequest = useSessionRequest();
+  const openInAppRequest = useSessionRequest();
   const stopRequest = useSessionRequest();
   if (conversation.isSendOnly || conversation.session.state === 'ended') return null;
-  const refusal = refreshRequest.refusal ?? stopRequest.refusal;
+  const requests = [refreshRequest, openInAppRequest, stopRequest];
+  const refusal = requests.find((request) => request.refusal !== null)?.refusal ?? null;
   return (
     <>
-      <OrchestratorMenu role={conversation.role} trackerId={conversation.trackerId} session={conversation.session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
-      {refreshRequest.isSending || stopRequest.isSending ? <span className="muted ap-caption" role="status">Sending…</span> : null}
+      <OrchestratorMenu
+        role={conversation.role}
+        trackerId={conversation.trackerId}
+        session={conversation.session}
+        refreshRequest={refreshRequest}
+        openInAppRequest={openInAppRequest}
+        stopRequest={stopRequest}
+      />
+      {requests.some((request) => request.isSending) ? <span className="muted ap-caption" role="status">Sending…</span> : null}
       {refusal === null ? null : <span className="ap-stepper-refusal" role="alert">{refusal}</span>}
     </>
   );

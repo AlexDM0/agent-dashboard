@@ -76,6 +76,8 @@ export interface OrchestratorSessions {
   stop(trackerId: string): Promise<SupervisorDelivery>;
   /** Stops the session and resolves once it shows `ended`, or fails past the bound with the session left as it is. */
   stopAndAwaitEnd(trackerId: string, timeoutMilliseconds: number): Promise<SessionEnd>;
+  /** Drops the project's session once it has ended, so `sessionOf` answers null; a live session is left as it is. */
+  forgetEnded(trackerId: string): void;
   chat(trackerId: string, text: string): Promise<SupervisorDelivery>;
   /**
    * Sends the text as a chat and resolves with the assistant text of the turn it opens, once the session is idle again;
@@ -476,6 +478,11 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     launch,
     stop:      (trackerId) => send(trackerId, { kind: 'stop' }),
     stopAndAwaitEnd,
+    forgetEnded(trackerId) {
+      if (supervisedByTracker.get(trackerId)?.session.state !== 'ended') return;
+      supervisedByTracker.delete(trackerId);
+      notify();
+    },
     chat,
     replyTo,
     answer,

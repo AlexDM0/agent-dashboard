@@ -26,6 +26,8 @@ export const FAKE_QUESTION = {
 };
 /** Once answered, the fake says this prefix and the answers as JSON. */
 export const FAKE_ANSWERED_PREFIX = 'Example answers: ';
+/** Started with `--desktop`, the fake prints this and exits: 0 under a terminal, 1 without one, as `claude` refuses then. */
+export const FAKE_DESKTOP_OPENING_TEXT = 'Example opening in Claude Desktop';
 
 const EXECUTABLE_MODE = 0o755;
 
@@ -64,6 +66,7 @@ export function writeFakeClaudeExecutable(directory: string): string {
     'const record = (entry) => appendFileSync(transcriptPath, JSON.stringify(entry) + "\\n");',
     'const print = (line) => process.stdout.write(JSON.stringify(line) + "\\n");',
     'record({ event: "started", directory: process.cwd(), commandLineArguments: process.argv.slice(2), pid: process.pid });',
+    `if (process.argv.includes("--desktop")) { console.log(${JSON.stringify(FAKE_DESKTOP_OPENING_TEXT)}); process.exit(process.stdout.isTTY ? 0 : 1); }`,
     'let initPrinted = false;',
     `const usage = { input_tokens: 4, cache_read_input_tokens: ${FAKE_USED_TOKENS - 4 - 230}, cache_creation_input_tokens: 230, output_tokens: 7 };`,
     `const printAssistant = (content) => print({ type: "assistant", message: { model: ${JSON.stringify(FAKE_CLAUDE_MODEL)}, usage, content } });`,

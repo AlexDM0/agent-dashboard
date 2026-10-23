@@ -25,6 +25,8 @@ export const DASHBOARD_LIMITS = {
   HANDOFF_REPLY_TIMEOUT_MILLISECONDS:     180_000,
   /** How long a handoff waits, once it has the note, for the stopped session to end: past the stop grace, by a margin. */
   HANDOFF_END_TIMEOUT_MILLISECONDS:       15_000,
+  /** How long Open in Claude app waits for `claude --desktop` to exit before it counts the app as opening. */
+  DESKTOP_OPEN_TIMEOUT_MILLISECONDS:      15_000,
   /** How often a dropped supervisor connection is retried while its record lives. */
   SUPERVISOR_RECONNECT_MILLISECONDS:      5_000,
   /** macOS keeps 104 bytes for a Unix socket path, its terminating zero among them. */

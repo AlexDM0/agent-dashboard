@@ -4,6 +4,7 @@
  */
 import { expect, test }         from 'bun:test';
 import type { ContextUsage }    from '../../src/shared/DashboardContract.ts';
+import { MenuStepUtil }         from '../menu/MenuStepUtil.ts';
 import { OrchestratorMenuUtil } from './OrchestratorMenuUtil.ts';
 
 function contextWith(usedTokens: number, contextWindowTokens: number | null): ContextUsage {
@@ -15,19 +16,27 @@ function contextWith(usedTokens: number, contextWindowTokens: number | null): Co
 const BELOW_CRITICAL = contextWith(159_999, 200_000);
 const AT_CRITICAL = contextWith(160_000, 200_000);
 
-test('the menu holds Refresh orchestrator then Stop, each explained in one sentence and confirmed by a question', () => {
+test('the menu holds Refresh orchestrator, Open in Claude app then Stop, each explained in one sentence and confirmed by a question', () => {
   const entries = OrchestratorMenuUtil.entriesOf(BELOW_CRITICAL);
-  expect(entries.map((entry) => entry.label)).toEqual(['Refresh orchestrator', 'Stop']);
-  for (const entry of entries) {
+  expect(entries.map((entry) => entry.label)).toEqual(['Refresh orchestrator', 'Open in Claude app', 'Stop']);
+  for (const entry of [...entries, ...OrchestratorMenuUtil.productOwnerEntriesOf()]) {
     expect(entry.description).toMatch(/^[A-Z][^.]*\.$/);
     expect(entry.question).toContain('?');
   }
-  expect(entries[1]?.question).toBe('Stop this orchestrator?');
+  expect(entries[2]?.question).toBe('Stop this orchestrator?');
+});
+
+test('a product owner\'s menu holds Open in Claude app then End session, and Cancel on Open in Claude app never starts it', () => {
+  expect(OrchestratorMenuUtil.productOwnerEntriesOf().map((entry) => entry.id)).toEqual(['open-in-app', 'stop']);
+  const confirming = MenuStepUtil.nextStepOf(MenuStepUtil.initialStep(), { kind: 'action-chosen', actionId: 'open-in-app' });
+  const cancelled = MenuStepUtil.nextStepOf(confirming, { kind: 'cancelled' });
+  expect(MenuStepUtil.startsSending(confirming, cancelled)).toBe(false);
+  expect(cancelled).toEqual(MenuStepUtil.initialStep());
 });
 
 test('at the critical share the toggle carries the warning dot and Refresh is highlighted', () => {
   expect(OrchestratorMenuUtil.hasWarningOf(AT_CRITICAL)).toBe(true);
-  expect(OrchestratorMenuUtil.entriesOf(AT_CRITICAL).map((entry) => entry.isHighlighted)).toEqual([true, false]);
+  expect(OrchestratorMenuUtil.entriesOf(AT_CRITICAL).map((entry) => entry.isHighlighted)).toEqual([true, false, false]);
 });
 
 test('below the critical share, or for an unknown context, neither the dot nor the highlight shows', () => {

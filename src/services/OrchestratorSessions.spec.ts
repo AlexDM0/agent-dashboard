@@ -9,9 +9,17 @@
  * A product owner starts beside a live orchestrator, one per project, briefed by its first message for its mode; with
  * both live, nothing sent to the product owner reaches the orchestrator. A record under the file name used before roles
  * is recovered as the orchestrator's, so a server upgraded mid-run still finds a live one.
+ * Open in Claude app ends the session before `claude --desktop --resume <id>` starts, under a terminal, in the project
+ * root, and the app's session record is then watched rather than shadowed by the ended owned one; it refuses without
+ * the launch token and without a live owned session, starting nothing.
  */
-import { createHash }                             from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync
+} from 'node:fs';
 import { type Server, type Socket, createServer } from 'node:net';
 import { dirname, join }                          from 'node:path';
 import { afterEach, expect, test }                from 'bun:test';
@@ -33,6 +41,7 @@ import { DASHBOARD_FILES }                                                      
 import { DASHBOARD_LIMITS }                                                     from '../shared/constants/DashboardLimits.ts';
 import { DASHBOARD_PROTOCOL }                                                   from '../shared/constants/DashboardProtocol.ts';
 import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../testing/ExampleBoards.ts';
+import { createExampleWorkflowRun, writeExampleSessionRecord }                  from '../testing/ExampleClaudeSessions.ts';
 import { fakeExecutablePrinting }                                               from '../testing/FakeAgentProgressExecutable.ts';
 import {
   FAKE_ANSWERED_PREFIX,
@@ -604,3 +613,48 @@ async function firstEventsOf(response: Response): Promise<{ history: unknown; se
   await reader.cancel();
   return { history: dataByEvent.get('history'), session: dataByEvent.get('session') };
 }
+
+test('Open in Claude app ends the session first, then runs claude --desktop --resume <id> under a terminal in the root, and the app\'s session is then watched', async () => {
+  const fixture = await startLiveSessionFixture(EXAMPLE_DISPATCHER_RUN_ID);
+  try {
+    expect((await sendTo(fixture, DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX, 'POST', '{"startBuilding":false}')).status).toBe(201);
+    const orchestrator = await servedOrchestratorWhen(fixture, 'idle', (session) => session.state === 'idle');
+    const opened = await sendTo(fixture, DASHBOARD_PROTOCOL.ORCHESTRATOR_OPEN_IN_APP_PATH_SUFFIX, 'POST');
+    expect(opened.status, await opened.clone().text()).toBe(204);
+
+    const transcript = readFakeClaudeTranscript(fixture.home);
+    const sessionEndIndex = transcript.findIndex((entry) => entry.event === 'stdin-closed');
+    const desktopStartIndex = transcript.findIndex((entry) => entry.event === 'started' && entry.commandLineArguments.includes('--desktop'));
+    const desktopStart = transcript[desktopStartIndex];
+    expect(sessionEndIndex).toBeGreaterThanOrEqual(0);
+    expect(desktopStartIndex).toBeGreaterThan(sessionEndIndex);
+    expect(desktopStart?.event === 'started' ? desktopStart.commandLineArguments : []).toEqual(['--desktop', '--resume', orchestrator.sessionId]);
+    expect(desktopStart?.event === 'started' ? desktopStart.directory : '').toBe(realpathSync(join(fixture.home, 'example-storefront')));
+    expect(processIsAlive(orchestrator.pid)).toBe(false);
+
+    const desktopSession = {
+      pid: process.pid, sessionId: orchestrator.sessionId, cwd: join(fixture.home, 'example-storefront'), messagingSocketPath: join(fixture.home, 'desktop.sock')
+    };
+    writeExampleSessionRecord(fixture.home, desktopSession);
+    createExampleWorkflowRun(fixture.home, desktopSession, EXAMPLE_DISPATCHER_RUN_ID);
+    const snapshot = await servedSnapshotOf(fixture);
+    expect(snapshot.projects[0]?.orchestrator).toBeNull();
+    expect(snapshot.watchedOrchestratorsByTracker[TRACKER_ID]?.map((session) => [session.sessionId, session.ownership])).toEqual([[orchestrator.sessionId, 'watched']]);
+  } finally {
+    await stopLiveSessionFixture(fixture);
+  }
+}, LIVE_SESSION_SPEC_TIMEOUT_MILLISECONDS);
+
+test('Open in Claude app refuses without the launch token, and with no live dashboard-owned session, starting nothing', async () => {
+  const fixture = await startLiveSessionFixture(null);
+  try {
+    const openInAppPath = liveProjectPath(fixture, DASHBOARD_PROTOCOL.ORCHESTRATOR_OPEN_IN_APP_PATH_SUFFIX);
+    expect((await fetch(openInAppPath, { method: 'POST', headers: { Origin: fixture.server.url } })).status).toBe(403);
+    const withoutSession = await sendTo(fixture, DASHBOARD_PROTOCOL.PRODUCT_OWNER_OPEN_IN_APP_PATH_SUFFIX, 'POST');
+    expect(withoutSession.status).toBe(404);
+    expect(await withoutSession.text()).toBe('No dashboard-owned product owner of this project runs');
+    expect(readFakeClaudeTranscript(fixture.home)).toEqual([]);
+  } finally {
+    await stopLiveSessionFixture(fixture);
+  }
+}, LIVE_SESSION_SPEC_TIMEOUT_MILLISECONDS);
