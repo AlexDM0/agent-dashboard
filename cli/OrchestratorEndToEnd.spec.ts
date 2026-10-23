@@ -6,10 +6,16 @@
  * itself, shows `ended` in the next snapshot, and that two simultaneous starts spawn one supervisor. Chat and answers
  * take the same token and Origin and write nothing when refused; a chat is the session's user turn, a stream opened late
  * replays the conversation in order, and a pending question is answered once, a second answer writing nothing. The
- * session's own `~/.claude/sessions/` record never lists it as watched, and a watched session borrows its context window.
+ * session's own `~/.claude/sessions/` record never lists it as watched, even holding the board's dispatcher run, and a
+ * watched session, a desktop holder of that run, borrows its context window.
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join }                                  from 'node:path';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync
+} from 'node:fs';
+import { join } from 'node:path';
 import {
   afterAll,
   beforeAll,
@@ -25,10 +31,16 @@ import type {
   LaunchToken,
   OrchestratorSession
 } from '../src/shared/DashboardContract.ts';
-import { orchestratorDirectoryOf }                                                 from '../src/shared/OrchestratorFilePaths.ts';
-import { DASHBOARD_PROTOCOL }                                                      from '../src/shared/constants/DashboardProtocol.ts';
-import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry }    from '../src/testing/ExampleBoards.ts';
-import { exampleAssistantLine, writeExampleSessionRecord, writeExampleTranscript } from '../src/testing/ExampleClaudeSessions.ts';
+import { orchestratorDirectoryOf }                                              from '../src/shared/OrchestratorFilePaths.ts';
+import { DASHBOARD_PROTOCOL }                                                   from '../src/shared/constants/DashboardProtocol.ts';
+import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../src/testing/ExampleBoards.ts';
+import {
+  createExampleWorkflowRun,
+  exampleAssistantLine,
+  writeExampleSessionRecord,
+  writeExampleTranscript
+} from '../src/testing/ExampleClaudeSessions.ts';
+import { fakeExecutablePrinting } from '../src/testing/FakeAgentProgressExecutable.ts';
 import {
   FAKE_ANSWERED_PREFIX,
   FAKE_ASK_MARKER,
@@ -53,6 +65,7 @@ const SESSION_WAIT_MILLISECONDS = 10_000;
 const TRACKER_ID = 'example-storefront-tracker';
 const PROJECT_NAME = 'Example Storefront';
 const WATCHED_USED_TOKENS = 4_321;
+const DISPATCHER_RUN_ID = 'example-run-7';
 
 const home = createShortScratchDirectory('ad');
 const projectRoot = createExampleProjectRoot(home, 'example-storefront');
@@ -63,13 +76,24 @@ const serverOutputs: Promise<string>[] = [];
 let server: Bun.Subprocess<'ignore', 'pipe', 'pipe'> | null = null;
 let launchToken = '';
 
+/** A readable board with a dispatcher run, so a desktop session holding that run is watched. */
+function boardStatusExecutable(): string {
+  const document = JSON.parse(readFileSync(join(import.meta.dir, '..', 'src', 'adapters', 'testing', 'ScratchTrackerStatusDocument.json'), 'utf8')) as {
+    concurrency: Record<string, unknown>;
+  };
+  document.concurrency['dispatcherRunId'] = DISPATCHER_RUN_ID;
+  const documentPath = join(home, 'board-status.json');
+  writeFileSync(documentPath, JSON.stringify(document));
+  return fakeExecutablePrinting(home, documentPath);
+}
+
 function startServer(): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
   const started = Bun.spawn([process.execPath, join(import.meta.dir, '..', 'agent-dashboard.ts'), 'serve', '--port', String(port)], {
     cwd:    home,
     stdin:  'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
-    env:    { ...scratchDashboardEnvironment(home), AGENT_DASHBOARD_CLAUDE: writeFakeClaudeExecutable(home) },
+    env:    { ...scratchDashboardEnvironment(home), AGENT_DASHBOARD_CLAUDE: writeFakeClaudeExecutable(home), AGENT_DASHBOARD_AGENT_PROGRESS: boardStatusExecutable() },
   });
   serverOutputs.push(Promise.all([new Response(started.stdout).text(), new Response(started.stderr).text()]).then((texts) => texts.join('\n')));
   return started;
@@ -229,6 +253,8 @@ test('a started session runs in the project root in auto mode and is still reach
   };
   writeExampleSessionRecord(home, ownRecord);
   writeExampleSessionRecord(home, watchedRecord);
+  createExampleWorkflowRun(home, ownRecord, DISPATCHER_RUN_ID);
+  createExampleWorkflowRun(home, watchedRecord, DISPATCHER_RUN_ID);
   writeExampleTranscript(home, watchedRecord, [exampleAssistantLine(FAKE_CLAUDE_MODEL, { input_tokens: WATCHED_USED_TOKENS }, '2026-10-22T10:00:00.000Z')]);
   const snapshot = await (await fetch(`${url}/api/snapshot`)).json() as DashboardSnapshot;
   const watched = snapshot.watchedOrchestratorsByTracker[TRACKER_ID] ?? [];
