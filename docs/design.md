@@ -394,7 +394,7 @@ event (at most the safety sweep's 60 s old while its board is quiet).
 Every route below takes the server's Host guard, 403 for a present foreign `Origin`, and 404 for an unknown tracker.
 Start, stop, messages, answers, handoff and open-in-app are stricter: the server issues a random launch token when it starts, held in memory
 only (never in the app shell at `/`, which Bun answers before the Host guard, nor the log, the server record or a
-tracked repository), and a start, stop, message, answer or handoff whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
+tracked repository), and a start, stop, message, answer, handoff or open-in-app whose `X-Agent-Dashboard-Launch-Token` header is not that token, or whose `Origin` is missing or not
 this server's own, is refused 403 before anything is read, spawned or written to a session. The event stream takes no
 token (an `EventSource` sends no header), refuses a present foreign `Origin` and sends no CORS headers. The token is the answer of a Host-guarded
 `GET /api/launch-token` (`LaunchToken`, 403 for a foreign `Origin`), which a page elsewhere cannot read (no CORS grant)
