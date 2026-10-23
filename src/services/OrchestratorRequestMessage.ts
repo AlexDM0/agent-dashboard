@@ -11,6 +11,10 @@ export const ORCHESTRATOR_REQUEST_BODY_REFUSAL = 'The body must be { "kind": "st
 /** The skill refuses model invocation, so a started session's first user turn opens with its slash command instead. */
 export const ORCHESTRATE_SKILL_COMMAND = '/agent-progress-orchestrate';
 
+/** A session the dashboard starts has its board in the dashboard's frame already, so the skill's browser step is skipped. */
+export const BOARD_ALREADY_SHOWN_INSTRUCTION = 'The agent-dashboard already shows this board: skip `agent-progress open` '
+  + 'and open no browser window or tab for it.';
+
 const RELAY_OPENING = 'This message relays the user\'s click in the agent-dashboard, for the project';
 
 const START_BUILDING_INSTRUCTION = 'The user asks you to start building: run this board through the agent-progress '
@@ -52,12 +56,12 @@ export function orchestratorMessageTextOf(request: OrchestratorRequest, project:
 
 /** The first message of an orchestrator started without the go to build. */
 export function orchestratorStartTextOf(project: string): string {
-  return `${ORCHESTRATE_SKILL_COMMAND}\n${RELAY_OPENING} ${project}. ${START_ORCHESTRATING_INSTRUCTION}`;
+  return `${ORCHESTRATE_SKILL_COMMAND}\n${BOARD_ALREADY_SHOWN_INSTRUCTION}\n${RELAY_OPENING} ${project}. ${START_ORCHESTRATING_INSTRUCTION}`;
 }
 
 /** The first message of an orchestrator started with the go to build. */
 export function orchestratorStartBuildingTextOf(project: string): string {
-  return `${ORCHESTRATE_SKILL_COMMAND}\n${requestTextOf({ kind: 'start-building' }, project)}`;
+  return `${ORCHESTRATE_SKILL_COMMAND}\n${BOARD_ALREADY_SHOWN_INSTRUCTION}\n${requestTextOf({ kind: 'start-building' }, project)}`;
 }
 
 function requestTextOf(request: OrchestratorRequest, project: string): string {

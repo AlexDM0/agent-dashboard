@@ -7,6 +7,7 @@ import { expect, test } from 'bun:test';
 
 import type { OrchestratorRequest } from '../shared/DashboardContract.ts';
 import {
+  BOARD_ALREADY_SHOWN_INSTRUCTION,
   orchestratorMessageTextOf,
   orchestratorRequestOf,
   orchestratorStartBuildingTextOf,
@@ -47,10 +48,31 @@ test('the start text opens with the orchestrate slash command, relays the click,
   expect(text).toContain('Launch no dispatcher run until the user asks you to start building');
 });
 
-test('the started-to-build text opens with the orchestrate slash command, then the dashboard session\'s start-building text', () => {
+test('the started-to-build text opens with the orchestrate slash command, the board-shown line, then the dashboard session\'s start-building text', () => {
   expect(orchestratorStartBuildingTextOf('example-storefront')).toBe(
-    `/agent-progress-orchestrate\n${orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront', 'dashboard-session')}`
+    `/agent-progress-orchestrate\n${BOARD_ALREADY_SHOWN_INSTRUCTION}\n`
+    + orchestratorMessageTextOf({ kind: 'start-building' }, 'example-storefront', 'dashboard-session')
   );
+});
+
+test('both start texts say, right after the slash command, that the dashboard shows the board, so no agent-progress open and no browser', () => {
+  expect(BOARD_ALREADY_SHOWN_INSTRUCTION).toContain('The agent-dashboard already shows this board');
+  expect(BOARD_ALREADY_SHOWN_INSTRUCTION).toContain('skip `agent-progress open`');
+  expect(BOARD_ALREADY_SHOWN_INSTRUCTION).toContain('open no browser window or tab');
+  for (const text of [orchestratorStartTextOf('example-storefront'), orchestratorStartBuildingTextOf('example-storefront')]) {
+    expect(text, text).toStartWith(`/agent-progress-orchestrate\n${BOARD_ALREADY_SHOWN_INSTRUCTION}\n`);
+  }
+});
+
+test('a request relayed through a session\'s socket carries no board-shown line, for a desktop or a dashboard-owned session', () => {
+  const requests: OrchestratorRequest[] = [{ kind: 'start-building' }, { kind: 'clear-low-tickets', ticketIds: ['012'] }];
+  for (const request of requests) {
+    for (const recipient of ['desktop-session', 'dashboard-session'] as const) {
+      const text = orchestratorMessageTextOf(request, 'example-storefront', recipient);
+      expect(text, `${request.kind} ${recipient}`).not.toContain('agent-progress open');
+      expect(text, `${request.kind} ${recipient}`).not.toContain('browser');
+    }
+  }
 });
 
 test('no message text asks the model to load a skill, which a user-only skill refuses', () => {

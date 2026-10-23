@@ -6,12 +6,12 @@
  */
 import { join } from 'node:path';
 
-import { writeFileAtomically }       from '../lib/atomic-file/AtomicFile.ts';
-import type { OrchestratorSession }  from '../shared/DashboardContract.ts';
-import { UnknownValueUtil }          from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_FILES }           from '../shared/constants/DashboardFiles.ts';
-import { ORCHESTRATE_SKILL_COMMAND } from './OrchestratorRequestMessage.ts';
-import type { OrchestratorSessions } from './OrchestratorSessions.ts';
+import { writeFileAtomically }                                        from '../lib/atomic-file/AtomicFile.ts';
+import type { OrchestratorSession }                                   from '../shared/DashboardContract.ts';
+import { UnknownValueUtil }                                           from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_FILES }                                            from '../shared/constants/DashboardFiles.ts';
+import { BOARD_ALREADY_SHOWN_INSTRUCTION, ORCHESTRATE_SKILL_COMMAND } from './OrchestratorRequestMessage.ts';
+import type { OrchestratorSessions }                                  from './OrchestratorSessions.ts';
 
 export const HANDOFF_NOTE_REQUEST = [
   'Your context is filling up, so the dashboard is handing this board over to a fresh orchestrator session.',
@@ -50,6 +50,7 @@ export function handoffNotePathOf(handoffDirectory: string, trackerId: string, n
 export function freshSessionMessageOf(previousSessionId: string, notePath: string, note: string): string {
   return [
     ORCHESTRATE_SKILL_COMMAND,
+    BOARD_ALREADY_SHOWN_INSTRUCTION,
     `You continue the previous orchestrator's work on this board: session ${previousSessionId} handed it over to you as its`,
     `context filled up. Its handoff note follows, also kept at ${notePath}. Read the board before you act on it.`,
     '',

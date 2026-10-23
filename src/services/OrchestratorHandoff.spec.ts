@@ -49,7 +49,7 @@ import { createShortScratchDirectory, removeScratchDirectory }                  
 import { waitUntil }                                                                        from '../testing/WaitUntil.ts';
 import { type RunningDashboardServer, createDashboardOrchestratorSessions, serveDashboard } from './DashboardServer.ts';
 import { HANDOFF_NOTE_REQUEST, freshSessionMessageOf, handoffDirectoryOf }                  from './OrchestratorHandoff.ts';
-import { orchestratorStartTextOf }                                                          from './OrchestratorRequestMessage.ts';
+import { BOARD_ALREADY_SHOWN_INSTRUCTION, orchestratorStartTextOf }                         from './OrchestratorRequestMessage.ts';
 import { createProjectMonitor }                                                             from './ProjectMonitor.ts';
 
 const SPEC_TIMEOUT_MILLISECONDS = 30_000;
@@ -244,6 +244,16 @@ test('the fresh session\'s first message opens with the orchestrate slash comman
   expect(firstMessage.startsWith('/agent-progress-orchestrate\n')).toBe(true);
   expect(firstMessage.replace(note, '')).not.toMatch(/\bskill\b/i);
   expect(firstMessage.endsWith(note)).toBe(true);
+});
+
+test('the fresh session\'s first message says, right after the slash command, to skip agent-progress open and open no browser', () => {
+  const firstMessage = freshSessionMessageOf('example-previous-session', '/example/handoffs/note.md', 'Example note.');
+  const [slashCommandLine, boardShownLine] = firstMessage.split('\n');
+  expect(slashCommandLine).toBe('/agent-progress-orchestrate');
+  expect(boardShownLine).toBe(BOARD_ALREADY_SHOWN_INSTRUCTION);
+  expect(boardShownLine).toContain('The agent-dashboard already shows this board');
+  expect(boardShownLine).toContain('skip `agent-progress open`');
+  expect(boardShownLine).toContain('open no browser window or tab');
 });
 
 test('a handoff is 409 and changes nothing while a question is pending, while the session is busy, or while the dispatcher runs', async () => {

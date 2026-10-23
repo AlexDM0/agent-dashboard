@@ -427,7 +427,10 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 The `agent-progress-orchestrate` skill carries `disable-model-invocation: true`, so a model asked to load it refuses. A
 user-only skill is invoked by the slash command its user turn opens with, which the session expands as the user's own
 invocation, never by text asking the model to load it: the start turns above and the refresh turn below each open with
-`/agent-progress-orchestrate` on a line of its own.
+`/agent-progress-orchestrate` on a line of its own. The next line (`BOARD_ALREADY_SHOWN_INSTRUCTION`) tells the session
+the agent-dashboard already shows its board, so it skips the skill's `agent-progress open` and opens no browser window
+or tab for it; nothing else in its opening sequence changes. A request relayed through a session's socket (start
+building, clear low tickets) carries no such line: that session was not started by the dashboard.
 
 ### Handing off
 
