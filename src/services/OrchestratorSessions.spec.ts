@@ -519,7 +519,8 @@ test('the product owner\'s first message is its brief: the spar brief carries th
     const sparBrief = productOwnerBriefTextOf('example-storefront', 'spar');
     await waitUntil(() => userTextsReadBy(fixture, sparring.pid).length > 0, 'the sparring product owner read its brief');
     expect(userTextsReadBy(fixture, sparring.pid)).toEqual([sparBrief]);
-    const namedInBrief = ['example-storefront', '`agent-po`', '`agent-progress-orchestrate`', 'never dispatch', 'never claim or start a ticket', `"${PRODUCT_OWNER_WRAP_UP_TEXT}"`];
+    expect(sparBrief.startsWith('/agent-po\n')).toBe(true);
+    const namedInBrief = ['example-storefront', '`agent-progress-orchestrate`', 'never dispatch', 'never claim or start a ticket', `"${PRODUCT_OWNER_WRAP_UP_TEXT}"`];
     for (const named of namedInBrief) expect(sparBrief).toContain(named);
 
     expect((await stopProductOwner(fixture)).status).toBe(204);
@@ -531,7 +532,7 @@ test('the product owner\'s first message is its brief: the spar brief carries th
     await waitUntil(() => userTextsReadBy(fixture, filing.pid).length > 0, 'the filing product owner read its brief');
     const fileBrief = productOwnerBriefTextOf('example-storefront', 'file');
     expect(userTextsReadBy(fixture, filing.pid)).toEqual([fileBrief]);
-    expect(fileBrief).toContain('`agent-po`');
+    expect(fileBrief.startsWith('/agent-po\n')).toBe(true);
     expect(fileBrief).not.toContain(PRODUCT_OWNER_WRAP_UP_TEXT);
   } finally {
     await stopLiveSessionFixture(fixture);
