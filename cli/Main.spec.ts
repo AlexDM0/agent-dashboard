@@ -12,7 +12,7 @@ import { createScratchDirectory, removeScratchDirectory }          from '../src/
 import { runCommandLine }                                          from './Main.ts';
 import { readServerRecord, serverRecordPathOf, writeServerRecord } from './ServerRecordFile.ts';
 import { createCapturedCommandContext }                            from './testing/CapturedCommandContext.ts';
-import { freeLocalPort }                                           from './testing/DashboardProcess.ts';
+import { freeDashboardPort }                                       from './testing/DashboardProcess.ts';
 
 const scratchHomes: string[] = [];
 const runningServers: RunningDashboardServer[] = [];
@@ -50,7 +50,7 @@ function scratchHome(): string {
 }
 
 function writeStaleRecord(home: string): void {
-  const port = freeLocalPort();
+  const port = freeDashboardPort();
   writeServerRecord(home, {
     pid: 2_147_483_001, port, url: `http://127.0.0.1:${port}`, boardOrigin: null, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
   });
@@ -119,7 +119,7 @@ test('stop with nothing running is exit 0 with a line saying so', async () => {
 
 test('stop leaves the record of a process that lives but does not answer, and refuses at exit 1 naming its pid', async () => {
   const home = scratchHome();
-  const port = freeLocalPort();
+  const port = freeDashboardPort();
   writeServerRecord(home, {
     pid: process.pid, port, url: `http://127.0.0.1:${port}`, boardOrigin: null, startedAt: '2026-09-18T20:11:03Z', version: '0.0.0-spec'
   });
@@ -133,7 +133,7 @@ test('serve refuses at exit 1 while another dashboard answers for the record, an
   const home = scratchHome();
   const running = await recordedRunningServer(home);
   const context = createCapturedCommandContext(home);
-  expect(await runCommandLine(['serve', '--port', String(freeLocalPort())], context)).toBe(1);
+  expect(await runCommandLine(['serve', '--port', String(freeDashboardPort())], context)).toBe(1);
   expect(context.errorText()).toContain(`already runs at ${running.url}; stop it with agent-dashboard stop`);
   expect(readServerRecord(home)).toMatchObject({ kind: 'present', record: { pid: process.pid, url: running.url } });
 });
@@ -142,7 +142,7 @@ test('open with another --port than the running dashboard\'s refuses at exit 1; 
   const home = scratchHome();
   const running = await recordedRunningServer(home);
   const refused = createCapturedCommandContext(home);
-  expect(await runCommandLine(['open', '--port', String(freeLocalPort())], refused)).toBe(1);
+  expect(await runCommandLine(['open', '--port', String(freeDashboardPort())], refused)).toBe(1);
   expect(refused.errorText()).toContain(`already runs at ${running.url}`);
   for (const commandLine of [['open', '--port', String(running.port)], ['open']]) {
     const reused = createCapturedCommandContext(home);

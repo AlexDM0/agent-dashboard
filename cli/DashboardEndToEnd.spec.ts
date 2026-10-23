@@ -5,10 +5,10 @@
 import { existsSync }             from 'node:fs';
 import { afterAll, expect, test } from 'bun:test';
 
-import { processIsAlive }                                 from '../src/lib/process-liveness/ProcessIsAlive.ts';
-import { createScratchDirectory, removeScratchDirectory } from '../src/testing/ScratchDirectory.ts';
-import { readServerRecord, serverRecordPathOf }           from './ServerRecordFile.ts';
-import { freeLocalPort, runAgentDashboard }               from './testing/DashboardProcess.ts';
+import { processIsAlive }                                              from '../src/lib/process-liveness/ProcessIsAlive.ts';
+import { createScratchDirectory, removeScratchDirectory }              from '../src/testing/ScratchDirectory.ts';
+import { readServerRecord, serverRecordPathOf }                        from './ServerRecordFile.ts';
+import { onFreeDashboardPort, refusedForAHeldPort, runAgentDashboard } from './testing/DashboardProcess.ts';
 
 const END_TO_END_TIMEOUT_MILLISECONDS = 30_000;
 
@@ -22,10 +22,13 @@ afterAll(() => {
 });
 
 test('open starts a server, a second open reuses it, status reports it and stop ends it', async () => {
-  const port = freeLocalPort();
+  let port = 0;
+  const firstOpen = await onFreeDashboardPort(async (candidatePort) => {
+    port = candidatePort;
+    return await runAgentDashboard(['open', '--port', String(candidatePort)], home);
+  }, refusedForAHeldPort);
   const url = `http://127.0.0.1:${port}`;
 
-  const firstOpen = await runAgentDashboard(['open', '--port', String(port)], home);
   expect(firstOpen.standardError).toBe('');
   expect(firstOpen.exitCode).toBe(0);
   expect(firstOpen.standardOutput).toContain(`Started the dashboard server at ${url}`);

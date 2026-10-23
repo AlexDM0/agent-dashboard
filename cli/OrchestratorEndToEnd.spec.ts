@@ -42,10 +42,10 @@ import {
   readFakeClaudeTranscript,
   writeFakeClaudeExecutable
 } from '../src/testing/FakeClaudeExecutable.ts';
-import { createShortScratchDirectory, removeScratchDirectory } from '../src/testing/ScratchDirectory.ts';
-import { waitUntil }                                           from '../src/testing/WaitUntil.ts';
-import { serverRecordPathOf }                                  from './ServerRecordFile.ts';
-import { freeLocalPort, scratchDashboardEnvironment }          from './testing/DashboardProcess.ts';
+import { createShortScratchDirectory, removeScratchDirectory }                   from '../src/testing/ScratchDirectory.ts';
+import { waitUntil }                                                             from '../src/testing/WaitUntil.ts';
+import { serverRecordPathOf }                                                    from './ServerRecordFile.ts';
+import { onFreeDashboardPort, refusedForAHeldPort, scratchDashboardEnvironment } from './testing/DashboardProcess.ts';
 
 const END_TO_END_TIMEOUT_MILLISECONDS = 30_000;
 const SERVER_START_WAIT_MILLISECONDS = 10_000;
@@ -56,9 +56,9 @@ const WATCHED_USED_TOKENS = 4_321;
 
 const home = createShortScratchDirectory('ad');
 const projectRoot = createExampleProjectRoot(home, 'example-storefront');
-const port = freeLocalPort();
-const url = `http://127.0.0.1:${port}`;
-const orchestratorPath = `${url}${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/${TRACKER_ID}${DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX}`;
+let port = 0;
+let url = '';
+let orchestratorPath = '';
 const serverOutputs: Promise<string>[] = [];
 let server: Bun.Subprocess<'ignore', 'pipe', 'pipe'> | null = null;
 let launchToken = '';
@@ -89,6 +89,26 @@ async function waitForServer(): Promise<void> {
     if (performance.now() > deadline) throw new Error('the dashboard server did not answer');
     await Bun.sleep(50);
   }
+}
+
+/** The server answering, or the exit code and output of a server that stopped before it answered. */
+async function startServerOn(candidatePort: number): Promise<{ answers: true } | { answers: false; exitCode: number; output: string }> {
+  port = candidatePort;
+  url = `http://127.0.0.1:${port}`;
+  orchestratorPath = `${url}${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/${TRACKER_ID}${DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX}`;
+  const started = startServer();
+  server = started;
+  const stoppedFirst = await Promise.race([waitForServer().then(() => false), started.exited.then(() => true)]);
+  if (!stoppedFirst) return { answers: true };
+  return { answers: false, exitCode: await started.exited, output: await serverOutputs.at(-1) ?? '' };
+}
+
+async function startServerOnAFreePort(): Promise<void> {
+  const start = await onFreeDashboardPort(
+    startServerOn,
+    (outcome) => !outcome.answers && refusedForAHeldPort({ exitCode: outcome.exitCode, standardOutput: '', standardError: outcome.output }),
+  );
+  if (!start.answers) throw new Error(`the dashboard server stopped at exit ${start.exitCode}: ${start.output}`);
 }
 
 function launchHeaders(overrides: Record<string, string | null> = {}): Record<string, string> {
@@ -122,8 +142,7 @@ async function fetchLaunchToken(): Promise<string> {
 
 beforeAll(async () => {
   writeExampleRegistry(home, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, PROJECT_NAME) });
-  server = startServer();
-  await waitForServer();
+  await startServerOnAFreePort();
   launchToken = await fetchLaunchToken();
 });
 

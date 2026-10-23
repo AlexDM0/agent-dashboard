@@ -47,10 +47,44 @@ export async function runAgentDashboard(commandLineArguments: readonly string[],
   return { exitCode, standardOutput, standardError };
 }
 
-/** A port the kernel just handed out and released, so the end-to-end server never meets the owner's own dashboard on 4710. */
-export function freeLocalPort(): number {
-  const listener = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data: () => {} } });
-  const { port } = listener;
-  listener.stop(true);
-  return port;
+const FREE_PORT_SEARCH_ATTEMPTS = 20;
+const PORT_TAKEN_RETRY_ATTEMPTS = 5;
+
+function portCanBeBound(port: number): boolean {
+  try {
+    Bun.listen({ hostname: '127.0.0.1', port, socket: { data: () => {} } }).stop(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A port the kernel just handed out and released, with the board port one above it bindable too, so the end-to-end server
+ * never meets the owner's own dashboard on 4710. Released ports can still be taken before the child binds them.
+ */
+export function freeDashboardPort(): number {
+  for (let i = 0; i < FREE_PORT_SEARCH_ATTEMPTS; i += 1) {
+    const listener = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data: () => {} } });
+    const { port } = listener;
+    const boardPortIsFree = portCanBeBound(port + 1);
+    listener.stop(true);
+    if (boardPortIsFree) return port;
+  }
+  throw new Error(`No free port with a free board port above it in ${FREE_PORT_SEARCH_ATTEMPTS} tries.`);
+}
+
+/** Runs an attempt on a fresh free dashboard port again while another process took that port first, then returns its last outcome. */
+export async function onFreeDashboardPort<Outcome>(
+  attempt:      (port: number) => Promise<Outcome>,
+  portWasTaken: (outcome: Outcome) => boolean,
+): Promise<Outcome> {
+  let outcome = await attempt(freeDashboardPort());
+  for (let i = 1; i < PORT_TAKEN_RETRY_ATTEMPTS && portWasTaken(outcome); i += 1) outcome = await attempt(freeDashboardPort());
+  return outcome;
+}
+
+/** A refusal at exit 1 for a held port, or a detached server that stopped while binding one. */
+export function refusedForAHeldPort(result: DashboardProcessResult): boolean {
+  return result.exitCode === 1 && /already held|is held by|stopped while starting/u.test(result.standardError);
 }
