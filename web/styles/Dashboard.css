@@ -123,6 +123,19 @@ ul { padding: 0; list-style: none; }
 .ap-inbox-entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
 .ap-inbox-project { font-weight: 600; overflow-wrap: anywhere; }
 .ap-inbox-age { font-size: var(--fs-micro); }
+.ap-inbox-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.ap-inbox-hosted {
+  padding: 0 6px; font: 500 var(--fs-micro)/16px var(--font-mono); color: var(--ink-muted);
+  border: 1px solid var(--line-strong); border-radius: var(--r-pill);
+}
+.ap-inbox-context { display: grid; gap: 2px; margin: 0; font-size: var(--fs-small); }
+.ap-inbox-context-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+.ap-inbox-context-row dt, .ap-inbox-context-row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.ap-inbox-mentions { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.ap-inbox-said { white-space: pre-wrap; }
+.ap-inbox-open-conversation { align-self: flex-start; font-size: var(--fs-small); }
+.ap-inbox-alert-title { margin: 0; font-weight: 600; color: var(--err-ink); overflow-wrap: anywhere; }
+.ap-inbox-alert-explanation, .ap-inbox-refusal { margin: 0; font-size: var(--fs-small); overflow-wrap: anywhere; }
 
 @keyframes ap-pulse { 50% { opacity: 0.45; transform: scale(0.8); } }
 @media (prefers-reduced-motion: no-preference) {

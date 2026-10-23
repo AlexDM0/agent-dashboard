@@ -1,10 +1,12 @@
 import type {
   BoardSummary,
+  ContextUsage,
   DashboardSnapshot,
   OrchestratorSession,
   PendingQuestion,
   ProjectHealth,
-  ProjectSnapshot
+  ProjectSnapshot,
+  QuestionContext
 } from '../../src/shared/DashboardContract.ts';
 
 const FIXTURE_BOARD_ORIGIN = 'http://127.0.0.1:4851';
@@ -25,14 +27,23 @@ export function orchestratorSessionWith(overrides: Partial<OrchestratorSession> 
   };
 }
 
-export function pendingQuestionWith(requestId: string, askedAt: string): PendingQuestion {
+export const EMPTY_QUESTION_CONTEXT: QuestionContext = { dispatcherRunId: null, mentionedTicketIds: [], lastAssistantLine: null };
+
+export function pendingQuestionWith(requestId: string, askedAt: string, context: QuestionContext = EMPTY_QUESTION_CONTEXT): PendingQuestion {
   return {
     requestId,
     askedAt,
     questions: [{
       question: `Example question ${requestId}?`, header: '', multiSelect: false, options: [{ label: 'Yes', description: '' }]
     }],
-    context: { dispatcherRunId: null, mentionedTicketIds: [], lastAssistantLine: null },
+    context,
+  };
+}
+
+/** A context of `usedTokens` in a 100k window by default, so 84_000 is 84%. */
+export function contextUsageWith(usedTokens: number, contextWindowTokens: number | null = 100_000): ContextUsage {
+  return {
+    usedTokens, contextWindowTokens, model: 'example-model', measuredAt: '2026-10-21T10:00:00+02:00'
   };
 }
 
@@ -121,4 +132,31 @@ export function fleetSnapshotWith(overrides: Partial<DashboardSnapshot> = {}): D
     watchedOrchestratorsByTracker,
     ...overrides,
   };
+}
+
+export const MARKUP_INJECTION_LINE = 'Checking the build <img src=x onerror=alert(1)> before asking';
+
+/**
+ * An inbox fleet: a question with every context row, its last line holding markup that must stay text, a question with
+ * an empty context, an idle orchestrator at 84% (a Hand off it would take) and one waiting at 85% (a refused one).
+ */
+export function inboxSnapshotWith(): DashboardSnapshot {
+  const stoppedBoard = (): ProjectHealth => ({ kind: 'ready', board: boardSummaryWith({ dispatcherState: 'stopped' }) });
+  const fullContext = { dispatcherRunId: 'run-0123456789abcdef', mentionedTicketIds: ['041', '133'], lastAssistantLine: MARKUP_INJECTION_LINE };
+  const contextQuestion = pendingQuestionWith('request-context', '2026-10-21T09:50:00+02:00', fullContext);
+  const projects = [
+    projectSnapshotWith('example-storefront', {
+      health:       stoppedBoard(),
+      orchestrator: orchestratorSessionWith({ state: 'waiting-for-answer', context: contextUsageWith(85_000), pendingQuestions: [contextQuestion] }),
+    }),
+    projectSnapshotWith('example-notes', {
+      health:       stoppedBoard(),
+      orchestrator: orchestratorSessionWith({ state: 'waiting-for-answer', pendingQuestions: [pendingQuestionWith('request-bare', '2026-10-21T09:55:00+02:00')] }),
+    }),
+    projectSnapshotWith('example-agency-site', { health: stoppedBoard(), orchestrator: orchestratorSessionWith({ state: 'idle', context: contextUsageWith(84_000) }) }),
+  ];
+  return fleetSnapshotWith({
+    projects,
+    watchedOrchestratorsByTracker: Object.fromEntries(projects.map((project) => [project.trackerId, []])),
+  });
 }

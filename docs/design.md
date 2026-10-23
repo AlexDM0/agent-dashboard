@@ -512,7 +512,20 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   through the answers route; a card leaves when a snapshot no longer holds the request, wherever it was answered.
   Esc closes the panel before it can leave a board. The panel also closes on a press anywhere outside it and its
   button, and when the dashboard window loses focus (a click into the board frame or another app), so it is never
-  left open over a board whose own Esc leaves the board. While a question waits, the tab title starts with `(<n>) `.
+  left open over a board whose own Esc leaves the board. Each entry opens with who asks: the session's glyph, the
+  project, the role (`orchestrator`), a `hosted` pill and "waiting <age>". Under it a context block, from the question's
+  `PendingQuestion.context` (`InboxUtil.contextRowsOf`): "Doing" (the dispatcher run id, its first 8 characters),
+  "Mentions" (each ticket id a link to the project's board, which opens no ticket) and "Said" (the last assistant line
+  in quotation marks); a row with nothing to show is left out, and a context with nothing shows no block. Every
+  agent-written text renders as plain text, never markup. Under the question card, "Open conversation" goes to
+  `#/projects/<trackerId>/crew`: the board opens its crew drawer on the orchestrator and drops `/crew` from the hash.
+  Beside the questions the panel lists an alert for every live dashboard-owned orchestrator at or past
+  `CONTEXT_CRITICAL_SHARE` of a known window (`InboxUtil.alertsOf`, computed from the snapshot, never stored, never
+  dismissed): "Context at n%: hand off to a fresh orchestrator", the drawer's handoff explanation and a Hand off
+  button sending the drawer's handoff request after a confirm. It is disabled, its reason beside it in the server's
+  words, while the server would refuse: a pending question, a session not idle, an unreadable board or a running
+  dispatcher. All / Questions / Alerts buttons filter the panel. While a question or an alert waits, the tab title
+  starts with `(<n>) `, n counting both, as the Inbox button's count does.
 - **Notifications** (`web/notifications/`): a header control, "Notify me", asks for the browser's permission on the
   user's click and never on load; once granted it toggles between "Notifying" and "Muted" (`aria-pressed`), both
   choices kept through `web/preferences/PreferenceStore.ts`. A notification is raised only from a transition between

@@ -2,6 +2,7 @@
 import { expect, test } from 'bun:test';
 import {
   boardHashOf,
+  crewDrawerHashOf,
   FLEET_HASH,
   hashRouteOf,
   OVERVIEW_HASH
@@ -22,8 +23,13 @@ test('a hash that only starts like the fleet one is the overview', () => {
 });
 
 test('a board hash round-trips its tracker id', () => {
-  expect(hashRouteOf(boardHashOf('5f0c2a9e-7b1d'))).toEqual({ kind: 'board', trackerId: '5f0c2a9e-7b1d' });
-  expect(hashRouteOf(boardHashOf('an id/with space'))).toEqual({ kind: 'board', trackerId: 'an id/with space' });
+  expect(hashRouteOf(boardHashOf('5f0c2a9e-7b1d'))).toEqual({ kind: 'board', trackerId: '5f0c2a9e-7b1d', opensCrewDrawer: false });
+  expect(hashRouteOf(boardHashOf('an id/with space'))).toEqual({ kind: 'board', trackerId: 'an id/with space', opensCrewDrawer: false });
+});
+
+test('a crew drawer hash is its board asked to open the drawer; any other suffix opens nothing', () => {
+  expect(hashRouteOf(crewDrawerHashOf('an id/with space'))).toEqual({ kind: 'board', trackerId: 'an id/with space', opensCrewDrawer: true });
+  expect(hashRouteOf(`${boardHashOf('example')}/other`)).toEqual({ kind: 'board', trackerId: 'example', opensCrewDrawer: false });
 });
 
 test('a board hash without an id or with broken encoding is the overview', () => {

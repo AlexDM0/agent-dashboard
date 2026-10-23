@@ -32,14 +32,16 @@ export function App() {
   const boardProjectName = route.kind === 'board' ? projects.find((project) => project.trackerId === route.trackerId)?.project : undefined;
 
   const inboxEntries = InboxUtil.entriesOf(projects);
+  const inboxAlerts = InboxUtil.alertsOf(projects);
   const pendingQuestionCount = inboxEntries.length;
+  const inboxWaitingCount = pendingQuestionCount + inboxAlerts.length;
   const notifications = useDesktopNotifications(stream);
   useAppBadge(pendingQuestionCount);
 
   useEffect(() => {
     const pageTitle = boardProjectName === undefined ? APPLICATION_NAME : `${boardProjectName} · ${APPLICATION_NAME}`;
-    document.title = InboxUtil.documentTitleOf(pendingQuestionCount, pageTitle);
-  }, [boardProjectName, pendingQuestionCount]);
+    document.title = InboxUtil.documentTitleOf(inboxWaitingCount, pageTitle);
+  }, [boardProjectName, inboxWaitingCount]);
 
   return (
     <div className="ap-app" data-route={route.kind}>
@@ -50,12 +52,13 @@ export function App() {
           totals={headerTotalsOf(projects)}
           orchestratorCount={HeaderTotalsLineUtil.orchestratorCountOf(projects, stream.snapshot?.watchedOrchestratorsByTracker ?? {})}
           inboxEntries={inboxEntries}
+          inboxAlerts={inboxAlerts}
           notifications={notifications}
           theme={theme}
           now={now}
         />
         <ConnectionBanner connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
-        {route.kind === 'board' ? <BoardView snapshot={stream.snapshot} trackerId={route.trackerId} /> : null}
+        {route.kind === 'board' ? <BoardView snapshot={stream.snapshot} trackerId={route.trackerId} opensCrewDrawer={route.opensCrewDrawer} /> : null}
         {route.kind === 'fleet' ? <FleetView snapshot={stream.snapshot} inboxEntries={inboxEntries} now={now} /> : null}
         {route.kind === 'overview'
           ? (

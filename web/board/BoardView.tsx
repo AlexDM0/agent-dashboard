@@ -10,7 +10,7 @@ import { CrewDrawer, type CrewDrawerFocus } from '../orchestrator/CrewDrawer.tsx
 import { CrewStrip }                        from '../orchestrator/CrewStrip.tsx';
 import { OrchestratorSessionUtil }          from '../orchestrator/OrchestratorSessionUtil.ts';
 import { ConnectingPanel }                  from '../shell/ConnectingPanel.tsx';
-import { OVERVIEW_HASH }                    from '../shell/HashRoute.ts';
+import { boardHashOf, OVERVIEW_HASH }       from '../shell/HashRoute.ts';
 import { BoardToolbar }                     from './BoardToolbar.tsx';
 import { NoPagePanel }                      from './NoPagePanel.tsx';
 import { PageFrame }                        from './PageFrame.tsx';
@@ -19,11 +19,12 @@ import { RootPathUtil }                     from './RootPathUtil.ts';
 import { UnknownProjectPanel }              from './UnknownProjectPanel.tsx';
 
 interface BoardViewProperties {
-  snapshot:  DashboardSnapshot | null;
-  trackerId: string;
+  snapshot:        DashboardSnapshot | null;
+  trackerId:       string;
+  opensCrewDrawer: boolean;
 }
 
-export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
+export function BoardView({ snapshot, trackerId, opensCrewDrawer }: BoardViewProperties) {
   const frameReference = useRef<HTMLIFrameElement | null>(null);
   const crewStripReference = useRef<HTMLButtonElement | null>(null);
   const drawerId = useId();
@@ -41,8 +42,14 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
     return () => window.removeEventListener('keydown', backOnEscape);
   }, []);
 
-  // Another project's board opens with the drawer closed.
+  // Another project's board opens with the drawer closed, unless its hash asked for it.
   useEffect(() => setDrawerFocus(null), [trackerId]);
+  useEffect(() => {
+    if (!opensCrewDrawer) return;
+    setDrawerFocus('chat');
+    // Dropping the request from the hash lets the same link open the drawer again after it was closed.
+    window.location.replace(boardHashOf(trackerId));
+  }, [trackerId, opensCrewDrawer]);
 
   const closeDrawer = useCallback(() => {
     setDrawerFocus(null);

@@ -1,10 +1,37 @@
-import type { PendingQuestion, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
+import type {
+  OrchestratorSession,
+  PendingQuestion,
+  ProjectSnapshot,
+  QuestionContext
+} from '../../src/shared/DashboardContract.ts';
+import { ContextUsageUtil } from '../orchestrator/ContextUsageUtil.ts';
 
 export interface InboxEntry {
   trackerId:       string;
   project:         string;
+  session:         OrchestratorSession;
   pendingQuestion: PendingQuestion;
 }
+
+/** A live dashboard-owned orchestrator at or past the critical context share, computed from the snapshot, never stored. */
+export interface InboxAlert {
+  trackerId:      string;
+  project:        string;
+  session:        OrchestratorSession;
+  contextPercent: number;
+  /** Why the server would refuse a handoff now, in its own words; null when it would take one. */
+  handoffRefusal: string | null;
+}
+
+export type InboxFilter = 'all' | 'questions' | 'alerts';
+
+export type InboxContextRow =
+  | { kind: 'doing'; dispatcherRunId: string }
+  | { kind: 'mentions'; ticketIds: string[] }
+  | { kind: 'said'; line: string };
+
+const SHOWN_RUN_ID_CHARACTERS = 8;
+const PERCENT = 100;
 
 /** A stamp that does not parse sorts after every one that does, so a malformed one never hides a real wait. */
 function askedAtEpochOf(entry: InboxEntry): number {
@@ -18,22 +45,75 @@ function compareByAskedAt(a: InboxEntry, b: InboxEntry): number {
   return a.trackerId.localeCompare(b.trackerId) || a.pendingQuestion.requestId.localeCompare(b.pendingQuestion.requestId);
 }
 
+function liveDashboardSessionOf(project: ProjectSnapshot): OrchestratorSession | null {
+  const session = project.orchestrator;
+  if (session === null || session.state === 'ended' || session.ownership !== 'dashboard') return null;
+  return session;
+}
+
 /** Every pending question of a live dashboard-owned session, across every project, the longest waiting first. */
 function entriesOf(projects: ProjectSnapshot[]): InboxEntry[] {
   const entries: InboxEntry[] = [];
   for (const project of projects) {
-    const session = project.orchestrator;
-    if (session === null || session.state === 'ended') continue;
+    const session = liveDashboardSessionOf(project);
+    if (session === null) continue;
     for (const pendingQuestion of session.pendingQuestions) {
-      entries.push({ trackerId: project.trackerId, project: project.project, pendingQuestion });
+      entries.push({
+        trackerId: project.trackerId, project: project.project, session, pendingQuestion
+      });
     }
   }
   return entries.sort(compareByAskedAt);
 }
 
-/** `(<n>) ` ahead of the page's own title while a question waits; the bare title at zero. */
-function documentTitleOf(pendingCount: number, pageTitle: string): string {
-  return pendingCount > 0 ? `(${String(pendingCount)}) ${pageTitle}` : pageTitle;
+/** The server's handoff refusals, in its order and words, so the button is disabled exactly while a click would be refused. */
+function handoffRefusalOf(project: ProjectSnapshot, session: OrchestratorSession): string | null {
+  if (session.pendingQuestions.length > 0 || session.state === 'waiting-for-answer') {
+    return 'A question of the orchestrator is pending; answer it before handing off';
+  }
+  if (session.state !== 'idle') return `The orchestrator is ${session.state}; hand off once it is idle`;
+  if (project.health.kind !== 'ready') return 'The board cannot be read, so whether its dispatcher runs is unknown';
+  if (project.health.board.dispatcherState === 'running') return 'The board\'s dispatcher is running; hand off once it has stopped or finished';
+  return null;
 }
 
-export const InboxUtil = Object.freeze({ entriesOf, documentTitleOf });
+/** One alert per live dashboard-owned orchestrator whose known context share is at or past the critical one, in project order. */
+function alertsOf(projects: ProjectSnapshot[]): InboxAlert[] {
+  const alerts: InboxAlert[] = [];
+  for (const project of projects) {
+    const session = liveDashboardSessionOf(project);
+    const context = session?.context ?? null;
+    if (session === null || context === null || !ContextUsageUtil.suggestsHandoff(context)) continue;
+    const share = ContextUsageUtil.shareOf(context) ?? 1;
+    alerts.push({
+      trackerId:      project.trackerId,
+      project:        project.project,
+      session,
+      contextPercent: Math.round(share * PERCENT),
+      handoffRefusal: handoffRefusalOf(project, session),
+    });
+  }
+  return alerts;
+}
+
+/** Doing, Mentions and Said, in that order, each left out when its part of the context is empty. */
+function contextRowsOf(context: QuestionContext): InboxContextRow[] {
+  const rows: InboxContextRow[] = [];
+  if (context.dispatcherRunId !== null && context.dispatcherRunId !== '') {
+    rows.push({ kind: 'doing', dispatcherRunId: context.dispatcherRunId.slice(0, SHOWN_RUN_ID_CHARACTERS) });
+  }
+  if (context.mentionedTicketIds.length > 0) rows.push({ kind: 'mentions', ticketIds: context.mentionedTicketIds });
+  if (context.lastAssistantLine !== null && context.lastAssistantLine.trim() !== '') {
+    rows.push({ kind: 'said', line: context.lastAssistantLine });
+  }
+  return rows;
+}
+
+/** `(<n>) ` ahead of the page's own title while a question or an alert waits; the bare title at zero. */
+function documentTitleOf(waitingCount: number, pageTitle: string): string {
+  return waitingCount > 0 ? `(${String(waitingCount)}) ${pageTitle}` : pageTitle;
+}
+
+export const InboxUtil = Object.freeze({
+  entriesOf, alertsOf, handoffRefusalOf, contextRowsOf, documentTitleOf
+});

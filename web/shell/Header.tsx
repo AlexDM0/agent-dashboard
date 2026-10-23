@@ -1,5 +1,5 @@
 import { Inbox }                         from '../inbox/Inbox.tsx';
-import type { InboxEntry }               from '../inbox/InboxUtil.ts';
+import type { InboxAlert, InboxEntry }   from '../inbox/InboxUtil.ts';
 import { NotificationToggle }            from '../notifications/NotificationToggle.tsx';
 import type { DesktopNotifications }     from '../notifications/UseDesktopNotifications.ts';
 import type { ThemePreference }          from '../preferences/UseThemePreference.ts';
@@ -18,13 +18,14 @@ interface HeaderProperties {
   totals:            HeaderTotals;
   orchestratorCount: number;
   inboxEntries:      InboxEntry[];
+  inboxAlerts:       InboxAlert[];
   notifications:     DesktopNotifications;
   theme:             ThemePreference;
   now:               number;
 }
 
 export function Header({
-  stream, route, totals, orchestratorCount, inboxEntries, notifications, theme, now
+  stream, route, totals, orchestratorCount, inboxEntries, inboxAlerts, notifications, theme, now
 }: HeaderProperties) {
   return (
     <header className="ap-header">
@@ -37,7 +38,7 @@ export function Header({
       <HeaderStatistics totals={totals} machineParallelAgentLimit={stream.snapshot?.machineParallelAgentLimit ?? null} orchestratorCount={orchestratorCount} />
       <div className="ap-header-tools">
         <NotificationToggle notifications={notifications} />
-        <Inbox entries={inboxEntries} now={now} />
+        <Inbox entries={inboxEntries} alerts={inboxAlerts} now={now} />
         <ThemeToggle choice={theme.choice} resolvedTheme={theme.resolvedTheme} onChoose={theme.chooseTheme} />
       </div>
     </header>
