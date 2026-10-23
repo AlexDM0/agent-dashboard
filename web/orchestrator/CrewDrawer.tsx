@@ -41,15 +41,16 @@ export function CrewDrawer({
   }, [initialFocus]);
 
   useEffect(() => {
-    // Captured on the window, so the board's Esc (back to the overview) never sees the key that closes the drawer.
+    // Captured on the document: after an open popover's window capture, which closes the menu alone, and before the
+    // board's Esc (back to the overview), which never sees the key that closes the drawer.
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || isTypingField(event.target)) return;
       event.stopPropagation();
       event.preventDefault();
       onClose();
     };
-    window.addEventListener('keydown', closeOnEscape, true);
-    return () => window.removeEventListener('keydown', closeOnEscape, true);
+    document.addEventListener('keydown', closeOnEscape, true);
+    return () => document.removeEventListener('keydown', closeOnEscape, true);
   }, [onClose]);
 
   return (
