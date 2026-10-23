@@ -213,7 +213,10 @@ test('a handoff keeps the reply as the note outside the project, stops the sessi
   expect(handoff.status).toBe(201);
   const { session, notePath } = await handoff.json() as OrchestratorHandoffResult;
 
-  expect(stdinLinesOfSession(startsBefore - 1).map((line) => (JSON.parse(line) as { message: { content: string } }).message.content)).toEqual([START_TEXT, HANDOFF_NOTE_REQUEST]);
+  type StdinLine = { type: string; message?: { content: string }; request?: { subtype: string } };
+  const previousStdinLines = stdinLinesOfSession(startsBefore - 1).map((line) => JSON.parse(line) as StdinLine);
+  expect(previousStdinLines.filter((line) => line.type === 'user').map((line) => line.message?.content)).toEqual([START_TEXT, HANDOFF_NOTE_REQUEST]);
+  expect(previousStdinLines.at(-1)).toMatchObject({ type: 'control_request', request: { subtype: 'interrupt' } });
   const note = `${FAKE_REPLY_PREFIX}${HANDOFF_NOTE_REQUEST}`;
   expect(dirname(notePath)).toBe(handoffDirectoryOf(home));
   expect(notePath.startsWith(`${handoffDirectoryOf(home)}/${TRACKER_ID}-`)).toBe(true);
