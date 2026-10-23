@@ -104,6 +104,15 @@ export interface ChatMessage { at: string; role: ChatRole; text: string; toolCal
 /** What a dashboard-owned session is briefed as; a project runs at most one live session per role. */
 export type SessionRole = 'orchestrator' | 'product-owner';
 
+/** A conversation the page's one event stream carries, asked for as `?<role>=<trackerId>` on `GET /api/events`. */
+export interface ConversationSubscription { role: SessionRole; trackerId: string }
+
+/** `event: conversation-history`: the conversation so far, sent for each subscription when the stream opens. */
+export interface ConversationHistoryEvent extends ConversationSubscription { messages: ChatMessage[] }
+
+/** `event: conversation-message`: one new message of a subscribed conversation, after its history. */
+export interface ConversationMessageEvent extends ConversationSubscription { message: ChatMessage }
+
 /** The body of `POST /api/projects/<trackerId>/orchestrator`. */
 export interface OrchestratorStartRequest { startBuilding: boolean }
 

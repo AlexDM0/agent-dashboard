@@ -4,10 +4,11 @@
  * data route (the app shell, which Bun answers first, holds no data), the page route serving only what lies inside the
  * page folder (planted escapes: `../`, encoded `%2e%2e`, an encoded slash, NUL, a symlink out) with every file but the
  * board page sandboxed, the page folders and the bridge served only on the board origin (its own port and Host guard,
- * framed only by the dashboard) and nothing of the dashboard's there, 404s, the event stream opening with a snapshot and releasing its subscription
- * on disconnect, a shutdown only the CLI can ask for, a held port reported, not thrown, a second dashboard never
- * sharing the port, and a start that answers its
- * identity before the first board read ends, since the CLI writes the server record as soon as the start resolves.
+ * framed only by the dashboard) and nothing of the dashboard's there, 404s, the event stream opening with a snapshot
+ * and releasing its subscription on disconnect, the page's one stream carrying each subscribed conversation's history
+ * then live messages, tagged, releasing them all with the stream and refusing them to a foreign Origin, a shutdown only
+ * the CLI can ask for, a held port reported, not thrown, a second dashboard never sharing the port, and a start that
+ * answers its identity before the first board read ends, since the CLI writes the server record as soon as the start resolves.
  * The concurrency route, the one write, is proven against a fake CLI that keeps a limit and logs its calls: a foreign
  * Origin, an unknown tracker and an out-of-range limit never reach the CLI, a CLI refusal and failure map to 409 and
  * 502, and a 204 is followed by a snapshot carrying the new limit without any change in the watched folder; a project
@@ -42,7 +43,12 @@ import {
   test
 } from 'bun:test';
 
-import { type DashboardSnapshot, type LaunchToken, type ServerIdentity }        from '../shared/DashboardContract.ts';
+import {
+  type ChatMessage,
+  type DashboardSnapshot,
+  type LaunchToken,
+  type ServerIdentity
+} from '../shared/DashboardContract.ts';
 import { DASHBOARD_PROTOCOL }                                                   from '../shared/constants/DashboardProtocol.ts';
 import { createExampleProjectRoot, exampleRegistryEntry, writeExampleRegistry } from '../testing/ExampleBoards.ts';
 import {
@@ -444,6 +450,126 @@ test('an event stream sends heartbeats and releases its subscription when the cl
   const deadline = performance.now() + 2_000;
   while (subscriberCount > 0 && performance.now() < deadline) await Bun.sleep(10);
   expect(subscriberCount).toBe(0);
+});
+
+interface ServerSentEvent { eventName: string; data: unknown }
+
+async function* serverSentEventsOf(response: Response): AsyncGenerator<ServerSentEvent> {
+  const reader = response.body?.getReader();
+  if (reader === undefined) throw new Error('the event stream has no body');
+  const decoder = new TextDecoder();
+  let received = '';
+  for (;;) {
+    let separator = received.indexOf('\n\n');
+    while (separator !== -1) {
+      const lines = received.slice(0, separator).split('\n');
+      received = received.slice(separator + 2);
+      const eventLine = lines.find((line) => line.startsWith('event: '));
+      const dataLine = lines.find((line) => line.startsWith('data: '));
+      if (eventLine !== undefined && dataLine !== undefined) {
+        yield { eventName: eventLine.slice('event: '.length), data: JSON.parse(dataLine.slice('data: '.length)) };
+      }
+      separator = received.indexOf('\n\n');
+    }
+    const { value, done } = await reader.read();
+    if (done) return;
+    received += decoder.decode(value, { stream: true });
+  }
+}
+
+async function nextEventOf(events: AsyncGenerator<ServerSentEvent>): Promise<ServerSentEvent> {
+  const next = await events.next();
+  if (next.done === true) throw new Error('the event stream ended');
+  return next.value;
+}
+
+/** A server whose dashboard-owned conversations are held in memory: a history per role, and a listener to push a message through. */
+async function startConversationServer(): Promise<{
+  conversationServer: RunningDashboardServer;
+  sendMessage:        (role: 'orchestrator' | 'product-owner', text: string) => void;
+  listenerCount:      () => number;
+}> {
+  const listenersByRole = { 'orchestrator': new Set<(message: ChatMessage) => void>(), 'product-owner': new Set<(message: ChatMessage) => void>() };
+  const sessionsHolding = (role: 'orchestrator' | 'product-owner'): ReturnType<typeof createDashboardOrchestratorSessions> => ({
+    ...createDashboardOrchestratorSessions(serverOptions, {}, role),
+    conversationOf: (trackerId) => (trackerId === TRACKER_ID ? [{ at: EXAMPLE_INSTANT.toISOString(), role: 'assistant', text: `${role} history` }] : []),
+    subscribeToConversation(trackerId, listener) {
+      if (trackerId !== TRACKER_ID) return () => undefined;
+      listenersByRole[role].add(listener);
+      return () => listenersByRole[role].delete(listener);
+    },
+  });
+  const conversationServer = startedOrThrow(await serveDashboard(serverOptions, {
+    monitor: createProjectMonitor({
+      homeDirectory:                serverOptions.homeDirectory,
+      readBoardStatus:              () => Promise.resolve({ kind: 'unreadable', reason: 'Example' }),
+      clock:                        () => EXAMPLE_INSTANT,
+      quietMilliseconds:            SHORT_HEARTBEAT_MILLISECONDS,
+      maximumWaitMilliseconds:      60_000,
+      sweepIntervalMilliseconds:    60_000,
+      maximumConcurrentStatusReads: 1,
+      machineParallelAgentLimit:    EXAMPLE_MACHINE_PARALLEL_AGENT_LIMIT,
+    }),
+    orchestratorSessions:            sessionsHolding('orchestrator'),
+    productOwnerSessions:            sessionsHolding('product-owner'),
+    heartbeatIntervalMilliseconds:   60_000,
+    handoffReplyTimeoutMilliseconds: SHORT_HEARTBEAT_MILLISECONDS,
+  }));
+  extraServers.push(conversationServer);
+  return {
+    conversationServer,
+    sendMessage(role, text) {
+      for (const listener of listenersByRole[role]) listener({ at: EXAMPLE_INSTANT.toISOString(), role: 'assistant', text });
+    },
+    listenerCount: () => listenersByRole['orchestrator'].size + listenersByRole['product-owner'].size,
+  };
+}
+
+test('one stream carries the snapshot, then each subscribed conversation\'s history, then its live messages, each tagged', async () => {
+  const { conversationServer, sendMessage, listenerCount } = await startConversationServer();
+  const abort = new AbortController();
+  const query = `orchestrator=${TRACKER_ID}&product-owner=${TRACKER_ID}&orchestrator=tracker-unregistered`;
+  const events = serverSentEventsOf(await fetch(`${conversationServer.url}/api/events?${query}`, { signal: abort.signal }));
+  try {
+    expect((await nextEventOf(events)).eventName).toBe('snapshot');
+    expect(await nextEventOf(events)).toEqual({
+      eventName: 'conversation-history',
+      data:      { role: 'orchestrator', trackerId: TRACKER_ID, messages: [{ at: EXAMPLE_INSTANT.toISOString(), role: 'assistant', text: 'orchestrator history' }] },
+    });
+    expect(await nextEventOf(events)).toEqual({
+      eventName: 'conversation-history',
+      data:      { role: 'product-owner', trackerId: TRACKER_ID, messages: [{ at: EXAMPLE_INSTANT.toISOString(), role: 'assistant', text: 'product-owner history' }] },
+    });
+    expect(conversationServer.openStreamCount()).toBe(1);
+    expect(listenerCount()).toBe(2);
+
+    sendMessage('product-owner', 'live reply');
+    expect(await nextEventOf(events)).toEqual({
+      eventName: 'conversation-message',
+      data:      { role: 'product-owner', trackerId: TRACKER_ID, message: { at: EXAMPLE_INSTANT.toISOString(), role: 'assistant', text: 'live reply' } },
+    });
+  } finally {
+    abort.abort();
+  }
+});
+
+test('a client that goes releases its stream and every conversation it subscribed', async () => {
+  const { conversationServer, listenerCount } = await startConversationServer();
+  const abort = new AbortController();
+  const events = serverSentEventsOf(await fetch(`${conversationServer.url}/api/events?orchestrator=${TRACKER_ID}`, { signal: abort.signal }));
+  await nextEventOf(events);
+  expect(conversationServer.openStreamCount()).toBe(1);
+  expect(listenerCount()).toBe(1);
+
+  abort.abort();
+  await waitUntil(() => conversationServer.openStreamCount() === 0 && listenerCount() === 0, 'the server released the stream');
+});
+
+test('a stream asking for a conversation from a foreign Origin is refused before it opens', async () => {
+  const { conversationServer } = await startConversationServer();
+  const response = await fetch(`${conversationServer.url}/api/events?orchestrator=${TRACKER_ID}`, { headers: { Origin: 'http://evil.example' } });
+  expect(response.status).toBe(403);
+  expect(conversationServer.openStreamCount()).toBe(0);
 });
 
 test('shutdown needs POST, the header and no foreign origin, then answers 202 and stops', async () => {

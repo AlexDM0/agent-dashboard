@@ -7,7 +7,6 @@ import { expect, test } from 'bun:test';
 import {
   sendSessionAnswer,
   sendSessionChat,
-  sessionEventsPathOf,
   startOrchestrator,
   startProductOwner,
   stopSession
@@ -75,7 +74,6 @@ test('a product owner\'s chat, answer and stop reach only its own routes, never 
     '/api/projects/tracker-example/product-owner/answers',
     '/api/projects/tracker-example/product-owner',
   ]);
-  expect(sessionEventsPathOf('product-owner', 'tracker-example')).toBe('/api/projects/tracker-example/product-owner/events');
 });
 
 test('a stop is a DELETE without a body, carrying the token', async () => {
@@ -109,8 +107,4 @@ test('a refusal without text names its status, and a network failure is a refusa
   expect(await sendSessionChat('orchestrator', 'tracker-example', { text: 'Hello' }, sendRequest)).toEqual({ kind: 'refused', reason: 'Refused with status 502' });
   const failedVerdict = await sendSessionChat('orchestrator', 'tracker-example', { text: 'Hello' }, () => Promise.reject(new TypeError('Failed to fetch')));
   expect(failedVerdict).toEqual({ kind: 'refused', reason: 'Could not reach the dashboard server' });
-});
-
-test('the events path encodes the tracker id', () => {
-  expect(sessionEventsPathOf('orchestrator', 'example project/one')).toBe('/api/projects/example%20project%2Fone/orchestrator/events');
 });

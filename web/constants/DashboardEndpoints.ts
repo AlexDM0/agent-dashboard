@@ -1,7 +1,10 @@
 export const DASHBOARD_ENDPOINTS = {
   SNAPSHOT_PATH:                      '/api/snapshot',
+  /** The page's one event stream: `snapshot`, and each `?<role>=<trackerId>` conversation's history then messages. */
   EVENTS_PATH:                        '/api/events',
   SNAPSHOT_EVENT_NAME:                'snapshot',
+  CONVERSATION_HISTORY_EVENT_NAME:    'conversation-history',
+  CONVERSATION_MESSAGE_EVENT_NAME:    'conversation-message',
   /** `POST <PROJECTS_API_PATH>/<trackerId><CONCURRENCY_PATH_SUFFIX>` with `{ "limit": <n> }`, mirroring the server's protocol. */
   PROJECTS_API_PATH:                  '/api/projects',
   CONCURRENCY_PATH_SUFFIX:            '/concurrency',
@@ -13,17 +16,12 @@ export const DASHBOARD_ENDPOINTS = {
   ORCHESTRATOR_PATH_SUFFIX:           '/orchestrator',
   ORCHESTRATOR_MESSAGES_PATH_SUFFIX:  '/orchestrator/messages',
   ORCHESTRATOR_ANSWERS_PATH_SUFFIX:   '/orchestrator/answers',
-  /** Server-Sent Events: `history` (every `ChatMessage` so far), then `session` and `message` as they change. */
-  ORCHESTRATOR_EVENTS_PATH_SUFFIX:    '/orchestrator/events',
   /** `POST`, no body, carrying the launch token: hands the board to a fresh dashboard-owned session. */
   ORCHESTRATOR_HANDOFF_PATH_SUFFIX:   '/orchestrator/handoff',
   /** The product owner's routes mirror the orchestrator's: `POST` a `ProductOwnerStartRequest` or `DELETE` the session. */
   PRODUCT_OWNER_PATH_SUFFIX:          '/product-owner',
   PRODUCT_OWNER_MESSAGES_PATH_SUFFIX: '/product-owner/messages',
   PRODUCT_OWNER_ANSWERS_PATH_SUFFIX:  '/product-owner/answers',
-  PRODUCT_OWNER_EVENTS_PATH_SUFFIX:   '/product-owner/events',
-  ORCHESTRATOR_HISTORY_EVENT_NAME:    'history',
-  ORCHESTRATOR_MESSAGE_EVENT_NAME:    'message',
   /** Answers the `LaunchToken` every orchestrator start, stop, chat and answer carries in `LAUNCH_TOKEN_HEADER_NAME`. */
   LAUNCH_TOKEN_PATH:                  '/api/launch-token',
   LAUNCH_TOKEN_HEADER_NAME:           'X-Agent-Dashboard-Launch-Token',

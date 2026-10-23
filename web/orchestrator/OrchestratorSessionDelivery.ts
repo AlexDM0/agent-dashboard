@@ -12,18 +12,16 @@ import type { OrchestratorRequestVerdict } from '../shell/OrchestratorRequestDel
 type RequestSender = (path: string, init: RequestInit) => Promise<Response>;
 
 /** Each role's own routes, so a chat, an answer or a stop for one role can never reach the other's session. */
-const ROLE_PATH_SUFFIXES: Record<SessionRole, { session: string; messages: string; answers: string; events: string }> = {
+const ROLE_PATH_SUFFIXES: Record<SessionRole, { session: string; messages: string; answers: string }> = {
   'orchestrator': {
     session:  DASHBOARD_ENDPOINTS.ORCHESTRATOR_PATH_SUFFIX,
     messages: DASHBOARD_ENDPOINTS.ORCHESTRATOR_MESSAGES_PATH_SUFFIX,
     answers:  DASHBOARD_ENDPOINTS.ORCHESTRATOR_ANSWERS_PATH_SUFFIX,
-    events:   DASHBOARD_ENDPOINTS.ORCHESTRATOR_EVENTS_PATH_SUFFIX,
   },
   'product-owner': {
     session:  DASHBOARD_ENDPOINTS.PRODUCT_OWNER_PATH_SUFFIX,
     messages: DASHBOARD_ENDPOINTS.PRODUCT_OWNER_MESSAGES_PATH_SUFFIX,
     answers:  DASHBOARD_ENDPOINTS.PRODUCT_OWNER_ANSWERS_PATH_SUFFIX,
-    events:   DASHBOARD_ENDPOINTS.PRODUCT_OWNER_EVENTS_PATH_SUFFIX,
   },
 };
 
@@ -91,8 +89,4 @@ export function sendSessionAnswer(
 /** Answers only once the fresh session runs or the handoff failed, so it may take as long as the session's note does. */
 export function handOffOrchestrator(trackerId: string, sendRequest = defaultSender): Promise<OrchestratorRequestVerdict> {
   return deliverWithLaunchToken(sendRequest, projectPathOf(trackerId, DASHBOARD_ENDPOINTS.ORCHESTRATOR_HANDOFF_PATH_SUFFIX), 'POST', undefined);
-}
-
-export function sessionEventsPathOf(role: SessionRole, trackerId: string): string {
-  return projectPathOf(trackerId, ROLE_PATH_SUFFIXES[role].events);
 }

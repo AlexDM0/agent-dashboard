@@ -1,7 +1,7 @@
-import { useEffect, useState }    from 'react';
-import type { DashboardSnapshot } from '../../src/shared/DashboardContract.ts';
-import { DASHBOARD_ENDPOINTS }    from '../constants/DashboardEndpoints.ts';
-import { WEB_LIMITS }             from '../constants/WebLimits.ts';
+import { useEffect, useState }                             from 'react';
+import type { DashboardSnapshot }                          from '../../src/shared/DashboardContract.ts';
+import { DASHBOARD_ENDPOINTS }                             from '../constants/DashboardEndpoints.ts';
+import { type DashboardEventHub, createDashboardEventHub } from './DashboardEventHub.ts';
 
 export type StreamConnection = 'connecting' | 'live' | 'reconnecting';
 
@@ -9,8 +9,14 @@ export interface DashboardStream {
   snapshot:                 DashboardSnapshot | null;
   connection:               StreamConnection;
   lastUpdateAt:             number | null;
-  /** Which connection delivered the snapshot: 0 the first-paint fetch, then one more each time the stream opens. */
+  /** Which connection delivered the snapshot: 0 the first-paint fetch, then one more each time the stream opens afresh. */
   snapshotConnectionNumber: number;
+}
+
+export interface DashboardConnection {
+  stream:   DashboardStream;
+  /** The page's one event stream, which each shown conversation subscribes to. */
+  eventHub: DashboardEventHub;
 }
 
 const INITIAL_STREAM: DashboardStream = {
@@ -18,41 +24,29 @@ const INITIAL_STREAM: DashboardStream = {
 };
 
 /**
- * The live snapshot: one fetch for a quick first paint, then the event stream. The browser retries a dropped stream
- * itself; a stream it gave up on (closed) is opened again after a pause.
+ * The live snapshot: one fetch for a quick first paint, then the page's one event stream. The browser retries a dropped
+ * stream itself; a stream it gave up on (closed) is opened again after a pause. A page being left closes its stream, so
+ * a reload never queues behind its own old connection.
  */
-export function useDashboardStream(): DashboardStream {
+export function useDashboardStream(): DashboardConnection {
   const [stream, setStream] = useState<DashboardStream>(INITIAL_STREAM);
+  // Made during the first render, so the cards that render beneath it subscribe before its effect connects.
+  const [eventHub] = useState(() => createDashboardEventHub({
+    openEventSource: (path) => new EventSource(path),
+    setTimer:        (task, delayMilliseconds) => window.setTimeout(task, delayMilliseconds),
+    clearTimer:      (timer) => window.clearTimeout(timer),
+    onSnapshot:      (snapshot, connectionNumber) => setStream({
+      snapshot, connection: 'live', lastUpdateAt: Date.now(), snapshotConnectionNumber: connectionNumber
+    }),
+    onConnectionLost: () => setStream((previous) => ({ ...previous, connection: previous.snapshot === null ? 'connecting' : 'reconnecting' })),
+  }));
 
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    let retryTimeout: number | undefined;
     let unmounted = false;
-    let openedConnectionCount = 0;
-
-    const receive = (snapshot: DashboardSnapshot): void => {
-      setStream({
-        snapshot, connection: 'live', lastUpdateAt: Date.now(), snapshotConnectionNumber: openedConnectionCount
-      });
-    };
-
-    const connect = (): void => {
-      const source = new EventSource(DASHBOARD_ENDPOINTS.EVENTS_PATH);
-      eventSource = source;
-      // The browser's own retry of a dropped stream opens it again too, and its first snapshot is a fresh baseline.
-      source.addEventListener('open', () => {
-        openedConnectionCount += 1;
-      });
-      source.addEventListener(DASHBOARD_ENDPOINTS.SNAPSHOT_EVENT_NAME, (event) => {
-        receive(JSON.parse(String(event.data)) as DashboardSnapshot);
-      });
-      source.addEventListener('error', () => {
-        setStream((previous) => ({ ...previous, connection: previous.snapshot === null ? 'connecting' : 'reconnecting' }));
-        if (source.readyState === EventSource.CLOSED && !unmounted) {
-          source.close();
-          retryTimeout = window.setTimeout(connect, WEB_LIMITS.STREAM_RETRY_DELAY_MILLISECONDS);
-        }
-      });
+    const disconnectOnPageHide = (): void => eventHub.disconnect();
+    // A page restored from the back-forward cache had its stream closed when it was hidden.
+    const reconnectOnPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) eventHub.connect();
     };
 
     fetch(DASHBOARD_ENDPOINTS.SNAPSHOT_PATH)
@@ -65,14 +59,17 @@ export function useDashboardStream(): DashboardStream {
         }
       })
       .catch(() => undefined);
-    connect();
+    eventHub.connect();
+    window.addEventListener('pagehide', disconnectOnPageHide);
+    window.addEventListener('pageshow', reconnectOnPageShow);
 
     return () => {
       unmounted = true;
-      eventSource?.close();
-      window.clearTimeout(retryTimeout);
+      window.removeEventListener('pagehide', disconnectOnPageHide);
+      window.removeEventListener('pageshow', reconnectOnPageShow);
+      eventHub.disconnect();
     };
-  }, []);
+  }, [eventHub]);
 
-  return stream;
+  return { stream, eventHub };
 }

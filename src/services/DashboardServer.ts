@@ -22,6 +22,9 @@ import { readTranscriptUsage }                                            from '
 import { resolveContainedPath }                                           from '../lib/contained-path/ContainedPath.ts';
 import {
   type BoardSummary,
+  type ConversationHistoryEvent,
+  type ConversationMessageEvent,
+  type ConversationSubscription,
   type DashboardSnapshot,
   type LaunchToken,
   type OrchestratorAnswerRequest,
@@ -81,6 +84,8 @@ export interface RunningDashboardServer {
   dependencyResolution: DependencyResolution;
   /** Whether the stop was a restart the page asked for, so `serve` starts a successor once the ports are free. */
   isRestartRequested(): boolean;
+  /** The event streams held open now, each released once its client goes. */
+  openStreamCount(): number;
 }
 
 /** Which of the two ports a start found held. */
@@ -412,6 +417,13 @@ function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orc
   };
 }
 
+const SESSION_ROLES: readonly SessionRole[] = ['orchestrator', 'product-owner'];
+
+/** `?orchestrator=<trackerId>&product-owner=<trackerId>`, each repeatable, without duplicates. */
+function conversationSubscriptionsOf(searchParams: URLSearchParams): ConversationSubscription[] {
+  return SESSION_ROLES.flatMap((role) => [...new Set(searchParams.getAll(role))].map((trackerId) => ({ role, trackerId })));
+}
+
 function snapshotEvent(snapshot: DashboardSnapshot): string {
   return serverSentEventOf('snapshot', snapshot);
 }
@@ -580,16 +592,26 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Connection': 'keep-alive', ...NO_STORE_HEADERS }, });
   }
 
-  function snapshotEventsResponse(request: Request, servingServer: Bun.Server<undefined>): Response {
+  /** Each subscribed conversation's history follows the first snapshot, its listener already registered, so no message falls between. */
+  function dashboardEventsResponse(request: Request, servingServer: Bun.Server<undefined>, subscriptions: readonly ConversationSubscription[]): Response {
     return serverSentEventsResponse(request, servingServer, (send) => {
-      const unsubscribeFromMonitor = monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSources))));
-      const unsubscribeFromOrchestrators = orchestratorSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
-      const unsubscribeFromProductOwners = productOwnerSessions.subscribe(() => send(snapshotEvent(servedSnapshot())));
+      const unsubscribers = [
+        monitor.subscribe((snapshot) => send(snapshotEvent(servedSnapshotOf(snapshot, boardOrigin, orchestratorSources)))),
+        orchestratorSessions.subscribe(() => send(snapshotEvent(servedSnapshot()))),
+        productOwnerSessions.subscribe(() => send(snapshotEvent(servedSnapshot()))),
+      ];
       send(snapshotEvent(servedSnapshot()));
+      for (const { role, trackerId } of subscriptions) {
+        const sessions = sessionsByRole[role];
+        unsubscribers.push(sessions.subscribeToConversation(trackerId, (message) => {
+          const messageEvent: ConversationMessageEvent = { role, trackerId, message };
+          send(serverSentEventOf('conversation-message', messageEvent));
+        }));
+        const historyEvent: ConversationHistoryEvent = { role, trackerId, messages: sessions.conversationOf(trackerId) };
+        send(serverSentEventOf('conversation-history', historyEvent));
+      }
       return () => {
-        unsubscribeFromMonitor();
-        unsubscribeFromOrchestrators();
-        unsubscribeFromProductOwners();
+        for (const unsubscribe of unsubscribers) unsubscribe();
       };
     });
   }
@@ -1015,7 +1037,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
 
   async function answer(request: Request, servingServer: Bun.Server<undefined>): Promise<Response> {
     if (!allowedHosts.has(request.headers.get('Host') ?? '')) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden host');
-    const { pathname } = new URL(request.url);
+    const { pathname, searchParams } = new URL(request.url);
     const isRead = request.method === 'GET' || request.method === 'HEAD';
 
     if (pathname === '/' && missingDependenciesPage !== null) {
@@ -1080,7 +1102,9 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       if (!isRead) return methodNotAllowed('GET, HEAD');
       await monitorStarted;
       if (pathname === '/api/snapshot') return Response.json(servedSnapshot(), { headers: NO_STORE_HEADERS });
-      return snapshotEventsResponse(request, servingServer);
+      const subscriptions = conversationSubscriptionsOf(searchParams);
+      if (subscriptions.length > 0 && isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
+      return dashboardEventsResponse(request, servingServer, subscriptions.filter((subscription) => monitor.rootOf(subscription.trackerId) !== null));
     }
     return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
   }
@@ -1090,7 +1114,15 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   return {
     kind:   'started',
     server: {
-      url, port, boardOrigin, boardPort, stop, stopped, dependencyResolution, isRestartRequested: () => restartIsRequested
+      url,
+      port,
+      boardOrigin,
+      boardPort,
+      stop,
+      stopped,
+      dependencyResolution,
+      isRestartRequested: () => restartIsRequested,
+      openStreamCount:    () => closeOpenStreams.size,
     }
   };
 }

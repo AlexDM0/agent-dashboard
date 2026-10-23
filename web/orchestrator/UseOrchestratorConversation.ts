@@ -1,29 +1,17 @@
-import { useEffect, useState }           from 'react';
-import type { ChatMessage, SessionRole } from '../../src/shared/DashboardContract.ts';
-import { DASHBOARD_ENDPOINTS }           from '../constants/DashboardEndpoints.ts';
-import { WEB_LIMITS }                    from '../constants/WebLimits.ts';
-import { sessionEventsPathOf }           from './OrchestratorSessionDelivery.ts';
+import { useContext, useEffect, useState } from 'react';
+import type { ChatMessage, SessionRole }   from '../../src/shared/DashboardContract.ts';
+import { DashboardEventHubContext }        from '../shell/DashboardEventHubContext.ts';
 
 /**
- * The dashboard-owned conversation of a project's role from its event stream: the history on every (re)connect
- * replaces what is held, so a reconnect never doubles a message; each new message is appended. The session itself is
- * taken from the snapshot, which carries it too.
+ * The dashboard-owned conversation of a project's role, subscribed on the page's one event stream for as long as the
+ * caller shows it: the history on every (re)connect replaces what is held, so a reconnect never doubles a message. The
+ * session itself is taken from the snapshot, which carries it too.
  */
 export function useOrchestratorConversation(role: SessionRole, trackerId: string): ChatMessage[] {
+  const eventHub = useContext(DashboardEventHubContext);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  useEffect(() => {
-    setMessages([]);
-    const source = new EventSource(sessionEventsPathOf(role, trackerId));
-    source.addEventListener(DASHBOARD_ENDPOINTS.ORCHESTRATOR_HISTORY_EVENT_NAME, (event) => {
-      setMessages((JSON.parse(String(event.data)) as ChatMessage[]).slice(-WEB_LIMITS.MAXIMUM_SHOWN_CONVERSATION_MESSAGES));
-    });
-    source.addEventListener(DASHBOARD_ENDPOINTS.ORCHESTRATOR_MESSAGE_EVENT_NAME, (event) => {
-      const message = JSON.parse(String(event.data)) as ChatMessage;
-      setMessages((previous) => [...previous, message].slice(-WEB_LIMITS.MAXIMUM_SHOWN_CONVERSATION_MESSAGES));
-    });
-    return () => source.close();
-  }, [role, trackerId]);
+  useEffect(() => eventHub?.subscribeToConversation(role, trackerId, setMessages), [eventHub, role, trackerId]);
 
   return messages;
 }
