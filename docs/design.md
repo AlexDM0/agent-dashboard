@@ -460,7 +460,9 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   panel listing them oldest first, each with its project (a link to its board), how long it has waited and the same
   question card the board's orchestrator panel shows (`web/questions/PendingQuestionForm.tsx`), answered in place
   through the answers route; a card leaves when a snapshot no longer holds the request, wherever it was answered.
-  Esc closes the panel before it can leave a board. While a question waits, the tab title starts with `(<n>) `.
+  Esc closes the panel before it can leave a board. The panel also closes on a press anywhere outside it and its
+  button, and when the dashboard window loses focus (a click into the board frame or another app), so it is never
+  left open over a board whose own Esc leaves the board. While a question waits, the tab title starts with `(<n>) `.
 - **Notifications** (`web/notifications/`): a header control, "Notify me", asks for the browser's permission on the
   user's click and never on load; once granted it toggles between "Notifying" and "Muted" (`aria-pressed`), both
   choices kept through `web/preferences/PreferenceStore.ts`. A notification is raised only from a transition between

@@ -43,3 +43,13 @@ test('the title carries the count while above zero and is bare at zero', () => {
   expect(InboxUtil.documentTitleOf(1, 'example-alpha · agent-dashboard')).toBe('(1) example-alpha · agent-dashboard');
   expect(InboxUtil.documentTitleOf(0, 'agent-dashboard')).toBe('agent-dashboard');
 });
+
+test('a press inside the inbox keeps the panel open; one outside it, without a target or without an inbox closes it', () => {
+  const inboxNodes = new Set(['toggle', 'panel', 'entry-link']);
+  const inbox = { contains: (target: string) => inboxNodes.has(target) };
+  expect(InboxUtil.isPressOutside(inbox, 'entry-link')).toBe(false);
+  expect(InboxUtil.isPressOutside(inbox, 'toggle')).toBe(false);
+  expect(InboxUtil.isPressOutside(inbox, 'board-header')).toBe(true);
+  expect(InboxUtil.isPressOutside(inbox, null)).toBe(true);
+  expect(InboxUtil.isPressOutside(null, 'panel')).toBe(true);
+});

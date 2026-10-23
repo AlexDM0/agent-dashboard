@@ -7,6 +7,7 @@ import {
 import { PendingQuestionForm } from '../questions/PendingQuestionForm.tsx';
 import { boardHashOf }         from '../shell/HashRoute.ts';
 import { TimeUtil }            from '../time/TimeUtil.ts';
+import { InboxUtil }           from './InboxUtil.ts';
 import type { InboxEntry }     from './InboxUtil.ts';
 
 interface InboxProperties {
@@ -30,6 +31,7 @@ function InboxEntryCard({ entry, now, onLeave }: { entry: InboxEntry; now: numbe
 /** Every question the orchestrators owe, answerable in place; an entry leaves when a snapshot no longer holds it. */
 export function Inbox({ entries, now }: InboxProperties) {
   const [isOpen, setIsOpen] = useState(false);
+  const inboxReference = useRef<HTMLDivElement | null>(null);
   const toggleReference = useRef<HTMLButtonElement | null>(null);
   const panelId = useId();
   const pendingCount = entries.length;
@@ -44,12 +46,24 @@ export function Inbox({ entries, now }: InboxProperties) {
       setIsOpen(false);
       toggleReference.current?.focus();
     };
+    // Focus moving into the board frame blurs this window; the board's own Esc must not then find the panel open.
+    const closeOnLeave = (): void => setIsOpen(false);
+    const closeOnPressOutside = (event: PointerEvent): void => {
+      const target = event.target instanceof Node ? event.target : null;
+      if (InboxUtil.isPressOutside(inboxReference.current, target)) setIsOpen(false);
+    };
     window.addEventListener('keydown', closeOnEscape, true);
-    return () => window.removeEventListener('keydown', closeOnEscape, true);
+    window.addEventListener('blur', closeOnLeave);
+    document.addEventListener('pointerdown', closeOnPressOutside, true);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape, true);
+      window.removeEventListener('blur', closeOnLeave);
+      document.removeEventListener('pointerdown', closeOnPressOutside, true);
+    };
   }, [isOpen]);
 
   return (
-    <div className="ap-inbox">
+    <div ref={inboxReference} className="ap-inbox">
       <button
         ref={toggleReference}
         type="button"
