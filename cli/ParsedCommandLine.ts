@@ -8,7 +8,7 @@ import { DASHBOARD_PROTOCOL }  from '../src/shared/constants/DashboardProtocol.t
 import { SESSION_ROLES }       from '../src/shared/constants/SessionRoles.ts';
 import { COMMAND_LINE_LIMITS } from './constants/CommandLineLimits.ts';
 
-export type CommandName = 'open' | 'serve' | 'stop' | 'status' | 'help';
+export type CommandName = 'open' | 'serve' | 'stop' | 'restart' | 'status' | 'help';
 
 export interface CommandOptions {
   port:         number;
@@ -27,17 +27,21 @@ export type ParsedCommandLine =
 type OptionName = '--port' | '--no-open';
 
 const OPTIONS_OF_EACH_COMMAND: Record<Exclude<CommandName, 'help'>, readonly OptionName[]> = {
-  open:   ['--port', '--no-open'],
-  serve:  ['--port'],
-  stop:   [],
-  status: [],
+  open:    ['--port', '--no-open'],
+  serve:   ['--port'],
+  stop:    [],
+  restart: ['--port'],
+  status:  [],
 };
+
+const COMMAND_ALIASES: Record<string, Exclude<CommandName, 'help'>> = { reboot: 'restart', };
 
 const HELP_WORDS = new Set(['help', '--help', '-h']);
 
 const PORT_OPTION_PREFIX = '--port=';
 
 function commandNameOf(word: string): Exclude<CommandName, 'help'> | null {
+  if (Object.hasOwn(COMMAND_ALIASES, word)) return COMMAND_ALIASES[word] ?? null;
   return Object.hasOwn(OPTIONS_OF_EACH_COMMAND, word) ? word as Exclude<CommandName, 'help'> : null;
 }
 

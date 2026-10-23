@@ -66,6 +66,12 @@ test('help prints one screen to standard output at exit 0', async () => {
   expect(context.errorText()).toBe('');
 });
 
+test('help lists restart with its reboot alias and what it does', async () => {
+  const context = createCapturedCommandContext(scratchHome());
+  expect(await runCommandLine(['help'], context)).toBe(0);
+  expect(context.outputText()).toMatch(/^ {2}restart \[--port <n>\] +Alias reboot\. Restart the running server on its port/mu);
+});
+
 test('an unknown command prints the help to standard error at exit 1', async () => {
   const context = createCapturedCommandContext(scratchHome());
   expect(await runCommandLine(['launch'], context)).toBe(1);

@@ -10,6 +10,8 @@ Usage: agent-dashboard [command] [options]
   serve [--port <n>]              Run the server in the foreground until interrupted.
   stop                            Stop the running server; nothing running is not an error. A record
                                   whose process runs but does not answer is left, and refused.
+  restart [--port <n>]            Alias reboot. Restart the running server on its port and print its new
+                                  process id, or start one, without a browser, when none runs.
   status                          Print the running server's URL and process id, or that none runs.
   help                            Print this help.
 

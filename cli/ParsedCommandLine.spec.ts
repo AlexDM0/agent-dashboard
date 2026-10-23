@@ -39,6 +39,13 @@ describe('commands', () => {
     expect(parsedCommandLineOf(['stop', '--port', '4711'])).toEqual({ kind: 'refused', reason: 'stop takes no --port option.' });
   });
 
+  test('reboot is restart under another word, both taking --port and refusing --no-open', () => {
+    const restart = { kind: 'command', command: 'restart', options: { port: EXAMPLE_PORT, portIsGiven: true, browserOpens: true } } as const;
+    expect(parsedCommandLineOf(['restart', '--port', String(EXAMPLE_PORT)])).toEqual(restart);
+    expect(parsedCommandLineOf(['reboot', '--port', String(EXAMPLE_PORT)])).toEqual(restart);
+    expect(parsedCommandLineOf(['reboot', '--no-open'])).toEqual({ kind: 'refused', reason: 'restart takes no --no-open option.' });
+  });
+
   test('help, --help and -h all ask for the help, --help even after a command', () => {
     for (const commandLine of [['help'], ['--help'], ['-h'], ['serve', '--help']]) expect(parsedCommandLineOf(commandLine)).toEqual({ kind: 'help' });
   });

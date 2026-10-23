@@ -10,10 +10,11 @@ import type { CommandHandler }                   from './commands/CommandHandler
 
 /** Loaded on demand, so `help` and a refused argument never load the server. */
 const COMMAND_LOADERS: Record<Exclude<CommandName, 'help'>, () => Promise<CommandHandler>> = {
-  open:   async () => (await import('./commands/OpenCommand.ts')).openCommand,
-  serve:  async () => (await import('./commands/ServeCommand.ts')).serveCommand,
-  stop:   async () => (await import('./commands/StopCommand.ts')).stopCommand,
-  status: async () => (await import('./commands/StatusCommand.ts')).statusCommand,
+  open:    async () => (await import('./commands/OpenCommand.ts')).openCommand,
+  serve:   async () => (await import('./commands/ServeCommand.ts')).serveCommand,
+  stop:    async () => (await import('./commands/StopCommand.ts')).stopCommand,
+  restart: async () => (await import('./commands/RestartCommand.ts')).restartCommand,
+  status:  async () => (await import('./commands/StatusCommand.ts')).statusCommand,
 };
 
 export async function runCommandLine(commandLineArguments: readonly string[], context: CommandContext): Promise<number> {

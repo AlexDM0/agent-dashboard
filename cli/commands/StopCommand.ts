@@ -1,13 +1,14 @@
-import { processIsAlive }                                               from '../../src/lib/process-liveness/ProcessIsAlive.ts';
-import { DASHBOARD_PROTOCOL }                                           from '../../src/shared/constants/DashboardProtocol.ts';
-import type { CommandContext }                                          from '../CommandContext.ts';
-import { CommandRefusal }                                               from '../CommandRefusal.ts';
-import type { CommandOptions }                                          from '../ParsedCommandLine.ts';
-import { probeServerIdentity }                                          from '../ServerIdentityProbe.ts';
-import { removeServerRecord, removeServerRecordOf, serverRecordPathOf } from '../ServerRecordFile.ts';
-import { waitMilliseconds }                                             from '../WaitMilliseconds.ts';
-import { COMMAND_LINE_LIMITS }                                          from '../constants/CommandLineLimits.ts';
-import { runningDashboardServerOf }                                     from './RunningDashboardServer.ts';
+import { processIsAlive }                           from '../../src/lib/process-liveness/ProcessIsAlive.ts';
+import { DASHBOARD_PROTOCOL }                       from '../../src/shared/constants/DashboardProtocol.ts';
+import type { CommandContext }                      from '../CommandContext.ts';
+import { CommandRefusal }                           from '../CommandRefusal.ts';
+import type { CommandOptions }                      from '../ParsedCommandLine.ts';
+import { probeServerIdentity }                      from '../ServerIdentityProbe.ts';
+import { removeServerRecord, removeServerRecordOf } from '../ServerRecordFile.ts';
+import { waitMilliseconds }                         from '../WaitMilliseconds.ts';
+import { COMMAND_LINE_LIMITS }                      from '../constants/CommandLineLimits.ts';
+import { runningDashboardServerOf }                 from './RunningDashboardServer.ts';
+import { unansweringServerRefusalFor }              from './UnansweringServerRefusal.ts';
 
 async function requestShutdown(url: string): Promise<void> {
   const response = await fetch(`${url}${DASHBOARD_PROTOCOL.SHUTDOWN_PATH}`, {
@@ -39,10 +40,7 @@ export async function stopCommand(_options: CommandOptions, context: CommandCont
     return;
   }
   if (running.kind === 'not-answering' && processIsAlive(running.record.pid)) {
-    throw new CommandRefusal(
-      `The server record names pid ${running.record.pid} at ${running.record.url}, which runs but does not answer as the dashboard; `
-      + `the record is left in place. Try again, or remove ${serverRecordPathOf(context.homeDirectory)} if pid ${running.record.pid} is not the dashboard.`,
-    );
+    throw unansweringServerRefusalFor(running.record, context.homeDirectory);
   }
   if (running.kind !== 'running') {
     removeServerRecord(context.homeDirectory);

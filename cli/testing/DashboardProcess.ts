@@ -30,14 +30,19 @@ export function scratchDashboardEnvironment(homeDirectory: string): Record<strin
 }
 
 /** Both streams are read to their end before the exit is awaited: a detached server inherits no pipe, so the ends arrive. */
-export async function runAgentDashboard(commandLineArguments: readonly string[], homeDirectory: string): Promise<DashboardProcessResult> {
+export async function runAgentDashboard(
+  commandLineArguments: readonly string[],
+  homeDirectory:        string,
+  environment:          Record<string, string> = scratchDashboardEnvironment(homeDirectory),
+): Promise<DashboardProcessResult> {
   requireScratchDirectory(homeDirectory);
+  if (environment['HOME'] !== homeDirectory) throw new Error('A dashboard process runs only with HOME set to its scratch home.');
   const spawned = Bun.spawn([process.execPath, dashboardEntryPoint(), ...commandLineArguments], {
     cwd:    homeDirectory,
     stdin:  'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
-    env:    scratchDashboardEnvironment(homeDirectory),
+    env:    environment,
   });
   const [standardOutput, standardError, exitCode] = await Promise.all([
     new Response(spawned.stdout).text(),
