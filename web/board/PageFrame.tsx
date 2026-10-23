@@ -11,6 +11,7 @@ import { PreferenceStore }                                                      
 import { THEME_STORAGE_KEY, ThemeChoiceUtil }                                              from '../preferences/ThemeChoiceUtil.ts';
 import { OVERVIEW_HASH }                                                                   from '../shell/HashRoute.ts';
 import { followBoardFrameLoads }                                                           from './BoardFrameLoad.ts';
+import { embeddedBoardUrlOf }                                                              from './EmbeddedBoardUrl.ts';
 
 interface PageFrameProperties {
   pageUrl:        string;
@@ -74,7 +75,7 @@ export function PageFrame({
         ref={frameReference}
         name={BOARD_FRAME_NAME}
         className={isBoardLoaded ? 'ap-page-frame' : 'ap-page-frame is-loading'}
-        src={pageUrl}
+        src={embeddedBoardUrlOf(pageUrl)}
         sandbox={BOARD_FRAME_SANDBOX_TOKENS}
         title={`Board of ${projectName}`}
       />
