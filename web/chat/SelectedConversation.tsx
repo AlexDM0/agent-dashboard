@@ -1,104 +1,96 @@
-import { useState }                          from 'react';
-import type { BoardSummary, ChatMessage }    from '../../src/shared/DashboardContract.ts';
-import { ChatBox }                           from '../orchestrator/ChatBox.tsx';
-import { ContextMeter }                      from '../orchestrator/ContextMeter.tsx';
-import { ConversationLog }                   from '../orchestrator/ConversationLog.tsx';
-import { stopSession }                       from '../orchestrator/OrchestratorSessionDelivery.ts';
-import { OrchestratorSessionUtil }           from '../orchestrator/OrchestratorSessionUtil.ts';
-import { SessionGlyph }                      from '../orchestrator/SessionGlyph.tsx';
-import { SessionStateBadge }                 from '../orchestrator/SessionStateBadge.tsx';
-import { useOrchestratorConversation }       from '../orchestrator/UseOrchestratorConversation.ts';
-import { useSessionRequest }                 from '../orchestrator/UseSessionRequest.ts';
-import { PendingQuestionForm }               from '../questions/PendingQuestionForm.tsx';
-import type { ChatConversation }             from './ChatConversationListUtil.ts';
-import { QUICK_PROMPTS, sendToConversation } from './ChatOverlayRequests.ts';
-import { ConversationHeadingUtil }           from './ConversationHeadingUtil.ts';
-import { OnTheTable }                        from './OnTheTable.tsx';
-import { SparTableUtil }                     from './SparTableUtil.ts';
+import { useEffect, useState }                             from 'react';
+import type { BoardSummary, ChatMessage }                  from '../../src/shared/DashboardContract.ts';
+import { ContextMeter }                                    from '../orchestrator/ContextMeter.tsx';
+import { ConversationLog }                                 from '../orchestrator/ConversationLog.tsx';
+import { OrchestratorMenu }                                from '../orchestrator/OrchestratorMenu.tsx';
+import { SessionGlyph }                                    from '../orchestrator/SessionGlyph.tsx';
+import { SessionStateBadge }                               from '../orchestrator/SessionStateBadge.tsx';
+import { useOrchestratorConversation }                     from '../orchestrator/UseOrchestratorConversation.ts';
+import { useSessionRequest }                               from '../orchestrator/UseSessionRequest.ts';
+import { type QuestionDraft, QuestionAnswerUtil }          from '../questions/QuestionAnswerUtil.ts';
+import { ChatComposer }                                    from './ChatComposer.tsx';
+import { ChatContextColumn }                               from './ChatContextColumn.tsx';
+import { type ChatConversation, ChatConversationListUtil } from './ChatConversationListUtil.ts';
+import { ConversationHeadingUtil }                         from './ConversationHeadingUtil.ts';
+import { DockedQuestionCard }                              from './DockedQuestionCard.tsx';
+import { SparTableUtil }                                   from './SparTableUtil.ts';
 
 interface SelectedConversationProperties {
-  conversation: ChatConversation;
-  board:        BoardSummary | null;
-  onMinimise:   () => void;
-  onDock:       () => void;
-  onClose:      () => void;
+  conversation:       ChatConversation;
+  board:              BoardSummary | null;
+  now:                number;
+  /** Text put into the composer from outside, and a serial that changes with each new seed. */
+  composerSeedText:   string;
+  composerSeedSerial: number;
+  onCollapse:         () => void;
+  onOpenBoard:        () => void;
+  onClose:            () => void;
 }
 
 interface ConversationColumnsProperties extends SelectedConversationProperties {
   messages: ChatMessage[];
 }
 
-function QuickPrompts({ conversation }: { conversation: ChatConversation }) {
-  const { isSending, refusal, send } = useSessionRequest();
-  const hasEnded = conversation.session.state === 'ended';
-  return (
-    <div className="ap-chat-quick-prompts" role="group" aria-label="Quick prompts">
-      {QUICK_PROMPTS.map((prompt) => (
-        <button
-          key={prompt}
-          type="button"
-          className="ap-control ap-chat-quick-prompt"
-          disabled={isSending || hasEnded}
-          onClick={() => void send(() => sendToConversation(conversation, prompt))}
-        >
-          {prompt}
-        </button>
-      ))}
-      {refusal === null ? null : <span className="ap-stepper-refusal" role="alert">{refusal}</span>}
-    </div>
-  );
-}
-
-function EndSessionControl({ conversation }: { conversation: ChatConversation }) {
-  const [isConfirming, setIsConfirming] = useState(false);
-  const { isSending, refusal, send } = useSessionRequest();
+function SessionMenu({ conversation }: { conversation: ChatConversation }) {
+  const refreshRequest = useSessionRequest();
+  const stopRequest = useSessionRequest();
   if (conversation.isSendOnly || conversation.session.state === 'ended') return null;
-  if (!isConfirming) {
-    return <button type="button" className="ap-control is-quiet" onClick={() => setIsConfirming(true)}>End session</button>;
-  }
+  const refusal = refreshRequest.refusal ?? stopRequest.refusal;
   return (
-    <span className="ap-chat-end-confirm" role="group" aria-label="End this session?">
-      <span className="ap-caption">End this session?</span>
-      <button
-        type="button"
-        className="ap-control"
-        disabled={isSending}
-        onClick={() => void send(() => stopSession(conversation.role, conversation.trackerId)).then((wasEnded) => wasEnded && setIsConfirming(false))}
-      >
-        {isSending ? 'Ending…' : 'End'}
-      </button>
-      <button type="button" className="ap-control is-quiet" onClick={() => setIsConfirming(false)}>Cancel</button>
+    <>
+      <OrchestratorMenu role={conversation.role} trackerId={conversation.trackerId} session={conversation.session} refreshRequest={refreshRequest} stopRequest={stopRequest} />
+      {refreshRequest.isSending || stopRequest.isSending ? <span className="muted ap-caption" role="status">Sending…</span> : null}
       {refusal === null ? null : <span className="ap-stepper-refusal" role="alert">{refusal}</span>}
-    </span>
+    </>
   );
 }
 
 function ConversationColumns({
-  conversation, board, messages, onMinimise, onDock, onClose
+  conversation, board, now, messages, composerSeedText, composerSeedSerial, onCollapse, onOpenBoard, onClose
 }: ConversationColumnsProperties) {
-  const { session, role, trackerId } = conversation;
-  const sessionName = OrchestratorSessionUtil.nameOf(session, role);
-  const title = ConversationHeadingUtil.titleOf(messages, !conversation.isSendOnly) ?? sessionName;
+  const { session, role } = conversation;
+  const [draftsByRequest, setDraftsByRequest] = useState<Record<string, QuestionDraft[]>>({});
+  const [answeredRequestIds, setAnsweredRequestIds] = useState<string[]>([]);
+  const roleTitle = ChatConversationListUtil.titleOf(conversation);
+  const firstMessageTitle = conversation.isSendOnly ? null : ConversationHeadingUtil.titleOf(messages, true);
   const isSparring = role === 'product-owner' && ConversationHeadingUtil.isSparring(messages);
   const hasEnded = session.state === 'ended';
+  const waitingQuestions = conversation.isSendOnly || hasEnded ? [] : session.pendingQuestions.filter((pendingQuestion) => !answeredRequestIds.includes(pendingQuestion.requestId));
+  const [pendingQuestion] = waitingQuestions;
+  const drafts = pendingQuestion === undefined
+    ? []
+    : Object.hasOwn(draftsByRequest, pendingQuestion.requestId) ? draftsByRequest[pendingQuestion.requestId] ?? [] : QuestionAnswerUtil.emptyDraftsOf(pendingQuestion);
+  const markAnswered = (requestId: string): void => setAnsweredRequestIds((previous) => [...previous, requestId]);
+  const pendingRequestIds = session.pendingQuestions.map((candidate) => candidate.requestId).join('\n');
+
+  // An answered request is hidden only until a snapshot drops it, so a request asked again later shows again.
+  useEffect(() => {
+    const stillPending = pendingRequestIds.split('\n');
+    setAnsweredRequestIds((previous) => {
+      const kept = previous.filter((requestId) => stillPending.includes(requestId));
+      return kept.length === previous.length ? previous : kept;
+    });
+  }, [pendingRequestIds]);
+
   return (
     <>
-      <section className="ap-chat-column ap-chat-conversation-column" aria-label={`Conversation: ${title}`}>
+      <section className="ap-chat-column ap-chat-conversation-column" aria-label={`Conversation: ${roleTitle} of ${conversation.projectName}`}>
         <header className="ap-chat-conversation-head">
           <div className="ap-chat-conversation-identity">
             <SessionGlyph role={role} session={session} />
-            <h2 className="ap-chat-conversation-title ellipsis" title={title}>{title}</h2>
+            <h2 className="ap-chat-conversation-title ellipsis">{roleTitle} <span className="muted">· {conversation.projectName}</span></h2>
             {isSparring ? <span className="ap-pill" data-state="in-review">sparring · files nothing</span> : null}
             <SessionStateBadge role={role} session={session} />
+            <span className="ap-pill">{conversation.isSendOnly ? 'desktop · send-only' : 'hosted'}</span>
           </div>
           <div className="ap-chat-conversation-meta">
-            <span className="muted ap-caption">{conversation.projectName} · {sessionName}</span>
+            {firstMessageTitle === null ? null : <span className="muted ap-caption ellipsis" title={firstMessageTitle}>{firstMessageTitle}</span>}
             <ContextMeter context={session.context} compact />
           </div>
           <div className="ap-chat-conversation-actions">
-            <button type="button" className="ap-control is-quiet" onClick={onMinimise}>Minimise</button>
-            <button type="button" className="ap-control is-quiet" onClick={onDock}>Dock beside the board</button>
-            <EndSessionControl key={conversation.key} conversation={conversation} />
+            <button type="button" className="ap-control is-quiet" onClick={onCollapse}>Collapse into the board&apos;s drawer</button>
+            <button type="button" className="ap-control is-quiet" onClick={onOpenBoard}>Open board</button>
+            <SessionMenu key={conversation.key} conversation={conversation} />
             <button type="button" className="ap-control is-quiet ap-icon-control ap-chat-close" aria-label="Close the chat" onClick={onClose}>
               <span aria-hidden="true">×</span>
             </button>
@@ -107,24 +99,37 @@ function ConversationColumns({
         <div className="ap-chat-conversation-body">
           {conversation.isSendOnly
             ? <p className="muted ap-caption">This desktop app session&apos;s conversation shows in its own app; a message sent here reaches it as a peer&apos;s message.</p>
-            : null}
-          {conversation.isSendOnly || hasEnded
-            ? null
-            : session.pendingQuestions.map((pendingQuestion) => (
-              <PendingQuestionForm key={pendingQuestion.requestId} role={role} trackerId={trackerId} pendingQuestion={pendingQuestion} />
-            ))}
-          {conversation.isSendOnly ? null : <ConversationLog role={role} messages={SparTableUtil.messagesWithoutTablesOf(messages)} />}
+            : <ConversationLog role={role} messages={SparTableUtil.messagesWithoutTablesOf(messages)} />}
         </div>
+        {pendingQuestion === undefined
+          ? null
+          : (
+            <DockedQuestionCard
+              key={pendingQuestion.requestId}
+              conversation={conversation}
+              pendingQuestion={pendingQuestion}
+              laterCount={waitingQuestions.length - 1}
+              drafts={drafts}
+              now={now}
+              onDraftsChange={(nextDrafts) => setDraftsByRequest((previous) => ({ ...previous, [pendingQuestion.requestId]: nextDrafts }))}
+              onAnswered={markAnswered}
+            />
+          )}
         {hasEnded
           ? null
           : (
             <footer className="ap-chat-composer">
-              <QuickPrompts key={conversation.key} conversation={conversation} />
-              <ChatBox key={conversation.key} role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={hasEnded} />
+              <ChatComposer
+                key={`${conversation.key}:${String(composerSeedSerial)}`}
+                conversation={conversation}
+                question={pendingQuestion === undefined ? null : { pendingQuestion, drafts }}
+                initialText={composerSeedText}
+                onAnswered={markAnswered}
+              />
             </footer>
           )}
       </section>
-      <OnTheTable table={SparTableUtil.latestTableOf(messages)} board={board} />
+      <ChatContextColumn conversation={conversation} board={board} messages={messages} now={now} />
     </>
   );
 }
@@ -137,6 +142,6 @@ function TailedConversation(properties: SelectedConversationProperties) {
 /** A dashboard-owned session is read from its own event stream; a watched desktop one's transcript is not tailed. */
 export function SelectedConversation(properties: SelectedConversationProperties) {
   return properties.conversation.isSendOnly
-    ? <ConversationColumns {...properties} messages={[]} />
+    ? <ConversationColumns key={properties.conversation.key} {...properties} messages={[]} />
     : <TailedConversation key={properties.conversation.key} {...properties} />;
 }

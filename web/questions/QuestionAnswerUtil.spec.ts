@@ -77,3 +77,22 @@ test('the request is withheld until every question has an answer, then keyed by 
     answers:   { 'Which example colour?': 'Blue', 'Which example sizes?': 'Medium' },
   });
 });
+
+test('one click answers a lone single-select question with exactly its label, and nothing else is one-click', () => {
+  const lonePending: PendingQuestion = { ...PENDING, questions: [SINGLE_QUESTION] };
+  expect(QuestionAnswerUtil.isOneClick(lonePending)).toBe(true);
+  expect(QuestionAnswerUtil.oneClickAnswerRequestOf(lonePending, 'Blue')).toEqual({ requestId: 'request-example', answers: { 'Which example colour?': 'Blue' } });
+  expect(QuestionAnswerUtil.oneClickAnswerRequestOf(lonePending, 'Green')).toBeNull();
+  expect(QuestionAnswerUtil.isOneClick(PENDING)).toBe(false);
+  expect(QuestionAnswerUtil.isOneClick({ ...PENDING, questions: [MULTI_QUESTION] })).toBe(false);
+  expect(QuestionAnswerUtil.oneClickAnswerRequestOf(PENDING, 'Blue')).toBeNull();
+});
+
+test('composer text answers as every question\'s "Other", a multi-select keeping its checked labels first', () => {
+  const drafts = [QuestionAnswerUtil.withChoice(EMPTY, { kind: 'label', label: 'Red' }, false), QuestionAnswerUtil.withChoice(EMPTY, { kind: 'label', label: 'Large' }, true)];
+  expect(QuestionAnswerUtil.otherAnswerRequestOf(PENDING, drafts, ' Teal ')).toEqual({
+    requestId: 'request-example',
+    answers:   { 'Which example colour?': 'Teal', 'Which example sizes?': 'Large, Teal' },
+  });
+  expect(QuestionAnswerUtil.otherAnswerRequestOf(PENDING, drafts, '   ')).toBeNull();
+});

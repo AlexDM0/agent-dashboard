@@ -1,5 +1,6 @@
 import { useEffect, useState }      from 'react';
 import { BoardView }                from './board/BoardView.tsx';
+import { ChatConversationListUtil } from './chat/ChatConversationListUtil.ts';
 import { ChatOverlayDialog }        from './chat/ChatOverlayDialog.tsx';
 import { useChatOverlay }           from './chat/UseChatOverlay.ts';
 import { FleetView }                from './fleet/FleetView.tsx';
@@ -40,6 +41,7 @@ export function App() {
   const inboxWaitingCount = pendingQuestionCount + inboxAlerts.length;
   const notifications = useDesktopNotifications(stream);
   const chatOverlay = useChatOverlay();
+  const conversations = ChatConversationListUtil.conversationsOf(projects, stream.snapshot?.watchedOrchestratorsByTracker ?? {});
   useAppBadge(pendingQuestionCount);
 
   useEffect(() => {
@@ -61,6 +63,7 @@ export function App() {
             notifications={notifications}
             theme={theme}
             chatOverlay={chatOverlay}
+            conversations={conversations}
             now={now}
           />
           <ConnectionBanner connection={stream.connection} lastUpdateAt={stream.lastUpdateAt} now={now} />
@@ -71,6 +74,7 @@ export function App() {
                 trackerId={route.trackerId}
                 opensCrewDrawer={route.opensCrewDrawer}
                 {...(route.crewDrawerTab === undefined ? {} : { crewDrawerTab: route.crewDrawerTab })}
+                onExpandCrewSession={(trackerId, role) => chatOverlay.open(ChatConversationListUtil.crewSessionKeyOf(conversations, trackerId, role))}
               />
             )
             : null}
@@ -89,7 +93,7 @@ export function App() {
             )
             : null}
         </div>
-        <ChatOverlayDialog snapshot={stream.snapshot} overlay={chatOverlay} />
+        <ChatOverlayDialog snapshot={stream.snapshot} overlay={chatOverlay} now={now} />
       </div>
     </DashboardEventHubContext>
   );

@@ -7,6 +7,7 @@ import { createElement }        from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { ChatConversationListUtil }                     from '../chat/ChatConversationListUtil.ts';
+import { ChatWindowGroupUtil }                          from '../chat/ChatWindowGroupUtil.ts';
 import { ConversationList }                             from '../chat/ConversationList.tsx';
 import { orchestratorSessionWith, projectSnapshotWith } from '../testing/SnapshotFixtures.ts';
 import { CrewDrawer }                                   from './CrewDrawer.tsx';
@@ -31,7 +32,15 @@ function drawerMarkupOf(project: typeof PROJECT_WITH_ENDED, watchedSessions: typ
 function listMarkupOf(project: typeof PROJECT_WITH_ENDED, watchedSessions: typeof LIVE_WATCHED[]): string {
   const conversations = ChatConversationListUtil.conversationsOf([project], { [project.trackerId]: watchedSessions });
   return renderToStaticMarkup(createElement(ConversationList, {
-    projects: [project], conversations, selectedKey: null, onSelect: () => undefined
+    groups:         ChatWindowGroupUtil.groupsOf([project], conversations),
+    searchText:     '',
+    filter:         'all',
+    selectedKey:    null,
+    now:            Date.parse('2026-10-21T12:00:00Z'),
+    onSearchChange: () => undefined,
+    onFilterChange: () => undefined,
+    onSelect:       () => undefined,
+    onMention:      () => undefined,
   }));
 }
 

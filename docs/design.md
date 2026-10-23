@@ -694,35 +694,52 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   `/product-owner/messages` only, and a menu ("Product owner menu") holding End session alone (`DELETE
   /product-owner`), never a refresh or a context warning. Every request of a role goes to that role's routes
   (`OrchestratorSessionDelivery.ts`), so nothing meant for the product owner can reach the orchestrator.
-- The **chat overlay** (`web/chat/`): the header's Chat button, or `C` while focus is not in a text field, opens a
-  large dialog over any route (`web/chat/UseChatOverlay.ts`); Esc, captured on the window before the drawer's and the
-  board's own Esc, closes it from anywhere in it, the route unchanged and focus back on the Chat button. It holds no
-  conversation of its own, only which one is shown: each session is read from the page's event stream, so closing and
-  reopening loses nothing while the session lives. Three columns, stacking into one scrolling column below 768 px:
-  - **Conversations**: every project's dashboard-owned orchestrator and product owner (live or ended, as the snapshot
-    keeps them for this server's run) and every watched desktop orchestrator, "desktop app · send-only", ordered by
-    `ChatConversationListUtil.conversationsOf`: live sessions with a pending question first, then by `lastAction.at`
-    newest first (none last). The ended ones are not in that list but in the same closed "Ended (N)" fold as the
-    drawer's at the bottom of the column, newest first, each line its start, its end bound and its last action;
-    picking one shows its conversation read-only, without quick prompts or chat box. The conversation shown by
-    default is the first one that has not ended, else none. Above the list a project picker, "New
-    spar" (`POST /product-owner` with `{ "mode": "spar" }`, then selects that project's product owner) and "Talk to
-    orchestrator" (its live session, else a fresh one with `startBuilding` false).
-  - **Conversation**: the session's glyph, a title (the first line of the user's first message after the dashboard's
-    brief, else the session's name), a `sparring · files nothing` pill when its brief holds the spar instruction
-    (`ConversationHeadingUtil.isSparring`), its state, project and context meter; Minimise (a dock chip at the bottom
-    right reopening the same session), Dock beside the board (`#/projects/<trackerId>/crew/<role>`: the board opens
-    its crew drawer on that role's tab), End session (confirmed in place, `DELETE` on the role's route), Close. Then
-    its pending questions answered in place, the conversation (`ConversationLog`, plain text, tool calls collapsed to
-    one line, the `spar-table` blocks taken out), and the composer: quick prompts "Challenge this", "What am I
-    missing?", "Summarise the table" and "Wrap up into tickets", each sending exactly its text through the session's
-    messages route, and the chat box. A desktop session's transcript is not tailed: it offers the composer alone.
-  - **On the table**: the board's dispatcher pill and slots, then the newest valid table any assistant reply ends with
-    as a ```` ```spar-table ```` JSON block in the shape `.agent-progress/evidence/043-table-protocol.md` recommends
-    (`SparTableUtil`): points grouped Agreed / Open / Parked, the tickets it would file at wrap-up, and each referenced
-    ticket with its status on the snapshot's board (building, in review, waiting for review, ready, held, low priority,
-    not in flight). A block with any wrong entry is ignored, keeping the last good table; none reads "Nothing on the
-    table yet". The table is read in the web from the conversation; the product owner's brief does not yet ask for it.
+- The **chat window** (`web/chat/`): direct contact with every live agent, per project. The header's Chat button reads
+  "Chat", the live session count and a badge counting the sessions owing an answer
+  (`ChatConversationListUtil.liveCountOf`, `waitingCountOf`); it opens the window on the session waiting longest for an
+  answer, else the one opened last (`openingKeyOf`). `C` while focus is not in a text field opens it on the one opened
+  last. It is a large dialog over any route (`web/chat/UseChatOverlay.ts`); Esc, captured on the window before the
+  drawer's and the board's own Esc, closes it from anywhere in it, the route unchanged and focus back on the Chat
+  button. It holds no conversation of its own, only which one is shown: each session is read from the page's event
+  stream, so closing and reopening loses nothing while the session lives. The crew drawer's tab bar has "Expand into
+  the chat window", which closes the drawer and opens the window on that tab's session (`crewSessionKeyOf`: the role's
+  dashboard session, else the project's first watched orchestrator). Three columns, stacking into one scrolling column
+  below 768 px:
+  - **Sessions** (`ChatWindowGroupUtil.groupsOf`): active projects in the rail's order (active, then idle, each
+    alphabetical), an idle project with no live session left out. Each project has a heading (its dot with the question
+    ring, its name, agents `n/m`), then its live sessions (orchestrator, product owner, a watched desktop orchestrator
+    as "desktop · send-only"), each with its glyph, role, a badge for its pending questions and its last action with
+    age. Under them sit the project's in-flight agents (`activeRows`) as status lines: state pill, ticket id, title.
+    They run inside the dispatcher workflow and take no message, so they are never selected; while the project has a
+    live orchestrator, clicking one selects it with `#<id> ` put into its composer. A project without a live product
+    owner offers "+ Product owner", a two-item menu: "File tickets" (`POST /product-owner` with `{ "mode": "file" }`)
+    and "Spar first" (`{ "mode": "spar" }`), then selects that product owner. At the top a search over project and role
+    and the All / Waiting for you filters (`filteredOf`); the ended sessions of this server's run sit under the same
+    closed "Ended (N)" fold as the drawer's (`EndedFold`), newest first, each line its start, its end bound and its last action
+    (`EndedSessionSplitUtil.endedLineOf`); picking one shows its conversation read-only, without a composer. The
+    session shown by default is the first one that has not ended, else none.
+  - **Conversation**: the session's glyph, its role and project, a `sparring · files nothing` pill when its brief holds
+    the spar instruction (`ConversationHeadingUtil.isSparring`, shown in this header alone), its state, hosted or
+    desktop, the first line of the user's first message, the context meter; Collapse into the board's drawer
+    (`#/projects/<trackerId>/crew/<role>`: the board opens its crew drawer on that role's tab), Open board, the role's
+    menu (Refresh orchestrator, the handoff, and Stop for an orchestrator; End session for a product owner), Close.
+    Then the conversation (`ConversationLog`, plain text, tool calls collapsed to one line, the `spar-table` blocks
+    taken out). While the session has a pending question, a "Waiting for your answer" card sits docked between the
+    conversation and the composer, with the question's age (`DockedQuestionCard`): a lone single-select question shows
+    each option as a button, one click sending the answer (`QuestionAnswerUtil.oneClickAnswerRequestOf`); otherwise
+    single-selects are pressed buttons, multi-selects checkboxes, and one Answer button sends the labels joined as
+    `PendingQuestionForm` joins them. The card leaves when a snapshot no longer holds the request. The composer reads
+    "Message the <role> of <project>"; while a question waits it reads "Answer the <role>'s question as "Other"", and
+    its text goes out as that question's Other answer (`otherAnswerRequestOf`), never as a message. A desktop
+    session's transcript is not tailed: it offers the composer alone.
+  - **Context** (`ChatContextColumn`): Session (started, context used of the window, last action); Board (dispatcher
+    pill, agents, ready and held counts); Mentioned (`ChatContextUtil`: each `#<id>` the user's and the agent's text
+    names, with every id in the pending questions' `context.mentionedTicketIds`, each with its status on the board);
+    Also in <project> (its in-flight agents); and, for a product owner whose replies hold a valid table, On the table:
+    the newest valid table any assistant reply ends with as a ```` ```spar-table ```` JSON block in the shape
+    `.agent-progress/evidence/043-table-protocol.md` recommends (`SparTableUtil`): points grouped Agreed / Open /
+    Parked, the tickets it would file at wrap-up, and each referenced ticket with its status on the snapshot's board.
+    A block with any wrong entry is ignored, keeping the last good table.
 - The **frame**: `progress.html` from the board origin in an iframe sandboxed to `allow-scripts allow-same-origin`
   (see "The bridge") filling the rest of the viewport, no border, requested as `progress.html?embedded=dashboard`
   (added to the page URL's query beside any it has; "Open board in a new tab" keeps the plain page) so the board drops

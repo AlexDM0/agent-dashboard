@@ -57,6 +57,30 @@ function answerRequestOf(pendingQuestion: PendingQuestion, drafts: QuestionDraft
   return { requestId: pendingQuestion.requestId, answers };
 }
 
+/** A request of one single-select question is answered by one click on an option. */
+function isOneClick(pendingQuestion: PendingQuestion): boolean {
+  const [onlyQuestion, ...otherQuestions] = pendingQuestion.questions;
+  return onlyQuestion !== undefined && otherQuestions.length === 0 && !onlyQuestion.multiSelect;
+}
+
+/** The answer one click on an option sends, or null when the request is not one-click or has no such option. */
+function oneClickAnswerRequestOf(pendingQuestion: PendingQuestion, label: string): OrchestratorAnswerRequest | null {
+  const [onlyQuestion] = pendingQuestion.questions;
+  if (!isOneClick(pendingQuestion) || onlyQuestion?.options.some((option) => option.label === label) !== true) return null;
+  const emptyDraft: QuestionDraft = { chosenLabels: [], isOtherChosen: false, otherText: '' };
+  return answerRequestOf(pendingQuestion, [withChoice(emptyDraft, { kind: 'label', label }, false)]);
+}
+
+/** Free text sent while the request waits: every question's "Other", a multi-select keeping the labels already checked. */
+function otherAnswerRequestOf(pendingQuestion: PendingQuestion, drafts: QuestionDraft[], otherText: string): OrchestratorAnswerRequest | null {
+  if (otherText.trim() === '') return null;
+  const draftsWithOther = pendingQuestion.questions.map((question, index) => {
+    const draft = drafts[index] ?? { chosenLabels: [], isOtherChosen: false, otherText: '' };
+    return withOtherText({ ...draft, isOtherChosen: true }, otherText, question.multiSelect);
+  });
+  return answerRequestOf(pendingQuestion, draftsWithOther);
+}
+
 export const QuestionAnswerUtil = Object.freeze({
-  emptyDraftsOf, withChoice, withOtherText, answerOf, answerRequestOf
+  emptyDraftsOf, withChoice, withOtherText, answerOf, answerRequestOf, isOneClick, oneClickAnswerRequestOf, otherAnswerRequestOf
 });

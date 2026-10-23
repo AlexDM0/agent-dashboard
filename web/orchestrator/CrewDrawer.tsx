@@ -30,6 +30,8 @@ interface CrewDrawerProperties {
   /** The tab the drawer opens on; when absent, the one whose questions alone wait, else the orchestrator's. */
   initialTab?:     SessionRole;
   onClose:         () => void;
+  /** Opens the chat window on the tab's session; absent, the drawer offers no expand. */
+  onExpand?:       (role: SessionRole) => void;
 }
 
 function isTypingField(target: EventTarget | null): boolean {
@@ -89,7 +91,7 @@ function ProductOwnerPanel({ project }: { project: ProjectSnapshot }) {
 
 /** The crew's sessions over the board from the right, closed by its ×, the scrim and Esc, which it takes before the board's own Esc can. */
 export function CrewDrawer({
-  drawerId, project, watchedSessions, initialFocus, initialTab, onClose
+  drawerId, project, watchedSessions, initialFocus, initialTab, onClose, onExpand
 }: CrewDrawerProperties) {
   const drawerReference = useRef<HTMLElement | null>(null);
   const tabIdPrefix = useId();
@@ -119,6 +121,9 @@ export function CrewDrawer({
     return () => document.removeEventListener('keydown', closeOnEscape, true);
   }, [onClose]);
 
+  const hasTabSession = activeTab === 'orchestrator'
+    ? OrchestratorSessionUtil.sessionsOf(project, watchedSessions).length > 0
+    : project.productOwner !== null;
   return (
     <>
       <div className="ap-crew-scrim" aria-hidden="true" onClick={onClose} />
@@ -146,6 +151,9 @@ export function CrewDrawer({
               );
             })}
           </div>
+          {hasTabSession && onExpand !== undefined
+            ? <button type="button" className="ap-control is-quiet ap-crew-drawer-expand" onClick={() => onExpand(activeTab)}>Expand into the chat window</button>
+            : null}
           <button type="button" className="ap-control is-quiet ap-icon-control ap-crew-drawer-close" aria-label="Close the crew drawer" onClick={onClose}>
             <span aria-hidden="true">×</span>
           </button>

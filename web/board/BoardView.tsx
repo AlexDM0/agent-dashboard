@@ -19,14 +19,16 @@ import { RootPathUtil }                        from './RootPathUtil.ts';
 import { UnknownProjectPanel }                 from './UnknownProjectPanel.tsx';
 
 interface BoardViewProperties {
-  snapshot:        DashboardSnapshot | null;
-  trackerId:       string;
-  opensCrewDrawer: boolean;
-  crewDrawerTab?:  SessionRole;
+  snapshot:            DashboardSnapshot | null;
+  trackerId:           string;
+  opensCrewDrawer:     boolean;
+  crewDrawerTab?:      SessionRole;
+  /** The crew drawer's "Expand into the chat window": the drawer closes and the window opens on that role's session. */
+  onExpandCrewSession: (trackerId: string, role: SessionRole) => void;
 }
 
 export function BoardView({
-  snapshot, trackerId, opensCrewDrawer, crewDrawerTab
+  snapshot, trackerId, opensCrewDrawer, crewDrawerTab, onExpandCrewSession
 }: BoardViewProperties) {
   const frameReference = useRef<HTMLIFrameElement | null>(null);
   const crewStripReference = useRef<HTMLButtonElement | null>(null);
@@ -111,6 +113,10 @@ export function BoardView({
                     initialFocus={openDrawer.focus}
                     {...(openDrawer.tab === undefined ? {} : { initialTab: openDrawer.tab })}
                     onClose={closeDrawer}
+                    onExpand={(role) => {
+                      setOpenDrawer(null);
+                      onExpandCrewSession(project.trackerId, role);
+                    }}
                   />
                 )}
             </>

@@ -1,13 +1,14 @@
 /**
- * The overlay's requests against a scratch mock server on a loopback port (A3): "New spar" posts `{ "mode": "spar" }`
- * to the product owner's route; each quick prompt goes through its session's own messages route as exactly its text,
- * carrying the launch token; a watched session's message names its session.
+ * The chat window's requests against a scratch mock server on a loopback port (A3, A4): "Spar first" posts
+ * `{ "mode": "spar" }` and "File tickets" `{ "mode": "file" }` to the product owner's route; a message goes through its
+ * session's own messages route as exactly its text and an answer through the answers route, each carrying the launch
+ * token; a watched session's message names its session.
  */
 import { afterAll, expect, test } from 'bun:test';
 
-import { chatSnapshotWith }                                             from '../testing/SnapshotFixtures.ts';
-import { ChatConversationListUtil }                                     from './ChatConversationListUtil.ts';
-import { QUICK_PROMPTS, sendToConversation, startSparringProductOwner } from './ChatOverlayRequests.ts';
+import { chatSnapshotWith }                                            from '../testing/SnapshotFixtures.ts';
+import { ChatConversationListUtil }                                    from './ChatConversationListUtil.ts';
+import { answerConversation, sendToConversation, startProductOwnerIn } from './ChatOverlayRequests.ts';
 
 interface ReceivedRequest { method: string; path: string; token: string | null; body: unknown }
 
@@ -36,23 +37,38 @@ function conversationOf(key: string) {
   return conversation;
 }
 
-test('New spar posts the spar mode to the product owner route with the launch token', async () => {
+test('"Spar first" posts the spar mode and "File tickets" the file mode to the product owner route with the launch token', async () => {
   receivedRequests.length = 0;
-  expect(await startSparringProductOwner('tracker-example-notes', sendToMockServer)).toEqual({ kind: 'sent' });
+  expect(await startProductOwnerIn('tracker-example-notes', 'spar', sendToMockServer)).toEqual({ kind: 'sent' });
+  expect(await startProductOwnerIn('tracker-example-notes', 'file', sendToMockServer)).toEqual({ kind: 'sent' });
+  expect(receivedRequests).toEqual([
+    {
+      method: 'POST', path: '/api/projects/tracker-example-notes/product-owner', token: 'token-example', body: { mode: 'spar' }
+    },
+    {
+      method: 'POST', path: '/api/projects/tracker-example-notes/product-owner', token: 'token-example', body: { mode: 'file' }
+    },
+  ]);
+});
+
+test('a message reaches the product owner messages route as exactly its text, named by its session', async () => {
+  receivedRequests.length = 0;
+  expect(await sendToConversation(conversationOf('product-owner:tracker-example-agency-site'), 'What am I missing?', sendToMockServer)).toEqual({ kind: 'sent' });
   expect(receivedRequests).toEqual([{
-    method: 'POST', path: '/api/projects/tracker-example-notes/product-owner', token: 'token-example', body: { mode: 'spar' }
+    method: 'POST',
+    path:   '/api/projects/tracker-example-agency-site/product-owner/messages',
+    token:  'token-example',
+    body:   { text: 'What am I missing?', sessionId: 'product-owner-idle' },
   }]);
 });
 
-test('each quick prompt reaches the product owner messages route as exactly its text', async () => {
+test('an answer reaches its role\'s answers route as the request it was given', async () => {
   receivedRequests.length = 0;
-  const conversation = conversationOf('product-owner:tracker-example-agency-site');
-  for (const prompt of QUICK_PROMPTS) {
-    expect(await sendToConversation(conversation, prompt, sendToMockServer)).toEqual({ kind: 'sent' });
-  }
-  expect(receivedRequests.map((request) => request.path)).toEqual(QUICK_PROMPTS.map(() => '/api/projects/tracker-example-agency-site/product-owner/messages'));
-  expect(receivedRequests.map((request) => request.body)).toEqual(QUICK_PROMPTS.map((prompt) => ({ text: prompt, sessionId: 'product-owner-idle' })));
-  expect(QUICK_PROMPTS).toEqual(['Challenge this', 'What am I missing?', 'Summarise the table', 'Wrap up into tickets']);
+  const answerRequest = { requestId: 'request-product-owner', answers: { 'Example question request-product-owner?': 'Yes' } };
+  expect(await answerConversation(conversationOf('product-owner:tracker-example-storefront'), answerRequest, sendToMockServer)).toEqual({ kind: 'sent' });
+  expect(receivedRequests).toEqual([{
+    method: 'POST', path: '/api/projects/tracker-example-storefront/product-owner/answers', token: 'token-example', body: answerRequest
+  }]);
 });
 
 test('a watched desktop orchestrator takes its message through the orchestrator route, named by its session', async () => {

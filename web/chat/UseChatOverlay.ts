@@ -6,18 +6,28 @@ import {
   useState
 } from 'react';
 
-export type ChatOverlayVisibility = 'closed' | 'open' | 'minimised';
+export type ChatOverlayVisibility = 'closed' | 'open';
+
+/** Text put into a session's composer from outside it; `serial` tells two equal seeds apart, so each refills the composer. */
+export interface ComposerSeed {
+  key:    string;
+  text:   string;
+  serial: number;
+}
 
 export interface ChatOverlay {
-  visibility:          ChatOverlayVisibility;
-  /** The listed conversation shown, kept across a close or a minimise; null picks the list's first. */
-  selectedKey:         string | null;
-  chatButtonReference: RefObject<HTMLButtonElement | null>;
-  open:                () => void;
-  /** Closes the overlay, the session living on, and gives focus back to the header's Chat button. */
-  close:               () => void;
-  minimise:            () => void;
-  select:              (key: string) => void;
+  visibility:             ChatOverlayVisibility;
+  /** The listed conversation shown, kept across a close; null picks the list's first. */
+  selectedKey:            string | null;
+  composerSeed:           ComposerSeed | null;
+  chatButtonReference:    RefObject<HTMLButtonElement | null>;
+  /** Opens the window, on the given session when one is named, else on the one shown last. */
+  open:                   (key?: string | null) => void;
+  /** Closes the window, the session living on, and gives focus back to the header's Chat button. */
+  close:                  () => void;
+  select:                 (key: string) => void;
+  /** Selects the session with the text put into its composer. */
+  selectWithComposerText: (key: string, text: string) => void;
 }
 
 const OPEN_KEY = 'c';
@@ -28,17 +38,24 @@ function isTextEntry(target: EventTarget | null): boolean {
     || (target instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'reset'].includes(target.type));
 }
 
-/** The chat overlay's visibility and selection, `C` outside a text field opening it, and Esc closing it on any route. */
+/** The chat window's visibility and selection, `C` outside a text field opening it, and Esc closing it on any route. */
 export function useChatOverlay(): ChatOverlay {
   const [visibility, setVisibility] = useState<ChatOverlayVisibility>('closed');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [composerSeed, setComposerSeed] = useState<ComposerSeed | null>(null);
   const chatButtonReference = useRef<HTMLButtonElement | null>(null);
 
-  const open = useCallback(() => setVisibility('open'), []);
-  const minimise = useCallback(() => setVisibility('minimised'), []);
+  const open = useCallback((key?: string | null) => {
+    if (typeof key === 'string') setSelectedKey(key);
+    setVisibility('open');
+  }, []);
   const close = useCallback(() => {
     setVisibility('closed');
     chatButtonReference.current?.focus();
+  }, []);
+  const selectWithComposerText = useCallback((key: string, text: string) => {
+    setSelectedKey(key);
+    setComposerSeed((previous) => ({ key, text, serial: (previous?.serial ?? 0) + 1 }));
   }, []);
 
   useEffect(() => {
@@ -65,6 +82,6 @@ export function useChatOverlay(): ChatOverlay {
   }, [visibility, close]);
 
   return {
-    visibility, selectedKey, chatButtonReference, open, close, minimise, select: setSelectedKey
+    visibility, selectedKey, composerSeed, chatButtonReference, open, close, select: setSelectedKey, selectWithComposerText
   };
 }

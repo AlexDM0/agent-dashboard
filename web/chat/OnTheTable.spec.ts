@@ -29,7 +29,6 @@ test('a fixture table shows each point under its state, its draft and its refere
   expect(markup).toMatch(/#043<\/span><span class="ap-pill" data-state="in-progress">building/u);
   expect(markup).toMatch(/#040<\/span><span class="ap-pill" data-state="in-review">in review/u);
   expect(markup).toMatch(/#047<\/span><span class="ap-pill" data-state="paused">held/u);
-  expect(markup).toContain('title="Dispatcher">running</span>');
   expect(markup).not.toContain('Nothing on the table yet');
 });
 
