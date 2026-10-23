@@ -37,6 +37,8 @@ test('a waiting state reads as waiting, leaving "question waiting" to the marker
   expect(OrchestratorSessionUtil.stateWordOf('busy')).toBe('busy');
   expect(OrchestratorSessionUtil.statePaletteOf('busy')).toBe('in-progress');
   expect(OrchestratorSessionUtil.statePaletteOf('ended')).toBe('abandoned');
+  expect(OrchestratorSessionUtil.stateWordOf('stopping')).toBe('stopping');
+  expect(OrchestratorSessionUtil.statePaletteOf('stopping')).toBe('paused');
 });
 
 test('a question waits only on a live dashboard-owned session holding one', () => {
@@ -109,4 +111,17 @@ test('an ended or absent product owner is not shown, a live one is', () => {
   expect(OrchestratorSessionUtil.shownProductOwnerOf(projectSnapshotWith('example', { productOwner: live }))).toBe(live);
   expect(OrchestratorSessionUtil.shownProductOwnerOf(projectSnapshotWith('example', { productOwner: orchestratorSessionWith({ state: 'ended' }) }))).toBeNull();
   expect(OrchestratorSessionUtil.shownProductOwnerOf(projectSnapshotWith('example', { productOwner: null }))).toBeNull();
+});
+
+test('a card shows stopping from the confirmed Stop on, whatever the snapshot said, until the snapshot says ended', () => {
+  expect(OrchestratorSessionUtil.shownStateOf(orchestratorSessionWith({ state: 'busy' }), true)).toBe('stopping');
+  expect(OrchestratorSessionUtil.shownStateOf(orchestratorSessionWith({ state: 'waiting-for-answer' }), true)).toBe('stopping');
+  expect(OrchestratorSessionUtil.shownStateOf(orchestratorSessionWith({ state: 'stopping' }), false)).toBe('stopping');
+  expect(OrchestratorSessionUtil.shownStateOf(orchestratorSessionWith({ state: 'ended' }), true)).toBe('ended');
+  expect(OrchestratorSessionUtil.shownStateOf(orchestratorSessionWith({ state: 'busy' }), false)).toBe('busy');
+});
+
+test('a stopping session owes no questions, so neither the rail nor the strip counts them', () => {
+  const stopping = orchestratorSessionWith({ state: 'stopping', pendingQuestions: [PENDING_QUESTION] });
+  expect(OrchestratorSessionUtil.questionCountOf(projectSnapshotWith('example', { orchestrator: stopping }))).toBe(0);
 });

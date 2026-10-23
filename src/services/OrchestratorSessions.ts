@@ -375,7 +375,19 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
   }
 
   function chat(trackerId: string, text: string): Promise<SupervisorDelivery> {
+    if (supervisedByTracker.get(trackerId)?.session.state === 'stopping') return Promise.resolve({ kind: 'failed', reason: 'The session is stopping' });
     return send(trackerId, { kind: 'chat', text });
+  }
+
+  /** A delivered Stop shows as stopping at once, its questions dropped, ahead of the supervisor's own state line saying so. */
+  async function stop(trackerId: string): Promise<SupervisorDelivery> {
+    const delivery = await send(trackerId, { kind: 'stop' });
+    const supervised = supervisedByTracker.get(trackerId);
+    if (delivery.kind === 'delivered' && supervised !== undefined && supervised.session.state !== 'ended') {
+      supervised.session = { ...supervised.session, state: 'stopping', pendingQuestions: [] };
+      notify();
+    }
+    return delivery;
   }
 
   async function answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<AnswerDelivery> {
@@ -465,7 +477,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
       { kind: 'failed', reason: `The session did not end within ${timeoutMilliseconds} ms of Stop` },
       (session) => (session === null || session.state === 'ended' ? { kind: 'ended' } : null),
     );
-    const delivery = await send(trackerId, { kind: 'stop' });
+    const delivery = await stop(trackerId);
     if (delivery.kind === 'none') settle({ kind: 'ended' });
     if (delivery.kind === 'failed') settle(delivery);
     return verdict;
@@ -476,7 +488,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     sessionOf: (trackerId) => supervisedByTracker.get(trackerId)?.session ?? null,
     isLive,
     launch,
-    stop:      (trackerId) => send(trackerId, { kind: 'stop' }),
+    stop,
     stopAndAwaitEnd,
     forgetEnded(trackerId) {
       if (supervisedByTracker.get(trackerId)?.session.state !== 'ended') return;

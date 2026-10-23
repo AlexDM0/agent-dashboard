@@ -1,6 +1,6 @@
 /**
  * The inbox gathers every question a live dashboard-owned orchestrator or product owner owes, across projects, oldest
- * first, so the longest wait is on top, each saying which role asks; an ended session's leftovers stay out. A
+ * first, so the longest wait is on top, each saying which role asks; an ended or stopping session's leftovers stay out. A
  * question's context becomes only the rows it has something for. An alert stands for a live dashboard-owned
  * orchestrator at or past the critical share (84% one, 79% none), carrying the refusal the server would give, and
  * counts in the title beside the questions.
@@ -40,6 +40,11 @@ test('an ended session and a project without one add nothing', () => {
     projectAsking('example-ended', [pendingQuestionWith('left-over', '2026-10-21T09:00:00+02:00')], 'ended'),
     projectSnapshotWith('example-none'),
   ];
+  expect(InboxUtil.entriesOf(projects)).toEqual([]);
+});
+
+test('a stopping session\'s pending question leaves the inbox', () => {
+  const projects = [projectAsking('example-stopping', [pendingQuestionWith('cut-short', '2026-10-21T09:00:00+02:00')], 'stopping')];
   expect(InboxUtil.entriesOf(projects)).toEqual([]);
 });
 

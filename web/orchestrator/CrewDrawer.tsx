@@ -47,10 +47,19 @@ function SessionList({
   role, project, sessions, emptyCaption
 }: { role: SessionRole; project: ProjectSnapshot; sessions: OrchestratorSession[]; emptyCaption: string }) {
   const { running, ended } = EndedSessionSplitUtil.splitOf(sessions, sessionItself);
+  const isDispatcherRunning = project.health.kind === 'ready' && project.health.board.dispatcherState === 'running';
   return (
     <>
       {sessions.length === 0 ? <p className="muted ap-caption">{emptyCaption}</p> : null}
-      {running.map((session) => <SessionCard key={`${project.trackerId}:${session.sessionId}`} role={role} trackerId={project.trackerId} session={session} />)}
+      {running.map((session) => (
+        <SessionCard
+          key={`${project.trackerId}:${session.sessionId}`}
+          role={role}
+          trackerId={project.trackerId}
+          session={session}
+          isDispatcherRunning={isDispatcherRunning}
+        />
+      ))}
       <EndedFold endedCount={ended.length}>
         {ended.map((session) => <EndedSessionLine key={`${project.trackerId}:${session.sessionId}`} role={role} trackerId={project.trackerId} session={session} />)}
       </EndedFold>

@@ -4,6 +4,7 @@ import type { InboxAlert }                                 from '../inbox/InboxU
 import { ContextMeter }                                    from '../orchestrator/ContextMeter.tsx';
 import { ConversationLog }                                 from '../orchestrator/ConversationLog.tsx';
 import { OrchestratorMenu }                                from '../orchestrator/OrchestratorMenu.tsx';
+import { OrchestratorSessionUtil }                         from '../orchestrator/OrchestratorSessionUtil.ts';
 import { SessionGlyph }                                    from '../orchestrator/SessionGlyph.tsx';
 import { SessionStateBadge }                               from '../orchestrator/SessionStateBadge.tsx';
 import { useOrchestratorConversation }                     from '../orchestrator/UseOrchestratorConversation.ts';
@@ -36,11 +37,13 @@ interface ConversationColumnsProperties extends SelectedConversationProperties {
   messages: ChatMessage[];
 }
 
-function SessionMenu({ conversation }: { conversation: ChatConversation }) {
+function SessionMenu({ conversation, isDispatcherRunning }: { conversation: ChatConversation; isDispatcherRunning: boolean }) {
   const refreshRequest = useSessionRequest();
   const openInAppRequest = useSessionRequest();
   const stopRequest = useSessionRequest();
-  if (conversation.isSendOnly || conversation.session.state === 'ended') return null;
+  const shownState = OrchestratorSessionUtil.shownStateOf(conversation.session, stopRequest.isSending || stopRequest.wasTaken);
+  if (conversation.isSendOnly || shownState === 'ended') return null;
+  if (shownState === 'stopping') return <span className="muted ap-caption" role="status">Stopping…</span>;
   const requests = [refreshRequest, openInAppRequest, stopRequest];
   const refusal = requests.find((request) => request.refusal !== null)?.refusal ?? null;
   return (
@@ -52,6 +55,7 @@ function SessionMenu({ conversation }: { conversation: ChatConversation }) {
         refreshRequest={refreshRequest}
         openInAppRequest={openInAppRequest}
         stopRequest={stopRequest}
+        isDispatcherRunning={isDispatcherRunning}
       />
       {requests.some((request) => request.isSending) ? <span className="muted ap-caption" role="status">Sending…</span> : null}
       {refusal === null ? null : <span className="ap-stepper-refusal" role="alert">{refusal}</span>}
@@ -108,7 +112,7 @@ function ConversationColumns({
           <div className="ap-chat-conversation-actions">
             <button type="button" className="ap-control is-quiet" onClick={onCollapse}>Collapse into the board&apos;s drawer</button>
             <button type="button" className="ap-control is-quiet" onClick={onOpenBoard}>Open board</button>
-            <SessionMenu key={conversation.key} conversation={conversation} />
+            <SessionMenu key={conversation.key} conversation={conversation} isDispatcherRunning={board?.dispatcherState === 'running'} />
             <button type="button" className="ap-control is-quiet ap-icon-control ap-chat-close" aria-label="Close the chat" onClick={onClose}>
               <span aria-hidden="true">×</span>
             </button>

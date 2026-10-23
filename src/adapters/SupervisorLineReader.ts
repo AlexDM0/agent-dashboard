@@ -38,7 +38,7 @@ export type SupervisorConversation =
   | { kind: 'history'; entries: ConversationEntry[] }
   | { kind: 'message'; entry: ConversationEntry };
 
-const ORCHESTRATOR_STATES: readonly OrchestratorState[] = ['starting', 'busy', 'idle', 'waiting-for-answer', 'ended'];
+const ORCHESTRATOR_STATES: readonly OrchestratorState[] = ['starting', 'busy', 'idle', 'waiting-for-answer', 'stopping', 'ended'];
 
 const CHAT_ROLES: readonly ChatRole[] = ['user', 'assistant', 'tool', 'system'];
 

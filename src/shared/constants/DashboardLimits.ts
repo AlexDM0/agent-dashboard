@@ -19,8 +19,10 @@ export const DASHBOARD_LIMITS = {
   SESSION_SOCKET_TIMEOUT_MILLISECONDS:    2_000,
   /** How long a start waits for a new supervisor's socket to accept. */
   SUPERVISOR_START_TIMEOUT_MILLISECONDS:  10_000,
-  /** How long a supervisor waits, after closing its session's stdin on Stop, before it sends SIGTERM. */
-  SESSION_STOP_GRACE_MILLISECONDS:        10_000,
+  /** How long a supervisor waits, after interrupting its session's turn and closing its stdin on Stop, before it sends SIGTERM. */
+  SESSION_STOP_GRACE_MILLISECONDS:        3_000,
+  /** How long a supervisor waits, after SIGTERM, before it sends SIGKILL to a session still alive. */
+  SESSION_KILL_GRACE_MILLISECONDS:        3_000,
   /** How long a handoff waits for the running session's note, its one complete reply, before it refuses and starts nothing. */
   HANDOFF_REPLY_TIMEOUT_MILLISECONDS:     180_000,
   /** How long a handoff waits, once it has the note, for the stopped session to end: past the stop grace, by a margin. */

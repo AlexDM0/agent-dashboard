@@ -63,7 +63,8 @@ function entriesOf(projects: ProjectSnapshot[]): InboxEntry[] {
   for (const project of projects) {
     for (const role of SESSION_ROLES) {
       const session = liveDashboardSessionOf(project, role);
-      if (session === null) continue;
+      // A stopping session's question is never answered: its turn is being cut short.
+      if (session === null || session.state === 'stopping') continue;
       for (const pendingQuestion of session.pendingQuestions) {
         entries.push({
           trackerId: project.trackerId, project: project.project, role, session, pendingQuestion

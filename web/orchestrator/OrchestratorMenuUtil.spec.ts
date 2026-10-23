@@ -1,11 +1,12 @@
 /**
  * What the orchestrator menu shows: Refresh orchestrator then Stop, each with a one-sentence explanation and a
  * question to confirm, and at the critical context share alone the toggle's warning dot and the Refresh highlight.
+ * While the board's dispatcher runs, Stop's question warns that the run stops with the orchestrator.
  */
-import { expect, test }         from 'bun:test';
-import type { ContextUsage }    from '../../src/shared/DashboardContract.ts';
-import { MenuStepUtil }         from '../menu/MenuStepUtil.ts';
-import { OrchestratorMenuUtil } from './OrchestratorMenuUtil.ts';
+import { expect, test }                                       from 'bun:test';
+import type { ContextUsage }                                  from '../../src/shared/DashboardContract.ts';
+import { MenuStepUtil }                                       from '../menu/MenuStepUtil.ts';
+import { OrchestratorMenuUtil, RUNNING_DISPATCHER_STOP_TEXT } from './OrchestratorMenuUtil.ts';
 
 function contextWith(usedTokens: number, contextWindowTokens: number | null): ContextUsage {
   return {
@@ -44,6 +45,13 @@ test('below the critical share, or for an unknown context, neither the dot nor t
     expect(OrchestratorMenuUtil.hasWarningOf(context)).toBe(false);
     expect(OrchestratorMenuUtil.entriesOf(context).some((entry) => entry.isHighlighted)).toBe(false);
   }
+});
+
+test('while the board\'s dispatcher runs, Stop\'s question says the run and its agents stop and the next orchestrator resumes it', () => {
+  const stopQuestionOf = (isDispatcherRunning: boolean) => OrchestratorMenuUtil.entriesOf(null, isDispatcherRunning).find((entry) => entry.id === 'stop')?.question;
+  expect(stopQuestionOf(true)).toBe(`Stop this orchestrator? ${RUNNING_DISPATCHER_STOP_TEXT}`);
+  expect(stopQuestionOf(true)).toMatch(/dispatcher run.*agents stop too.*next orchestrator resumes/);
+  expect(stopQuestionOf(false)).toBe('Stop this orchestrator?');
 });
 
 test('no wording of the menu says hand off', () => {

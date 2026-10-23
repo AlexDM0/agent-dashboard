@@ -2,7 +2,8 @@
  * The answer route over the real orchestrator sessions, connected to an in-process fake supervisor in a scratch home.
  * What matters: an answer claims its pending question in the same turn it checks it, so of two answers arriving while
  * the first delivery is still held in the socket, exactly one is delivered (204) and the other is refused (409); and a
- * delivery that fails puts the question back, so it stays pending and answerable.
+ * delivery that fails puts the question back, so it stays pending and answerable. A delivered Stop makes the session
+ * stopping, its question dropped, before the supervisor says so, and a chat to a stopping session is refused.
  * Over a real supervisor and the fake `claude`, the served snapshot carries the session's last action (the newest reply's
  * tool call line, the start turn's first), and a question's context: the board's run id at asking (null for none), the
  * ticket ids of the question text first, then of the assistant messages before it oldest first, and the last line said.
@@ -260,6 +261,16 @@ test('an answer whose delivery fails is 502 and leaves the question pending and 
   expect((await answer()).status).toBe(502);
   expect(sessions.sessionOf(TRACKER_ID)?.pendingQuestions).toEqual([PENDING_QUESTION]);
   expect(answerLinesOf(supervisor.receivedLines)).toEqual([]);
+});
+
+test('a delivered Stop shows the session as stopping with its question dropped at once, and a chat to it is refused', async () => {
+  const { sessions, supervisor } = await startFixture();
+
+  expect(await sessions.stop(TRACKER_ID)).toEqual({ kind: 'delivered' });
+  expect(sessions.sessionOf(TRACKER_ID)).toMatchObject({ state: 'stopping', pendingQuestions: [] });
+  expect(await sessions.chat(TRACKER_ID, 'Example late message')).toEqual({ kind: 'failed', reason: 'The session is stopping' });
+  await waitUntil(() => supervisor.receivedLines.includes(JSON.stringify({ kind: 'stop' })), 'the stop reached the supervisor');
+  expect(supervisor.receivedLines.some((line) => line.includes('"kind":"chat"'))).toBe(false);
 });
 
 const LIVE_SESSION_SPEC_TIMEOUT_MILLISECONDS = 30_000;

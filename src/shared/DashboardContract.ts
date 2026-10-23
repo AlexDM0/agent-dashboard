@@ -52,7 +52,7 @@ export type ProjectHealth =
   | { kind: 'missing'; reason: string };
 
 export type OrchestratorOwnership = 'dashboard' | 'watched';
-export type OrchestratorState = 'starting' | 'busy' | 'idle' | 'waiting-for-answer' | 'ended';
+export type OrchestratorState = 'starting' | 'busy' | 'idle' | 'waiting-for-answer' | 'stopping' | 'ended';
 
 export interface ContextUsage {
   usedTokens:          number;

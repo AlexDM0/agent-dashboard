@@ -12,11 +12,13 @@ import { useOrchestratorConversation }            from './UseOrchestratorConvers
 import { type SessionRequest, useSessionRequest } from './UseSessionRequest.ts';
 
 interface SessionCardProperties {
-  role:        SessionRole;
-  trackerId:   string;
-  session:     OrchestratorSession;
+  role:                 SessionRole;
+  trackerId:            string;
+  session:              OrchestratorSession;
   /** An ended session read back from the fold: its conversation without a composer. */
-  isReadOnly?: boolean;
+  isReadOnly?:          boolean;
+  /** The board's dispatcher runs, which an orchestrator's Stop ends with it. */
+  isDispatcherRunning?: boolean;
 }
 
 interface DashboardSessionDetailsProperties {
@@ -40,13 +42,14 @@ function DashboardSessionDetails({
 }: DashboardSessionDetailsProperties) {
   const messages = useOrchestratorConversation(role, trackerId);
   const hasEnded = session.state === 'ended';
+  const isStopping = session.state === 'stopping';
   // Only an orchestrator is refreshed; a product owner near its limit is ended and started afresh.
   const isRefreshSuggested = role === 'orchestrator' && ContextUsageUtil.suggestsHandoff(session.context);
   const requests = [refreshRequest, openInAppRequest, stopRequest];
   const hasNotes = isRefreshSuggested || requests.some((request) => request.isSending || request.refusal !== null);
   return (
     <>
-      {hasEnded
+      {hasEnded || isStopping
         ? null
         : session.pendingQuestions.map((pendingQuestion) => (
           <PendingQuestionForm key={pendingQuestion.requestId} role={role} trackerId={trackerId} pendingQuestion={pendingQuestion} />
@@ -74,7 +77,7 @@ function DashboardSessionDetails({
 
 /** A watched session offers neither the menu nor answers: it was not started here, and its questions are answered in its own app. */
 export function SessionCard({
-  role, trackerId, session, isReadOnly = false
+  role, trackerId, session, isReadOnly = false, isDispatcherRunning = false
 }: SessionCardProperties) {
   const sessionName = OrchestratorSessionUtil.nameOf(session, role);
   const refreshRequest = useSessionRequest();
@@ -82,14 +85,16 @@ export function SessionCard({
   const stopRequest = useSessionRequest();
   const isDashboardOwned = session.ownership === 'dashboard';
   const sessionRequests = { refreshRequest, openInAppRequest, stopRequest };
+  const shownSession = { ...session, state: OrchestratorSessionUtil.shownStateOf(session, stopRequest.isSending || stopRequest.wasTaken) };
+  const isMenuOffered = isDashboardOwned && shownSession.state !== 'ended' && shownSession.state !== 'stopping';
   return (
     <section className="ap-session" aria-label={sessionName}>
       <header className="ap-session-head">
-        {isDashboardOwned && session.state !== 'ended'
-          ? <OrchestratorMenu role={role} trackerId={trackerId} session={session} {...sessionRequests} />
+        {isMenuOffered
+          ? <OrchestratorMenu role={role} trackerId={trackerId} session={session} isDispatcherRunning={isDispatcherRunning} {...sessionRequests} />
           : null}
         <span className="ap-session-name ellipsis" title={sessionName}>{sessionName}</span>
-        <SessionStateBadge role={role} session={session} />
+        <SessionStateBadge role={role} session={shownSession} />
       </header>
       <div className="ap-session-meta">
         <ContextMeter context={session.context} />
@@ -98,12 +103,12 @@ export function SessionCard({
           : <span className="mono muted ap-session-started" title={session.startedAt}>started {TimeUtil.clockOfInstant(Date.parse(session.startedAt))}</span>}
       </div>
       {isDashboardOwned
-        ? <DashboardSessionDetails role={role} trackerId={trackerId} session={session} {...sessionRequests} />
+        ? <DashboardSessionDetails role={role} trackerId={trackerId} session={shownSession} {...sessionRequests} />
         : null}
       {isReadOnly && !isDashboardOwned ? <p className="muted ap-caption">This desktop app session&apos;s conversation is in its own app.</p> : null}
       {isReadOnly
         ? null
-        : <ChatBox role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} hasEnded={session.state === 'ended'} />}
+        : <ChatBox role={role} trackerId={trackerId} sessionId={session.sessionId} sessionName={sessionName} shownState={shownSession.state} />}
     </section>
   );
 }

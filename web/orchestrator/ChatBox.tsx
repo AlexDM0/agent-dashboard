@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useId, useState } from 'react';
-import type { SessionRole }                    from '../../src/shared/DashboardContract.ts';
+import type { OrchestratorState, SessionRole } from '../../src/shared/DashboardContract.ts';
 import { sendSessionChat }                     from './OrchestratorSessionDelivery.ts';
 import { useSessionRequest }                   from './UseSessionRequest.ts';
 
@@ -8,7 +8,8 @@ interface ChatBoxProperties {
   trackerId:   string;
   sessionId:   string;
   sessionName: string;
-  hasEnded:    boolean;
+  /** The state the session's card shows: a stopping or ended one takes no message. */
+  shownState:  OrchestratorState;
 }
 
 const PLACEHOLDERS: Record<SessionRole, string> = {
@@ -16,14 +17,19 @@ const PLACEHOLDERS: Record<SessionRole, string> = {
   'product-owner': 'Message the product owner (Enter sends)',
 };
 
+function placeholderOf(shownState: OrchestratorState, role: SessionRole): string {
+  if (shownState === 'ended') return 'This session has ended';
+  return shownState === 'stopping' ? 'Stopping…' : PLACEHOLDERS[role];
+}
+
 /** Enter sends, Shift+Enter is a newline; the text stays put on a refusal so nothing typed is lost. */
 export function ChatBox({
-  role, trackerId, sessionId, sessionName, hasEnded
+  role, trackerId, sessionId, sessionName, shownState
 }: ChatBoxProperties) {
   const [text, setText] = useState('');
   const { isSending, refusal, send } = useSessionRequest();
   const refusalId = useId();
-  const isDisabled = isSending || hasEnded;
+  const isDisabled = isSending || shownState === 'ended' || shownState === 'stopping';
 
   async function sendText(): Promise<void> {
     if (isDisabled || text.trim() === '') return;
@@ -43,7 +49,7 @@ export function ChatBox({
         className="ap-chat-input"
         rows={2}
         value={text}
-        placeholder={hasEnded ? 'This session has ended' : PLACEHOLDERS[role]}
+        placeholder={placeholderOf(shownState, role)}
         aria-label={`Message ${sessionName}`}
         disabled={isDisabled}
         onChange={(event) => setText(event.target.value)}

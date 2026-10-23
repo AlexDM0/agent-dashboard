@@ -41,7 +41,10 @@ export interface OrchestratorSupervisorOptions {
   orchestratorDirectory: string;
   supervisorPid:         number;
   clock:                 () => Date;
+  /** From Stop to `SIGTERM` to the session's process group. */
   stopGraceMilliseconds: number;
+  /** From `SIGTERM` to `SIGKILL`, for a session that outlives it. */
+  killGraceMilliseconds: number;
 }
 
 export type OrchestratorSupervisorEnd =
@@ -76,6 +79,11 @@ function listening(listener: Server, socketPath: string): Promise<void> {
 
 function controlResponseLineOf(requestId: string, response: Record<string, unknown>): string {
   return `${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response } })}\n`;
+}
+
+/** Claude Code's stream-json request to cancel the running turn. */
+function interruptRequestLineOf(requestId: string): string {
+  return `${JSON.stringify({ type: 'control_request', request_id: requestId, request: { subtype: 'interrupt' } })}\n`;
 }
 
 /** Resolves when the session has ended; a refusal (socket path too long, the executable not starting) spawns or leaves nothing. */
@@ -122,10 +130,12 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
   let context: ContextUsage | null = null;
   let turnRunning = false;
   let ended = false;
-  let stopTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopping = false;
+  const stopTimers: ReturnType<typeof setTimeout>[] = [];
 
   function currentState(): OrchestratorState {
     if (ended) return 'ended';
+    if (stopping) return 'stopping';
     if (heldQuestions.size > 0) return 'waiting-for-answer';
     return turnRunning ? 'busy' : 'idle';
   }
@@ -170,19 +180,28 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
     if (session.stdin.writable) session.stdin.write(line);
   }
 
+  function signalSessionGroup(signal: NodeJS.Signals): void {
+    try {
+      process.kill(sessionGroupId, signal);
+    } catch {
+      // The session's group is already gone.
+    }
+  }
+
+  /** Stopping is said first; then the running turn is interrupted, stdin closed, and the group signalled while it lingers. */
   function stopSession(): void {
-    if (stopTimer !== null || ended) return;
+    if (stopping || ended) return;
+    stopping = true;
+    heldQuestions.clear();
+    broadcast(stateLine());
+    writeToSession(interruptRequestLineOf(randomUUID()));
     session.stdin.end();
-    stopTimer = setTimeout(() => {
-      try {
-        process.kill(sessionGroupId, 'SIGTERM');
-      } catch {
-        // The session's group is already gone.
-      }
-    }, options.stopGraceMilliseconds);
+    stopTimers.push(setTimeout(() => signalSessionGroup('SIGTERM'), options.stopGraceMilliseconds));
+    stopTimers.push(setTimeout(() => signalSessionGroup('SIGKILL'), options.stopGraceMilliseconds + options.killGraceMilliseconds));
   }
 
   function handleRequest(request: SupervisorRequest): void {
+    if (stopping && request.kind !== 'stop') return;
     switch (request.kind) {
       case 'chat':
         writeToSession(sessionMessageLineOf(request.text));
@@ -223,6 +242,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
         turnRunning = false;
         break;
       case 'question':
+        if (stopping) return;
         heldQuestions.set(event.requestId, { pending: { requestId: event.requestId, askedAt: options.clock().toISOString(), questions: event.questions }, input: event.input });
         break;
       case 'permission-request':
@@ -267,7 +287,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
 
   const { exitCode, signal } = await sessionClosed;
   ended = true;
-  if (stopTimer !== null) clearTimeout(stopTimer);
+  for (const stopTimer of stopTimers) clearTimeout(stopTimer);
   rmSync(paths.recordPath, { force: true });
   broadcast(stateLine());
   for (const client of clients) client.end();

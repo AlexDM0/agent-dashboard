@@ -3,6 +3,8 @@ import { ContextUsageUtil }  from './ContextUsageUtil.ts';
 
 export const HANDOFF_CONFIRMATION_TEXT = 'Refresh asks for a note, stops this session, starts a fresh one with the note.';
 
+export const RUNNING_DISPATCHER_STOP_TEXT = 'Its running dispatcher run and that run\'s agents stop too; the next orchestrator resumes the run from the board.';
+
 export type OrchestratorMenuActionId = 'refresh' | 'open-in-app' | 'stop';
 
 function openInAppEntryOf(roleWord: string): OrchestratorMenuEntry {
@@ -31,7 +33,7 @@ export const OrchestratorMenuUtil = Object.freeze({
     return ContextUsageUtil.suggestsHandoff(context);
   },
 
-  entriesOf(context: ContextUsage | null): OrchestratorMenuEntry[] {
+  entriesOf(context: ContextUsage | null, isDispatcherRunning = false): OrchestratorMenuEntry[] {
     return [
       {
         id:            'refresh',
@@ -46,7 +48,7 @@ export const OrchestratorMenuUtil = Object.freeze({
         id:            'stop',
         label:         'Stop',
         description:   'Ends this orchestrator session without a successor, leaving its board and tickets as they are until an orchestrator is started again.',
-        question:      'Stop this orchestrator?',
+        question:      isDispatcherRunning ? `Stop this orchestrator? ${RUNNING_DISPATCHER_STOP_TEXT}` : 'Stop this orchestrator?',
         confirmLabel:  'Stop',
         isHighlighted: false,
       },

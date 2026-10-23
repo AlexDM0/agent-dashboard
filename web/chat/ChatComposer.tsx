@@ -27,11 +27,13 @@ export function ChatComposer({ conversation, question, onAnswered }: ChatCompose
   const inputId = useId();
   const refusalId = useId();
   const hasEnded = conversation.session.state === 'ended';
-  const isDisabled = isSending || hasEnded;
+  const isStopping = conversation.session.state === 'stopping';
+  const isDisabled = isSending || hasEnded || isStopping;
   const roleWord = ChatConversationListUtil.roleWordOf(conversation.role);
   const label = question === null
     ? `Message the ${roleWord} of ${conversation.projectName}`
     : `Answer the ${roleWord}'s question as "Other"`;
+  const closedText = hasEnded ? 'This session has ended' : isStopping ? 'Stopping…' : null;
 
   async function sendText(): Promise<void> {
     if (isDisabled || text.trim() === '') return;
@@ -56,14 +58,14 @@ export function ChatComposer({ conversation, question, onAnswered }: ChatCompose
 
   return (
     <div className="ap-chat-composer-box">
-      <label className="muted ap-caption ap-chat-composer-label" htmlFor={inputId}>{hasEnded ? 'This session has ended' : label}</label>
+      <label className="muted ap-caption ap-chat-composer-label" htmlFor={inputId}>{closedText ?? label}</label>
       <div className="ap-chat">
         <textarea
           id={inputId}
           className="ap-chat-input"
           rows={2}
           value={text}
-          placeholder={hasEnded ? 'This session has ended' : `${label} (Enter sends)`}
+          placeholder={closedText ?? `${label} (Enter sends)`}
           disabled={isDisabled}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={sendOnEnter}

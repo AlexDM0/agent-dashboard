@@ -15,6 +15,7 @@ const STATE_PALETTE: Record<OrchestratorState, string> = {
   'busy':               'in-progress',
   'idle':               'pending',
   'waiting-for-answer': 'in-review',
+  'stopping':           'paused',
   'ended':              'abandoned',
 };
 
@@ -66,8 +67,17 @@ function hoverTextOf(session: OrchestratorSession, role: SessionRole = 'orchestr
 /** The questions the role's live dashboard-owned session owes; an ended one owes none. */
 function roleQuestionCountOf(project: ProjectSnapshot, role: SessionRole): number {
   const session = dashboardSessionOf(project, role);
-  if (session === null || session.state === 'ended') return 0;
+  if (session === null || session.state === 'ended' || session.state === 'stopping') return 0;
   return session.pendingQuestions.length;
+}
+
+/**
+ * The state a dashboard-owned session's card shows: stopping from the moment its Stop is confirmed, while the request
+ * is out or once the server took it, until the snapshot says it has ended.
+ */
+function shownStateOf(session: OrchestratorSession, isStopRequested: boolean): OrchestratorState {
+  if (session.state === 'ended') return 'ended';
+  return isStopRequested ? 'stopping' : session.state;
 }
 
 /** The questions the orchestrator and the product owner owe together, as the rail badge counts them. */
@@ -111,6 +121,7 @@ export const OrchestratorSessionUtil = Object.freeze({
   nameOf,
   stateWordOf,
   statePaletteOf,
+  shownStateOf,
   hoverTextOf,
   roleQuestionCountOf,
   questionCountOf,

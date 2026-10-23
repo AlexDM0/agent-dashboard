@@ -17,6 +17,7 @@ export async function superviseCommand(trackerId: string, root: string, role: Se
     supervisorPid:         context.processId,
     clock:                 context.now,
     stopGraceMilliseconds: DASHBOARD_LIMITS.SESSION_STOP_GRACE_MILLISECONDS,
+    killGraceMilliseconds: DASHBOARD_LIMITS.SESSION_KILL_GRACE_MILLISECONDS,
   });
   if (end.kind === 'refused') throw new CommandRefusal(`${end.reason}.`);
   const howItEnded = end.signal === null ? `exit code ${end.exitCode ?? 'unknown'}` : `signal ${end.signal}`;

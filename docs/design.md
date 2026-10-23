@@ -315,15 +315,23 @@ and removes its record and socket then.
   and every other line show nothing. Entries stay append-only, so a client folds the later message into its call. A
   `tool` message without `toolCall` is one from a supervisor started before calls carried fields and still reads
   (`src/adapters/SupervisorLineReader.ts`). A server takes the session's
-  state from state lines alone. The state is `busy` from a `chat` until the next `result`, `waiting-for-answer` while a question is held, else
-  `idle`; `starting` is the server's own, from reading a record until its first state line.
+  state from state lines alone, but for a delivered Stop, which it shows as `stopping` (its questions dropped) at once.
+  The state is `ended` once the session exited, `stopping` from a Stop until then, `waiting-for-answer` while a
+  question is held, `busy` from a `chat` until the next `result`, else `idle`; `starting` is the server's own, from
+  reading a record until its first state line. A `chat` to a stopping session is refused (502 on the messages routes).
   Writes to a client are buffered per client and drained (`drain`), since one `write` of a 20 kB `init` line was cut
   short in the probe.
 - **Questions**: an `AskUserQuestion` `control_request` is held as pending until answered, whether or not a server is
   connected. Any other `can_use_tool` request is denied at once with `behavior: "deny"`: permission prompts are not
   surfaced.
-- **Stop**: the supervisor closes the session's stdin and sends `SIGTERM` to the session's process group after 10 s
-  if it still runs; it records the exit code (143 for the signal, as in the probe) in its log before it removes its record and socket.
+- **Stop**: the supervisor first broadcasts `stopping`, dropping any held question, and from then on ignores `chat`
+  and `answer`; then it writes the stream-json `interrupt` control request
+  (`{"type":"control_request","request_id":…,"request":{"subtype":"interrupt"}}`) to cancel the running turn, closes
+  the session's stdin, sends `SIGTERM` to the session's process group after `SESSION_STOP_GRACE_MILLISECONDS` (3 s) and
+  `SIGKILL` after `SESSION_KILL_GRACE_MILLISECONDS` (3 s) more if it still runs. Three seconds each: an interrupted turn
+  and an exit on closed stdin take well under a second, and a handoff or open-in-app awaiting `ended`
+  (`HANDOFF_END_TIMEOUT_MILLISECONDS`, 15 s) is never cut short by the bounds. It broadcasts `ended` once the child has
+  exited and records how it ended (exit code or signal) in its log before it removes its record and socket.
 - **Reconnecting**: the server reads every record at start and connects to each socket that accepts, each role's
   sessions taking the records of their role; a record without `role`, which a supervisor started before roles existed
   wrote under the tracker-id-only name, is the orchestrator's, so a server upgraded mid-run still finds a live
@@ -404,13 +412,13 @@ and a DNS-rebinding page cannot reach (its `Host` is not the server's).
 | Route | Answer |
 | --- | --- |
 | `POST /api/projects/<trackerId>/orchestrator` | body `{ "startBuilding": <boolean> }`: starts the supervisor in the project's root and answers 201 with the `OrchestratorSession` once its socket accepts (at most 10 s). Either first message opens with the line `/agent-progress-orchestrate`. With `startBuilding` true the `start-building` text of `orchestrator-requests` follows, carrying the user's go that `Workflow` needs; with it false the rest has it read the board, launching no dispatcher run until the user asks to start building. 400 for any other body, 409 while a dashboard-owned orchestrator of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
-| `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204 (the orchestrator menu's confirmed Stop). 404 when no dashboard-owned orchestrator lives, 409 for a watched session (the dashboard never stops what it did not start), 502 when the socket fails |
+| `DELETE /api/projects/<trackerId>/orchestrator` | sends `stop` to the project's supervisor and answers 204 as soon as it is delivered (the orchestrator menu's confirmed Stop); the session is `stopping` on the snapshot from then on and `ended` once its process exited (see Stop under the supervisor). 404 when no dashboard-owned orchestrator lives (a watched session is never the dashboard's to stop), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/messages` | body `{ "text": <string> }` or `{ "text": <string>, "sessionId": <string> }`, the text 1 to 20000 characters after trimming: a dashboard-owned session gets it as `chat`, a watched one through `src/adapters/SessionMessageWriter.ts` to its `messagingSocketPath`, where it is a peer's request that never carries the user's go; 204. The text is sent trimmed. With `sessionId` it goes to that session alone: the project's dashboard-owned one, or one of its watched sessions; without it, to the live dashboard-owned session, else the one the finder names. 400 for any other body, 409 for a `sessionId` that names neither a live dashboard-owned session nor a live watched one of the project (a session that is gone), or, without one, when no dashboard-owned session lives and the finder refuses (no or several sessions), 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/answers` | body `{ "requestId": <string>, "answers": { "<question>": "<answer>" } }`, one non-empty answer for every question of that pending request (a label it offered, labels joined for a multi-select, or free text for an "Other" choice): sent as `answer`, 204; the request is no longer pending from then on, so a second answer is 409 and the supervisor ignores an answer to a request it no longer holds. 400 for any other body, 404 when no dashboard-owned orchestrator ran since this server started, 409 for one that has ended, a `requestId` that is not pending, or an answer naming a question not asked or leaving one out, 502 when the socket fails |
 | `POST /api/projects/<trackerId>/orchestrator/handoff` | no body; the launch token and this server's own `Origin` as for a start. Hands the board to a fresh session (see "Handing off") and answers 201 with `OrchestratorHandoffResult` `{ session, notePath }`. 404 when no dashboard-owned orchestrator ran since this server started; 409, changing nothing and saying which, for an ended session, a pending question, a session not `idle`, a dispatcher `running` or a board that cannot be read, or a handoff of the project already under way; 502 when the session ends, asks a question or gives no reply in time (the old session left running, nothing started), or when the stop or the fresh start fails after the note was kept (the text names the note's path) |
 | `GET /api/projects/<trackerId>/orchestrator/events` | Server-Sent Events: `event: history` with the project's dashboard-owned conversation (the last 200 `ChatMessage`s, from the session's start) on connect, then `event: session` with the `OrchestratorSession` (null for none), then `event: message` per new message (a call's result is a new `tool` message carrying the call's `callId`, which the web folds into the call) and `event: session` on every change of it; a `: heartbeat` comment every 25 s. A project with no dashboard-owned session streams an empty history and waits for one. A watched session's messages are to be tailed from its transcript (not built yet). Kept for one release: the web reads conversations from `/api/events` instead |
 | `POST /api/projects/<trackerId>/product-owner` | body `{ "mode": "spar" }` or `{ "mode": "file" }`: starts a product owner's supervisor in the project's root, beside a live orchestrator, its first message the brief for the mode, and answers 201 with the `OrchestratorSession`. 400 for any other body, 409 while a dashboard-owned product owner of the project lives, 409 for a socket path over the limit, 502 when the supervisor exits or does not accept in time |
-| `DELETE /api/projects/<trackerId>/product-owner` | sends `stop` to the product owner's supervisor, 204; 404 when none lives, 502 when the socket fails. The orchestrator is left running |
+| `DELETE /api/projects/<trackerId>/product-owner` | sends `stop` to the product owner's supervisor, 204 once delivered, the session `stopping` until it has `ended` as for the orchestrator; 404 when none lives, 502 when the socket fails. The orchestrator is left running |
 | `POST /api/projects/<trackerId>/product-owner/messages` | body as the orchestrator's: sent to the product owner as `chat`, 204, never to the orchestrator or a watched session. 400 for any other body, 404 when no product owner ran since this server started, 409 for one that has ended or a `sessionId` that is not the product owner's, 502 when the socket fails |
 | `POST /api/projects/<trackerId>/product-owner/answers` | as the orchestrator's answers, for the product owner's pending questions |
 | `GET /api/projects/<trackerId>/product-owner/events` | as the orchestrator's events, for the product owner's conversation and session. There is no product-owner handoff |
@@ -461,7 +469,7 @@ answers `{ "recipient": "dashboard-session" }`.
 
 ```ts
 export type OrchestratorOwnership = 'dashboard' | 'watched';
-export type OrchestratorState = 'starting' | 'busy' | 'idle' | 'waiting-for-answer' | 'ended';
+export type OrchestratorState = 'starting' | 'busy' | 'idle' | 'waiting-for-answer' | 'stopping' | 'ended';
 
 export interface ContextUsage {
   usedTokens: number;
@@ -791,11 +799,16 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   one-sentence explanation as its `title` tooltip and its accessible description (`web/orchestrator/OrchestratorMenuUtil.ts`),
   and each confirms in the panel before its request: "Refresh this orchestrator? Refresh asks for a note, stops this
   session, starts a fresh one with the note." with Refresh / Cancel, "Open this orchestrator in the Claude app? The
-  dashboard stops its own process first." with Open in app / Cancel, "Stop this orchestrator?" with Stop / Cancel;
+  dashboard stops its own process first." with Open in app / Cancel, "Stop this orchestrator?" with Stop / Cancel,
+  which while the board's dispatcher runs adds that the run and its agents stop too and the next orchestrator resumes
+  it from the board;
   Cancel sends nothing, a confirm sends and closes the panel. From 80% of a known window (`CONTEXT_CRITICAL_SHARE`,
   `web/constants/WebLimits.ts`) the toggle carries an `--err-ink` warning dot, "Refresh orchestrator" is highlighted in
   the panel, and the session warns "Context …: refresh this orchestrator before it compacts." in `--err-ink`; it never
-  acts by itself. "Refreshing…", "Opening in the Claude app…" or "Stopping…" shows beside the session while its request is out. A watched session
+  acts by itself. "Refreshing…", "Opening in the Claude app…" or "Stopping…" shows beside the session while its request is out. From a confirmed Stop until the snapshot
+  says `ended`, the session is `stopping` on every view (card badge, crew strip, Fleet, chat window): the menu is
+  not offered, its question leaves the inbox and the card, and the composer is disabled with "Stopping…"
+  (`OrchestratorSessionUtil.shownStateOf`); a refused Stop puts the card back as it was. A watched session
   offers neither the menu nor answers. Every request carries the launch token; a refusal shows the server's text beside
   the session as `--err-ink`. Every user-facing word for the handoff is "refresh"; the route, types and files keep
   "handoff".
