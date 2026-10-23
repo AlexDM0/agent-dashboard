@@ -25,7 +25,7 @@ afterEach(async () => {
 /** A real dashboard in this process, recorded as the one the home's record names, as a detached `serve` would leave it. */
 async function recordedRunningServer(home: string): Promise<RunningDashboardServer> {
   const start = await startDashboardServer({
-    port:                      freeLocalPort(),
+    port:                      0,
     homeDirectory:             home,
     agentProgressExecutable:   null,
     runtimeExecutablePath:     process.execPath,
