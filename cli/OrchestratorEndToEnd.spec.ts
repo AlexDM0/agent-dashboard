@@ -4,7 +4,8 @@
  * app shell, the log or the server record, that a started session runs in the project root in auto mode and is still
  * listed and reachable after the server process is killed and started again, and that a session ending, by Stop or by
  * itself, shows `ended` in the next snapshot, and that two simultaneous starts spawn one supervisor. Chat and answers
- * take the same token and Origin and write nothing when refused; a chat is the session's user turn, a stream opened late
+ * take the same token and Origin and write nothing when refused; a plain start's first user turn has it load the
+ * orchestrate skill, a chat is the session's user turn, a stream opened late
  * replays the conversation in order, and a pending question is answered once, a second answer writing nothing. The
  * session's own `~/.claude/sessions/` record never lists it as watched, even holding the board's dispatcher run, and a
  * watched session, a desktop holder of that run, borrows its context window.
@@ -25,6 +26,7 @@ import {
 
 import { readOrchestratorRecords } from '../src/adapters/OrchestratorRecordReader.ts';
 import { processIsAlive }          from '../src/lib/process-liveness/ProcessIsAlive.ts';
+import { orchestratorStartTextOf } from '../src/services/OrchestratorRequestMessage.ts';
 import type {
   ChatMessage,
   DashboardSnapshot,
@@ -64,6 +66,10 @@ const SERVER_START_WAIT_MILLISECONDS = 10_000;
 const SESSION_WAIT_MILLISECONDS = 10_000;
 const TRACKER_ID = 'example-storefront-tracker';
 const PROJECT_NAME = 'Example Storefront';
+const START_TEXT = orchestratorStartTextOf(PROJECT_NAME);
+/** The start turn and the chat turn, each a user line, the fake's reply and its one tool call. */
+const CONVERSATION_MESSAGE_COUNT = 6;
+const START_LINE = JSON.stringify({ type: 'user', message: { role: 'user', content: START_TEXT } });
 const WATCHED_USED_TOKENS = 4_321;
 const DISPATCHER_RUN_ID = 'example-run-7';
 
@@ -342,7 +348,8 @@ const chatMessagesOf = (events: ServerSentEvent[]): ChatMessage[] => events.flat
 test('chat and answers without the launch token or this server\'s own Origin are 403 and write nothing; a foreign Origin may not open the stream', async () => {
   const start = await fetch(orchestratorPath, { method: 'POST', headers: launchHeaders(), body: '{"startBuilding":false}' });
   expect(start.status).toBe(201);
-  await waitForOrchestratorState('idle');
+  await waitForOrchestratorState('idle', (orchestrator) => orchestrator.context !== null);
+  expect(sessionStdinLines()).toEqual([START_LINE]);
   const refusedHeaders = [
     launchHeaders({ [DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME]: null }),
     launchHeaders({ [DASHBOARD_PROTOCOL.LAUNCH_TOKEN_HEADER_NAME]: 'not-the-token' }),
@@ -360,7 +367,7 @@ test('chat and answers without the launch token or this server\'s own Origin are
   expect([...allowedStream.headers.keys()].filter((name) => name.toLowerCase().startsWith('access-control-'))).toEqual([]);
   await allowedStream.body?.cancel();
   await Bun.sleep(200);
-  expect(sessionStdinLines()).toEqual([]);
+  expect(sessionStdinLines()).toEqual([START_LINE]);
 }, END_TO_END_TIMEOUT_MILLISECONDS);
 
 test('a body other than { text } or { requestId, answers } is 400, and an unknown tracker 404', async () => {
@@ -374,19 +381,24 @@ test('a body other than { text } or { requestId, answers } is 400, and an unknow
   const unknownMessagesPath = messagesPath.replace(TRACKER_ID, 'no-such-tracker');
   expect((await fetch(unknownMessagesPath, { method: 'POST', headers: launchHeaders(), body: '{"text":"Hi"}' })).status).toBe(404);
   expect((await fetch(conversationPath(DASHBOARD_PROTOCOL.ORCHESTRATOR_EVENTS_PATH_SUFFIX).replace(TRACKER_ID, 'no-such-tracker'), { headers: { Origin: url } })).status).toBe(404);
-  expect(sessionStdinLines()).toEqual([]);
+  expect(sessionStdinLines()).toEqual([START_LINE]);
 }, END_TO_END_TIMEOUT_MILLISECONDS);
 
 test('a chat message reaches the session as a user turn, and a stream opened later replays the turns and tool calls in order', async () => {
   expect((await chat('  Hello from Alex Example  ')).status).toBe(204);
   const afterTurn = await waitForOrchestratorState('idle', (orchestrator) => orchestrator.context !== null);
   expect(afterTurn.context).toMatchObject({ usedTokens: FAKE_USED_TOKENS, contextWindowTokens: FAKE_CONTEXT_WINDOW_TOKENS, model: FAKE_CLAUDE_MODEL });
-  expect(sessionStdinLines().map((line) => JSON.parse(line) as unknown)).toEqual([{ type: 'user', message: { role: 'user', content: 'Hello from Alex Example' } }]);
+  expect(sessionStdinLines()).toEqual([START_LINE, JSON.stringify({ type: 'user', message: { role: 'user', content: 'Hello from Alex Example' } })]);
 
   const stream = await openEventStream(await fetch(conversationPath(DASHBOARD_PROTOCOL.ORCHESTRATOR_EVENTS_PATH_SUFFIX), { headers: { Origin: url } }));
-  await stream.waitFor('the history and the session arrived', (events) => events.some((serverSentEvent) => serverSentEvent.event === 'session'));
+  const bothTurnsArrived = (events: ServerSentEvent[]): boolean => events.some((serverSentEvent) => serverSentEvent.event === 'session')
+    && chatMessagesOf(events).length === CONVERSATION_MESSAGE_COUNT;
+  await stream.waitFor('the history, both turns and the session arrived', bothTurnsArrived);
   expect(stream.events[0]?.event).toBe('history');
   expect(chatMessagesOf(stream.events).map((message) => [message.role, message.text])).toEqual([
+    ['user', START_TEXT],
+    ['assistant', `${FAKE_REPLY_PREFIX}${START_TEXT}`],
+    ['tool', 'Bash {"command":"agent-progress status --json"}'],
     ['user', 'Hello from Alex Example'],
     ['assistant', `${FAKE_REPLY_PREFIX}Hello from Alex Example`],
     ['tool', 'Bash {"command":"agent-progress status --json"}'],

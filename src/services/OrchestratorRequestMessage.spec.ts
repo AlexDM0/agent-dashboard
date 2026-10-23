@@ -5,8 +5,8 @@
  */
 import { expect, test } from 'bun:test';
 
-import type { OrchestratorRequest }                         from '../shared/DashboardContract.ts';
-import { orchestratorMessageTextOf, orchestratorRequestOf } from './OrchestratorRequestMessage.ts';
+import type { OrchestratorRequest }                                                  from '../shared/DashboardContract.ts';
+import { orchestratorMessageTextOf, orchestratorRequestOf, orchestratorStartTextOf } from './OrchestratorRequestMessage.ts';
 
 test('the two kinds parse, ticket ids kept in the order given', () => {
   expect(orchestratorRequestOf(JSON.stringify({ kind: 'start-building' }))).toEqual({ kind: 'start-building' });
@@ -32,6 +32,14 @@ test('an unknown kind, missing, empty, non-string or more than 50 ids, and non-J
     '',
   ];
   for (const body of badBodies) expect(orchestratorRequestOf(body), body).toBeNull();
+});
+
+test('the start text relays the click, names the project, loads the orchestrate skill and holds the dispatcher back', () => {
+  const text = orchestratorStartTextOf('example-storefront');
+  expect(text).toContain('relays the user\'s click in the agent-dashboard');
+  expect(text).toContain('example-storefront');
+  expect(text).toContain('load the agent-progress-orchestrate skill');
+  expect(text).toContain('Launch no dispatcher run until the user asks you to start building');
 });
 
 test('the start-building text relays the click, names the project, and leaves a run in flight running', () => {

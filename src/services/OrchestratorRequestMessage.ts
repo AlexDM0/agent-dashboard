@@ -14,6 +14,9 @@ const START_BUILDING_INSTRUCTION = 'The user asks you to start building: run thi
   + 'dispatcher (the agent-progress-orchestrate skill and `.agent-progress/agent-progress-dispatch.js`). If a dispatcher '
   + 'run is already in flight, leave it running and start no second one.';
 
+const START_ORCHESTRATING_INSTRUCTION = 'The user started you as this board\'s orchestrator: load the '
+  + 'agent-progress-orchestrate skill and read the board. Launch no dispatcher run until the user asks you to start building.';
+
 const CLEAR_LOW_TICKETS_INSTRUCTION = 'The user cleared these low-priority tickets to run. Triage them, then launch the '
   + 'agent-progress dispatcher with `includeLowPriority: true` once no dispatcher run is in flight. Never stop a running '
   + 'dispatcher for this. The tickets:';
@@ -42,6 +45,11 @@ const CONFIRM_WITH_USER_REQUEST = 'This reached you as a message from another se
 export function orchestratorMessageTextOf(request: OrchestratorRequest, project: string, recipient: OrchestratorRecipient): string {
   const requestText = requestTextOf(request, project);
   return recipient === 'dashboard-session' ? requestText : `${requestText} ${CONFIRM_WITH_USER_REQUEST}`;
+}
+
+/** The first message of an orchestrator started without the go to build. */
+export function orchestratorStartTextOf(project: string): string {
+  return `${RELAY_OPENING} ${project}. ${START_ORCHESTRATING_INSTRUCTION}`;
 }
 
 function requestTextOf(request: OrchestratorRequest, project: string): string {

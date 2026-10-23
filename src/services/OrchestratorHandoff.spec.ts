@@ -2,9 +2,10 @@
  * The handoff route on an in-process server over a scratch home, its supervisors started with a scratch environment and
  * a fake `claude`, its board read by a fake agent-progress keeping a dispatcher state. What matters: a handoff asks the
  * running session one fixed message, keeps the reply as the note in the dashboard's own handoffs folder (never the
- * project), stops that session and starts a fresh one whose first message carries the note, listed with the previous
- * session id; and a refused (pending question, a busy session, a running dispatcher) or failed one (the session ends, or
- * gives no reply in time) changes nothing: the old session is left as it was and no session is started.
+ * project), stops that session and starts a fresh one whose first message has it load the agent-progress-orchestrate
+ * skill and carries the note, listed with the previous session id; and a refused (pending question, a busy session, a
+ * running dispatcher) or failed one (the session ends, or gives no reply in time) changes nothing: the old session is
+ * left as it was and no session is started.
  */
 import {
   existsSync,
@@ -47,7 +48,8 @@ import {
 import { createShortScratchDirectory, removeScratchDirectory }                              from '../testing/ScratchDirectory.ts';
 import { waitUntil }                                                                        from '../testing/WaitUntil.ts';
 import { type RunningDashboardServer, createDashboardOrchestratorSessions, serveDashboard } from './DashboardServer.ts';
-import { HANDOFF_NOTE_REQUEST, handoffDirectoryOf }                                         from './OrchestratorHandoff.ts';
+import { HANDOFF_NOTE_REQUEST, freshSessionMessageOf, handoffDirectoryOf }                  from './OrchestratorHandoff.ts';
+import { orchestratorStartTextOf }                                                          from './OrchestratorRequestMessage.ts';
 import { createProjectMonitor }                                                             from './ProjectMonitor.ts';
 
 const SPEC_TIMEOUT_MILLISECONDS = 30_000;
@@ -55,6 +57,7 @@ const SESSION_WAIT_MILLISECONDS = 10_000;
 const SHORT_REPLY_TIMEOUT_MILLISECONDS = 1_500;
 const HEARTBEAT_MILLISECONDS = 25_000;
 const TRACKER_ID = 'example-handoff-tracker';
+const START_TEXT = orchestratorStartTextOf('Example Storefront');
 
 const home = createShortScratchDirectory('ah');
 const projectRoot = createExampleProjectRoot(home, 'example-storefront');
@@ -90,23 +93,26 @@ async function orchestratorOfProject(): Promise<OrchestratorSession | null> {
   return snapshot.projects.find((project) => project.trackerId === TRACKER_ID)?.orchestrator ?? null;
 }
 
-async function waitForOrchestratorState(state: OrchestratorSession['state']): Promise<OrchestratorSession> {
+async function waitForOrchestratorState(
+  state: OrchestratorSession['state'],
+  alsoHolds: (orchestrator: OrchestratorSession) => boolean = () => true
+): Promise<OrchestratorSession> {
   const deadline = performance.now() + SESSION_WAIT_MILLISECONDS;
   for (;;) {
     const orchestrator = await orchestratorOfProject();
-    if (orchestrator?.state === state) return orchestrator;
+    if (orchestrator?.state === state && alsoHolds(orchestrator)) return orchestrator;
     if (performance.now() > deadline) throw new Error(`the orchestrator never showed ${state}: ${JSON.stringify(orchestrator)}`);
     await Bun.sleep(50);
   }
 }
 
-/** Resolves once the fake itself has started too, which the supervisor reports idle before. */
+/** Resolves once the fake has started and answered the start turn, so the session is idle for a handoff. */
 async function startSession(): Promise<OrchestratorSession> {
   const startsBefore = sessionStartCount();
   const start = await fetch(projectPath(DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX), { method: 'POST', headers: launchHeaders(), body: '{"startBuilding":false}' });
   expect(start.status).toBe(201);
-  await waitForOrchestratorState('idle');
   await waitUntil(() => sessionStartCount() > startsBefore, 'the fake claude started', SESSION_WAIT_MILLISECONDS);
+  await waitForOrchestratorState('idle', (orchestrator) => orchestrator.lastAction !== null);
   return await start.json() as OrchestratorSession;
 }
 
@@ -206,7 +212,7 @@ test('a handoff keeps the reply as the note outside the project, stops the sessi
   expect(handoff.status).toBe(201);
   const { session, notePath } = await handoff.json() as OrchestratorHandoffResult;
 
-  expect(stdinLinesOfSession(startsBefore - 1).map((line) => (JSON.parse(line) as { message: { content: string } }).message.content)).toEqual([HANDOFF_NOTE_REQUEST]);
+  expect(stdinLinesOfSession(startsBefore - 1).map((line) => (JSON.parse(line) as { message: { content: string } }).message.content)).toEqual([START_TEXT, HANDOFF_NOTE_REQUEST]);
   const note = `${FAKE_REPLY_PREFIX}${HANDOFF_NOTE_REQUEST}`;
   expect(dirname(notePath)).toBe(handoffDirectoryOf(home));
   expect(notePath.startsWith(`${handoffDirectoryOf(home)}/${TRACKER_ID}-`)).toBe(true);
@@ -227,6 +233,14 @@ test('a handoff keeps the reply as the note outside the project, stops the sessi
   const projectFiles = readdirSync(projectRoot, { recursive: true }).map(String);
   expect(projectFiles.filter((fileName) => fileName.endsWith('.md'))).toEqual([]);
 }, SPEC_TIMEOUT_MILLISECONDS);
+
+test('the fresh session is told to load the agent-progress-orchestrate skill before the note it acts on', () => {
+  const note = 'Example note: ticket #001 is in review.';
+  const firstMessage = freshSessionMessageOf('example-previous-session', '/example/handoffs/note.md', note);
+  const skillInstructionIndex = firstMessage.indexOf('Load the agent-progress-orchestrate skill');
+  expect(skillInstructionIndex).toBeGreaterThan(-1);
+  expect(skillInstructionIndex).toBeLessThan(firstMessage.indexOf(note));
+});
 
 test('a handoff is 409 and changes nothing while a question is pending, while the session is busy, or while the dispatcher runs', async () => {
   const previous = await startSession();

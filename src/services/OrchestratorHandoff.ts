@@ -49,7 +49,8 @@ export function handoffNotePathOf(handoffDirectory: string, trackerId: string, n
 export function freshSessionMessageOf(previousSessionId: string, notePath: string, note: string): string {
   return [
     `You continue the previous orchestrator's work on this board: session ${previousSessionId} handed it over to you as its`,
-    `context filled up. Its handoff note follows, also kept at ${notePath}. Read the board before you act on it.`,
+    `context filled up. Its handoff note follows, also kept at ${notePath}. Load the agent-progress-orchestrate skill`,
+    'and read the board before you act on it.',
     '',
     note,
   ].join('\n');

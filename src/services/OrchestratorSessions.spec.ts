@@ -3,8 +3,8 @@
  * What matters: an answer claims its pending question in the same turn it checks it, so of two answers arriving while
  * the first delivery is still held in the socket, exactly one is delivered (204) and the other is refused (409); and a
  * delivery that fails puts the question back, so it stays pending and answerable.
- * Over a real supervisor and the fake `claude`, the served snapshot carries the session's last action (null before any
- * reply, then the reply's tool call line), and a question's context: the board's run id at asking (null for none), the
+ * Over a real supervisor and the fake `claude`, the served snapshot carries the session's last action (the newest reply's
+ * tool call line, the start turn's first), and a question's context: the board's run id at asking (null for none), the
  * ticket ids of the question text first, then of the assistant messages before it oldest first, and the last line said.
  * A product owner starts beside a live orchestrator, one per project, briefed by its first message for its mode; with
  * both live, nothing sent to the product owner reaches the orchestrator. A record under the file name used before roles
@@ -46,6 +46,7 @@ import {
 import { createShortScratchDirectory, removeScratchDirectory }                              from '../testing/ScratchDirectory.ts';
 import { waitUntil }                                                                        from '../testing/WaitUntil.ts';
 import { type RunningDashboardServer, createDashboardOrchestratorSessions, serveDashboard } from './DashboardServer.ts';
+import { orchestratorStartTextOf }                                                          from './OrchestratorRequestMessage.ts';
 import { type OrchestratorSessions, createOrchestratorSessions }                            from './OrchestratorSessions.ts';
 import { PRODUCT_OWNER_WRAP_UP_TEXT, productOwnerBriefTextOf }                              from './ProductOwnerBriefMessage.ts';
 import { createProjectMonitor }                                                             from './ProjectMonitor.ts';
@@ -368,7 +369,7 @@ async function chatAndAwaitReply(fixture: LiveSessionFixture, text: string): Pro
 }
 
 interface AskedQuestion {
-  beforeAnyReply:  OrchestratorSession;
+  afterStartReply: OrchestratorSession;
   afterFirstReply: OrchestratorSession;
   question:        PendingQuestion;
 }
@@ -378,7 +379,7 @@ async function questionAskedAfterTwoReplies(fixture: LiveSessionFixture): Promis
   const orchestratorPath = liveProjectPath(fixture, DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX);
   const start = await fetch(orchestratorPath, { method: 'POST', headers: liveLaunchHeaders(fixture), body: '{"startBuilding":false}' });
   expect(start.status).toBe(201);
-  const beforeAnyReply = await servedOrchestratorWhen(fixture, 'idle', (session) => session.state === 'idle');
+  const afterStartReply = await servedOrchestratorWhen(fixture, 'the start turn\'s reply', (session) => session.state === 'idle' && session.lastAction !== null);
   const deadline = performance.now() + LIVE_SESSION_WAIT_MILLISECONDS;
   while ((await servedSnapshotOf(fixture)).projects[0]?.health.kind !== 'ready') {
     if (performance.now() > deadline) throw new Error('the board was never read');
@@ -390,18 +391,17 @@ async function questionAskedAfterTwoReplies(fixture: LiveSessionFixture): Promis
   const waiting = await servedOrchestratorWhen(fixture, 'the pending question', (session) => session.pendingQuestions.length > 0);
   const [question] = waiting.pendingQuestions;
   if (question === undefined) throw new Error('no question was pending');
-  return { beforeAnyReply, afterFirstReply, question };
+  return { afterStartReply, afterFirstReply, question };
 }
 
-test('the served session has no last action before a reply, then the reply\'s tool call line as the conversation reads it', async () => {
+test('the served session\'s last action is the newest reply\'s tool call line as the conversation reads it, the start turn\'s first', async () => {
   const fixture = await startLiveSessionFixture(EXAMPLE_DISPATCHER_RUN_ID);
   try {
-    const { beforeAnyReply, afterFirstReply } = await questionAskedAfterTwoReplies(fixture);
-    expect(beforeAnyReply.lastAction).toBeNull();
-    const conversationAfterReplies = fixture.sessions.conversationOf(TRACKER_ID);
-    const firstToolLine = conversationAfterReplies.find((message) => message.role === 'tool');
-    expect(firstToolLine?.text).toStartWith('Bash ');
-    expect(afterFirstReply.lastAction).toEqual({ at: firstToolLine?.at ?? '', text: firstToolLine?.text ?? '' });
+    const { afterStartReply, afterFirstReply } = await questionAskedAfterTwoReplies(fixture);
+    const [startToolLine, firstChatToolLine] = fixture.sessions.conversationOf(TRACKER_ID).filter((message) => message.role === 'tool');
+    expect(startToolLine?.text).toStartWith('Bash ');
+    expect(afterStartReply.lastAction).toEqual({ at: startToolLine?.at ?? '', text: startToolLine?.text ?? '' });
+    expect(afterFirstReply.lastAction).toEqual({ at: firstChatToolLine?.at ?? '', text: firstChatToolLine?.text ?? '' });
   } finally {
     await stopLiveSessionFixture(fixture);
   }
@@ -477,7 +477,7 @@ function chatWithProductOwner(fixture: LiveSessionFixture, chat: { text: string;
   return sendTo(fixture, DASHBOARD_PROTOCOL.PRODUCT_OWNER_MESSAGES_PATH_SUFFIX, 'POST', JSON.stringify(chat));
 }
 
-/** Both roles live in the one project: the orchestrator started with no first message, the product owner sparring. */
+/** Both roles live in the one project: the orchestrator started without the go to build, the product owner sparring. */
 async function startBothRoles(fixture: LiveSessionFixture): Promise<{ orchestrator: OrchestratorSession; productOwner: OrchestratorSession }> {
   const orchestratorStart = await sendTo(fixture, DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX, 'POST', '{"startBuilding":false}');
   expect(orchestratorStart.status).toBe(201);
@@ -566,8 +566,9 @@ test('with both roles live, a product owner\'s chat, question, answer and events
 
     expect(userTextsReadBy(fixture, productOwner.pid)).toEqual([productOwnerBriefTextOf('example-storefront', 'spar'), chatText, FAKE_ASK_MARKER]);
     expect(readFakeClaudeTranscript(fixture.home).some((entry) => entry.event === 'started' && entry.pid === orchestrator.pid)).toBe(true);
-    expect(userTextsReadBy(fixture, orchestrator.pid)).toEqual([]);
-    expect(fixture.sessions.conversationOf(TRACKER_ID).filter((message) => message.role !== 'system')).toEqual([]);
+    expect(userTextsReadBy(fixture, orchestrator.pid)).toEqual([orchestratorStartTextOf('example-storefront')]);
+    const orchestratorTexts = fixture.sessions.conversationOf(TRACKER_ID).map((message) => message.text);
+    expect(orchestratorTexts.filter((messageText) => messageText.includes(chatText) || messageText.includes(FAKE_ASK_MARKER))).toEqual([]);
     expect((await stopProductOwner(fixture)).status).toBe(204);
     const ended = await servedProductOwnerWhen(fixture, 'ended', (session) => session.state === 'ended');
     expect(ended.pendingQuestions).toEqual([]);

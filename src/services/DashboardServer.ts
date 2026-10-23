@@ -33,17 +33,22 @@ import {
   type ServerIdentity,
   type SessionRole
 } from '../shared/DashboardContract.ts';
-import { environmentCopy }                                                                     from '../shared/Environment.ts';
-import { orchestratorDirectoryOf }                                                             from '../shared/OrchestratorFilePaths.ts';
-import { UnknownValueUtil }                                                                    from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_FILES }                                                                     from '../shared/constants/DashboardFiles.ts';
-import { DASHBOARD_LIMITS }                                                                    from '../shared/constants/DashboardLimits.ts';
-import { DASHBOARD_PROTOCOL }                                                                  from '../shared/constants/DashboardProtocol.ts';
-import { handOffOrchestrator, handoffDirectoryOf }                                             from './OrchestratorHandoff.ts';
-import { ORCHESTRATOR_REQUEST_BODY_REFUSAL, orchestratorMessageTextOf, orchestratorRequestOf } from './OrchestratorRequestMessage.ts';
-import { type OrchestratorLaunch, type OrchestratorSessions, createOrchestratorSessions }      from './OrchestratorSessions.ts';
-import { PRODUCT_OWNER_START_BODY_REFUSAL, productOwnerBriefTextOf, productOwnerModeOf }       from './ProductOwnerBriefMessage.ts';
-import { type MonitoredSnapshot, type ProjectMonitor, createProjectMonitor }                   from './ProjectMonitor.ts';
+import { environmentCopy }                         from '../shared/Environment.ts';
+import { orchestratorDirectoryOf }                 from '../shared/OrchestratorFilePaths.ts';
+import { UnknownValueUtil }                        from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_FILES }                         from '../shared/constants/DashboardFiles.ts';
+import { DASHBOARD_LIMITS }                        from '../shared/constants/DashboardLimits.ts';
+import { DASHBOARD_PROTOCOL }                      from '../shared/constants/DashboardProtocol.ts';
+import { handOffOrchestrator, handoffDirectoryOf } from './OrchestratorHandoff.ts';
+import {
+  ORCHESTRATOR_REQUEST_BODY_REFUSAL,
+  orchestratorMessageTextOf,
+  orchestratorRequestOf,
+  orchestratorStartTextOf
+} from './OrchestratorRequestMessage.ts';
+import { type OrchestratorLaunch, type OrchestratorSessions, createOrchestratorSessions } from './OrchestratorSessions.ts';
+import { PRODUCT_OWNER_START_BODY_REFUSAL, productOwnerBriefTextOf, productOwnerModeOf }  from './ProductOwnerBriefMessage.ts';
+import { type MonitoredSnapshot, type ProjectMonitor, createProjectMonitor }              from './ProjectMonitor.ts';
 
 export interface DashboardServerOptions {
   port:                      number;
@@ -841,7 +846,8 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (startBuilding === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_START_BODY_REFUSAL);
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
-    const firstMessage = startBuilding ? orchestratorMessageTextOf({ kind: 'start-building' }, project?.project ?? trackerId, 'dashboard-session') : null;
+    const projectName = project?.project ?? trackerId;
+    const firstMessage = startBuilding ? orchestratorMessageTextOf({ kind: 'start-building' }, projectName, 'dashboard-session') : orchestratorStartTextOf(projectName);
     return launchedSessionResponse(await orchestratorSessions.launch(trackerId, root, firstMessage), 'orchestrator');
   }
 
