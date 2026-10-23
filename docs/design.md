@@ -522,8 +522,11 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   `agent-progress:theme` (`auto` | `light` | `dark`), resolved before first paint into `data-theme` on `<html>`.
   The dashboard's toggle writes it; every new choice, the toggle's or one a `storage` event brings from another
   dashboard tab, is sent to the bridge, which writes it in the board origin's storage and clicks the open board's own
-  radio; the board's own toggle reaches the dashboard as the bridge's `theme-chosen` message (see "The bridge"). The toggle is a radio group
-  as the template's is: one tab stop, the arrow keys move the choice.
+  radio; the board's own toggle reaches the dashboard as the bridge's `theme-chosen` message (see "The bridge"). The toggle is
+  one square icon button, as tall as the Chat button and as wide as it is tall, showing the current choice: a
+  half-sun, half-moon for auto, a sun for light, a moon for dark, inline SVGs in `currentColor`. Each click moves to
+  the next choice, auto → light → dark → auto, applying and storing it at once; its tooltip and accessible name say
+  the current choice and the next ("Theme: Auto — click for Light").
 - **Live status**: the template's `.ap-status-dot` idiom: a `--status-live` dot that pulses while the event stream
   is connected, grey with "reconnecting" when it is not, and "updated 45s ago" from the last snapshot ("updated just now" under 30 seconds, as is the
   reconnecting banner's "last update just now"). Only the
@@ -557,7 +560,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   maximum (`availableParallelism()` as the CLI reads it and the snapshot carries it as `machineParallelAgentLimit`;
   the projects' concurrency limits are not summed here), every live orchestrator session, dashboard-owned or watched,
   and the ready, awaiting-review and held counts, all as `web/shell/HeaderTotals.ts` sums them. The notification
-  control, the Chat button (which carries the inbox's count, see the chat window) and the theme toggle come last.
+  control, the Chat button (which carries the inbox's count, see the chat window) and the square theme button come last.
 - **Dashboard menu** (before the title on every view, its panel opening along the header's left edge): a hamburger toggle named "Dashboard menu" opening a panel with
   one item, "Restart server", its explanation as a `title` tooltip. Choosing it asks "Restart the dashboard server?" with Restart and Cancel in the panel;
   Cancel returns to the item without a request, Restart sends `POST /api/restart` and closes the menu, after which the

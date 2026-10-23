@@ -95,19 +95,9 @@ ul { padding: 0; list-style: none; }
 /* The compact header keeps the connection word; the age of the last update is the lost-connection banner's to show. */
 .ap-header-identity .ap-status-line > :nth-child(3) { display: none; }
 
-.ap-theme { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); }
-.ap-theme button { padding: 3px 6px; font: 500 var(--fs-micro)/normal var(--font-mono); border: 0; border-radius: 5px; background: transparent; color: var(--ink-muted); cursor: pointer; }
-.ap-theme button:hover { color: var(--ink); }
-.ap-theme button[aria-checked="true"] { background: var(--surface-selected); color: var(--ink); }
-.ap-theme button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-.ap-theme-icon {
-  display: none; flex: none; align-items: center; justify-content: center;
-  width: 44px; height: 44px; padding: 0;
-  color: var(--ink-muted); background: transparent; border: 0; border-radius: var(--r-2);
-  box-shadow: 0 0 0 1px var(--line); cursor: pointer;
-}
-.ap-theme-icon:hover { color: var(--ink); }
-.ap-theme-icon:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* Square at the Chat button's height: `.ap-control` sets the height, the width repeats it. */
+.ap-control.ap-theme-toggle { flex: none; justify-content: center; width: 26px; padding: 0; }
+.ap-control.ap-theme-toggle svg { width: 15px; height: 15px; }
 
 .ap-header-tools { flex: none; display: flex; align-items: center; gap: 8px; }
 
@@ -740,12 +730,11 @@ ul { padding: 0; list-style: none; }
   .ap-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px 12px; padding-bottom: 0; border-bottom: 0; }
   .ap-header > .ap-menu { grid-row: 1; grid-column: 1; align-self: start; margin-right: 0; }
   .ap-header-identity { grid-row: 1; grid-column: 2 / -1; flex-direction: row; align-items: center; gap: 4px 12px; margin-right: 0; }
-  .ap-theme { display: none; }
   .ap-header-tools { grid-row: 2; grid-column: 1 / -1; gap: 8px; }
-  .ap-chat-toggle, .ap-notification-toggle, .ap-menu-toggle { min-height: 44px; }
+  .ap-chat-toggle, .ap-notification-toggle, .ap-menu-toggle, .ap-theme-toggle { min-height: 44px; }
+  .ap-theme-toggle { min-width: 44px; }
   .ap-menu-toggle { min-width: 44px; justify-content: center; }
   .ap-menu-item { min-height: 44px; }
-  .ap-theme-icon { display: inline-flex; }
   .ap-view-switch { grid-column: 1 / -1; justify-self: start; }
   .ap-view-switch a { min-height: 40px; padding: 0 16px; }
   .ap-header-totals { grid-column: 1 / -1; white-space: normal; }

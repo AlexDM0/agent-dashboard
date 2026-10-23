@@ -62,7 +62,7 @@ export function Header({
           <span className="mono muted ap-chat-toggle-count" aria-hidden="true">{liveCount}</span>
           {waitingCount === 0 ? null : <span className="ap-chat-question-badge" aria-hidden="true">{waitingCount}</span>}
         </button>
-        <ThemeToggle choice={theme.choice} resolvedTheme={theme.resolvedTheme} onChoose={theme.chooseTheme} />
+        <ThemeToggle choice={theme.choice} onChoose={theme.chooseTheme} />
       </div>
     </header>
   );
