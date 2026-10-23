@@ -6,7 +6,7 @@ import { CommandRefusal }          from '../CommandRefusal.ts';
 
 /** Run by the server alone, detached with its output to the supervisor's log; it returns when the session has ended. */
 export async function superviseCommand(trackerId: string, root: string, context: CommandContext): Promise<void> {
-  if (context.claudeExecutable === null) throw new CommandRefusal('claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path.');
+  if (context.claudeExecutable === null) throw new CommandRefusal('claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path, or rerun setup.sh.');
   const end = await superviseOrchestrator({
     trackerId,
     root,

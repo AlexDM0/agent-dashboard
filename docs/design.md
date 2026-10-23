@@ -34,8 +34,9 @@ sessions"); that session, not the dashboard, writes the tracker.
 - **Each project's page**: the folder holding `progressHtml` (its `.agent-progress/`). `progress.html` loads
   `progress.stamp.js` beside it every 60 s and reloads itself when the stamp changes, so served over HTTP from the
   same folder it keeps itself current inside the iframe.
-- The dashboard's own files (server record, log) live in `~/.agent-progress-monitor/agent-dashboard/`: the registry
-  folder exists so a monitor can keep its files beside it.
+- The dashboard's own files (server record, log, and `executables.json`, where `setup.sh` found `claude` and
+  `agent-progress`) live in `~/.agent-progress-monitor/agent-dashboard/`: the registry folder exists so a monitor can
+  keep its files beside it.
 
 ## Architecture
 
@@ -263,7 +264,9 @@ Raw `claude -p --input-format stream-json --output-format stream-json --verbose 
 
 `agent-dashboard supervise <trackerId> <root>`, a command the server alone runs (not in `help`), spawned detached
 (`detached: true`, its own process group, stdio to its log, `unref()`), as `open` starts the server. It spawns the
-session (`claude` on `PATH`, or `AGENT_DASHBOARD_CLAUDE`) with the project root as working directory, its own process
+session (`AGENT_DASHBOARD_CLAUDE`, else `claude` on `PATH`, else the path `setup.sh` recorded in
+`~/.agent-progress-monitor/agent-dashboard/executables.json` while it still names an executable file; agent-progress
+is found the same way, through `AGENT_DASHBOARD_AGENT_PROGRESS`) with the project root as working directory, its own process
 group, and `--session-id <uuid>` it generates, so the record names the session before its `init` line arrives; then it
 listens on a Unix socket and writes its record. It outlives its starter (the probe's
 supervisor was reparented to pid 1 and served two later clients); it ends when the session exits, by itself or on Stop,

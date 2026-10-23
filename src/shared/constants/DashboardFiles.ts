@@ -5,6 +5,8 @@ export const DASHBOARD_FILES = {
   DASHBOARD_DIRECTORY_NAME:     'agent-dashboard',
   SERVER_RECORD_FILE_NAME:      'server.json',
   SERVER_LOG_FILE_NAME:         'server.log',
+  /** Where `setup.sh` found `claude` and `agent-progress`, for a server started without them on `PATH`. */
+  EXECUTABLES_RECORD_FILE_NAME: 'executables.json',
   ORCHESTRATORS_DIRECTORY_NAME: 'orchestrators',
   ORCHESTRATOR_RECORD_SUFFIX:   '.json',
   ORCHESTRATOR_SOCKET_SUFFIX:   '.sock',
