@@ -1,6 +1,6 @@
 import type { OrchestratorSession, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
 import { OrchestratorSessionUtil }                   from '../orchestrator/OrchestratorSessionUtil.ts';
-import { OrchestratorSummary }                       from '../orchestrator/OrchestratorSummary.tsx';
+import { SessionGlyph }                              from '../orchestrator/SessionGlyph.tsx';
 import { ProjectOrdering }                           from '../overview/ProjectOrdering.ts';
 import { boardHashOf }                               from '../shell/HashRoute.ts';
 import { projectActivityOf }                         from '../shell/ProjectActivity.ts';
@@ -19,6 +19,40 @@ interface RailGroupProperties {
   selectedTrackerId:             string;
 }
 
+interface RailRowProperties {
+  project:         ProjectSnapshot;
+  watchedSessions: OrchestratorSession[];
+  isSelected:      boolean;
+}
+
+/** One line on a fixed column grid, so the glyphs, agent counts and badges line up from row to row. */
+function RailRow({ project, watchedSessions, isSelected }: RailRowProperties) {
+  const leadingSession = OrchestratorSessionUtil.sessionsOf(project, watchedSessions)[0] ?? null;
+  const questionCount = OrchestratorSessionUtil.questionCountOf(project);
+  return (
+    <a
+      href={boardHashOf(project.trackerId)}
+      className={isSelected ? 'ap-rail-row is-selected' : 'ap-rail-row'}
+      {...(isSelected ? { 'aria-current': 'page' as const } : {})}
+    >
+      <ProjectDot activity={projectActivityOf(project)} isQuestionWaiting={questionCount > 0} />
+      <span className="ap-rail-name" title={project.project}>{project.project}</span>
+      <SessionGlyph mark="OR" session={leadingSession} />
+      <span className="ap-rail-crew-slot" aria-hidden="true" />
+      <span className="ap-rail-agents">
+        {project.health.kind === 'ready' ? `${String(project.health.board.agentsInFlight)}/${String(project.health.board.concurrencyLimit)}` : ''}
+      </span>
+      <span
+        className="ap-rail-question-count"
+        data-hidden={questionCount === 0}
+        {...(questionCount === 0 ? { 'aria-hidden': true } : { 'aria-label': `${String(questionCount)} ${questionCount === 1 ? 'question' : 'questions'} waiting` })}
+      >
+        {questionCount}
+      </span>
+    </a>
+  );
+}
+
 function RailGroup({
   title, projects, watchedOrchestratorsByTracker, selectedTrackerId
 }: RailGroupProperties) {
@@ -28,24 +62,14 @@ function RailGroup({
   return (
     <div className="ap-rail-group" role="group" aria-label={title}>
       <div className="ap-rail-title">{title}</div>
-      {projects.map((project) => {
-        const isSelected = project.trackerId === selectedTrackerId;
-        return (
-          <a
-            key={project.trackerId}
-            href={boardHashOf(project.trackerId)}
-            className={isSelected ? 'ap-rail-row is-selected' : 'ap-rail-row'}
-            {...(isSelected ? { 'aria-current': 'page' as const } : {})}
-          >
-            <ProjectDot activity={projectActivityOf(project)} isQuestionWaiting={OrchestratorSessionUtil.isQuestionWaiting(project)} />
-            <span className="ap-rail-name">{project.project}</span>
-            {project.health.kind === 'ready'
-              ? <span className="ap-rail-agents">{project.health.board.agentsInFlight}/{project.health.board.concurrencyLimit}</span>
-              : null}
-            <OrchestratorSummary project={project} watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(watchedOrchestratorsByTracker, project.trackerId)} />
-          </a>
-        );
-      })}
+      {projects.map((project) => (
+        <RailRow
+          key={project.trackerId}
+          project={project}
+          watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(watchedOrchestratorsByTracker, project.trackerId)}
+          isSelected={project.trackerId === selectedTrackerId}
+        />
+      ))}
     </div>
   );
 }

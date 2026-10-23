@@ -35,8 +35,20 @@ function statePaletteOf(state: OrchestratorState): string {
   return STATE_PALETTE[state];
 }
 
+/** What a session's glyph says on hover: its name, its state and, when it has one, its last action. */
+function hoverTextOf(session: OrchestratorSession): string {
+  const nameAndState = `${nameOf(session)} · ${stateWordOf(session.state)}`;
+  return session.lastAction === null ? nameAndState : `${nameAndState} · ${session.lastAction.text}`;
+}
+
+/** The questions a live dashboard-owned session owes; an ended one owes none. */
+function questionCountOf(project: ProjectSnapshot): number {
+  if (project.orchestrator === null || project.orchestrator.state === 'ended') return 0;
+  return project.orchestrator.pendingQuestions.length;
+}
+
 function isQuestionWaiting(project: ProjectSnapshot): boolean {
-  return project.orchestrator !== null && project.orchestrator.state !== 'ended' && project.orchestrator.pendingQuestions.length > 0;
+  return questionCountOf(project) > 0;
 }
 
 /** A Start is offered while no dashboard-owned session lives: none ran, or the one that ran has ended. */
@@ -45,5 +57,5 @@ function canStart(project: ProjectSnapshot): boolean {
 }
 
 export const OrchestratorSessionUtil = Object.freeze({
-  sessionsOf, watchedSessionsOf, nameOf, stateWordOf, statePaletteOf, isQuestionWaiting, canStart
+  sessionsOf, watchedSessionsOf, nameOf, stateWordOf, statePaletteOf, hoverTextOf, questionCountOf, isQuestionWaiting, canStart
 });

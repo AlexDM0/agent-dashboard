@@ -478,7 +478,7 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 - **Inbox** (in the header on every view): a button with the count of questions every live dashboard-owned
   orchestrator owes, across all projects (watched desktop sessions' questions stay in the desktop app). It opens a
   panel listing them oldest first, each with its project (a link to its board), how long it has waited and the same
-  question card the board's orchestrator panel shows (`web/questions/PendingQuestionForm.tsx`), answered in place
+  question card the board's crew drawer shows (`web/questions/PendingQuestionForm.tsx`), answered in place
   through the answers route; a card leaves when a snapshot no longer holds the request, wherever it was answered.
   Esc closes the panel before it can leave a board. The panel also closes on a press anywhere outside it and its
   button, and when the dashboard window loses focus (a click into the board frame or another app), so it is never
@@ -521,13 +521,33 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
 
 ### Board (`#/projects/<trackerId>`)
 
-- A **project rail** on the left (240 px, collapses to a top strip under 768 px): every project as a compact row,
-  status dot, name, `2/2` agents, the selected one `--surface-selected`; the rows under an "Active" and an "Idle"
-  heading, split and ordered as the overview's groups, an empty group without its heading (the top strip drops the
-  headings).
-- A **toolbar** over the frame: back to overview (`←` and Esc, also pressed inside the frame unless the board used it
-  to close its detail panel or a popover), project name, root path in mono, dispatcher pill,
-  slot meter compact, and on the right "Reload" and "Open in new tab".
+- A **project rail** on the left (288 px, collapses to a top strip of chips under 768 px): every project as one
+  34 px line on fixed grid columns, so they line up from row to row: status dot (ringed while a question waits), name
+  (ellipsis, full in `title`), the `OR` glyph (`web/orchestrator/SessionGlyph.tsx`: the leading session's state in the
+  `[data-state]` palette of `OrchestratorSessionUtil.statePaletteOf`, a dashed border for a watched desktop session,
+  an empty slot for none; hover names the session, its state and its `lastAction`), a reserved slot for the product
+  owner's glyph, agents `2/2` in mono, and a question-count badge, hidden at zero but keeping its width. The selected
+  row is `--surface-selected`; the rows sit under an "Active" and an "Idle" heading, split and ordered as the
+  overview's groups, an empty group without its heading (the top strip drops the headings).
+- A **command bar** over the frame, one row from 1280 px (it wraps under 768 px): back to overview (`←` and Esc, also
+  pressed inside the frame unless the board used it to close its detail panel or a popover), project name, the root
+  path shortened to `~/…` (`web/board/RootPathUtil.ts`, the home read off the registry path; the full path in `title`),
+  then on the right the dispatcher pill, "slots", `n/m` and the − / + stepper, and only the actions that fit the
+  dispatcher state (`web/board/BoardCommandUtil.ts`): `stopped` or `finished` shows "Start building" (primary) and,
+  with low-priority tickets waiting, "Include low-priority n"; `running` shows "Pick up low-priority n" (when n > 0)
+  and Stop. The low-priority control opens the "Low priority, waiting" checklist with "Clear to run" as a popover,
+  closed by Esc, a press outside and the window's blur. Last come the icon buttons "Reload board" and "Open board in a
+  new tab", named by `aria-label`.
+- A **crew strip** under the command bar (`web/orchestrator/CrewStrip.tsx`): the leading orchestrator's glyph,
+  "Orchestrator", its state pill and compact context meter, and on a second line its `lastAction` text and age ("No
+  action yet" before one); then Chat (opens the drawer on the session's chat box) and, while no dashboard-owned
+  orchestrator lives, "Start orchestrator" (`startBuilding` false). A click anywhere on the strip opens the crew
+  drawer. Under 768 px it shrinks to its glyph and Chat.
+- The **crew drawer** (`web/orchestrator/CrewDrawer.tsx`): a 480 px sheet over the board from the right (the full
+  width under 768 px) above a scrim, closed by default and on every board change, never remembered. Its ×, the scrim
+  and Esc close it, focus back on the strip; Esc closes the drawer first and a second Esc leaves the board, while Esc
+  in a text field stays in the field. A tab bar heads it, one tab per crew role ("Orchestrator" today), holding every
+  session described below.
 - The **frame**: `progress.html` from the board origin in an iframe sandboxed to `allow-scripts allow-same-origin`
   (see "The bridge") filling the rest of the viewport, no border, requested as `progress.html?embedded=dashboard`
   (added to the page URL's query beside any it has; "Open in new tab" keeps the plain page) so the board drops its own
@@ -537,26 +557,23 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   hidden bridge frame. Esc inside it arrives as the bridge's `leave-board`; Reload sends the frame to its page again,
   since a page on another origin cannot be told to reload. A project whose page does not exist yet shows a panel saying
   so instead. Esc in a text field (chat, an "Other" answer) stays in the field.
-- The **orchestrator panel** (`web/orchestrator/OrchestratorPanel.tsx`): a 340 px column right of the frame, a bottom
-  sheet (at most 70% of the height) under 768 px, collapsed to its header by its toggle, the open state remembered
-  through `web/preferences/PreferenceStore.ts`. The header names the session count and a "question waiting" chip.
-  "Start orchestrator" (`startBuilding` false) shows while no dashboard-owned session lives; then every session, the
-  dashboard-owned one first: its name ("Dashboard orchestrator", a watched one its record name or "Session <id>"), a
+- The drawer's **Orchestrator tab**: "Start orchestrator" (`startBuilding` false) while no dashboard-owned session
+  lives; then every session, the dashboard-owned one first: its name ("Dashboard orchestrator", a watched one its record name or "Session <id>"), a
   state pill (`busy` in-progress, `idle` pending, `waiting` in-review, `starting` paused, `ended` abandoned, plus a
   `watched` pill), the context meter, and a chat box (Enter sends, Shift+Enter a newline, disabled for an ended session).
   A dashboard-owned session adds its pending questions as forms (a radio group, or checkboxes for a multi-select, each
   with a free-text "Other"; typing into "Other" chooses it; one Answer for the whole request), its conversation (user
   and assistant turns as plain text, a tool call as one collapsed `<details>` line, scrolled to the newest), Stop and a
   quiet "Hand off…" (`web/orchestrator/HandoffControl.tsx`). From 80% of a known window (`CONTEXT_CRITICAL_SHARE`,
-  `web/constants/WebLimits.ts`) the panel warns in `--err-ink` and the button turns loud; it never acts by itself. A
+  `web/constants/WebLimits.ts`) the session warns in `--err-ink` and the button turns loud; it never acts by itself. A
   click asks to confirm inline: "Hand off asks for a note, stops this session, starts a fresh one with the note." A
   watched session offers neither Stop, Hand off nor answers. Every request carries the launch token; a refusal shows the server's
   text inline as `--err-ink`.
 - The **context meter**: an 8 px bar (6 px compact) and "62% of 200k", green (`reviewed`) under 50%, amber
   (`in-progress`) from 50%, the bar `--err-ink` from 80%; a window not known reads "48k tokens" over an empty bar.
-- Every overview card (a "Session" row over the slots) and rail row of a project with a session shows its leading
-  session's name, state pill, compact meter, "question waiting" chip and "+n" for more sessions; a project without one
-  shows none. A waiting question also rings the project's status dot in `--link`, on the card and the rail.
+- Every overview card of a project with a session has a one-line "Session" row over the slots: the leading session's
+  glyph, name, compact meter, "question waiting" chip and "+n" for more sessions; a project without one shows none. A
+  waiting question also rings the project's status dot in `--link`, on the card and the rail.
 
 ## Conventions
 

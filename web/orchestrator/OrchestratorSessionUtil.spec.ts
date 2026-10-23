@@ -1,7 +1,7 @@
 /**
- * What the panel, the cards and the rail say about a project's sessions: the dashboard-owned one first, a name for
- * every session (a watched one without a record name by its short id), the state words and colours, and when a
- * question waits or a Start is offered; an ended session neither waits nor blocks a new start.
+ * What the drawer, the cards and the rail say about a project's sessions: the dashboard-owned one first, a name for
+ * every session (a watched one without a record name by its short id), the state words and colours, a glyph's hover
+ * text, how many questions wait, and when a Start is offered; an ended session neither waits nor blocks a new start.
  */
 import { expect, test }                                 from 'bun:test';
 import { orchestratorSessionWith, projectSnapshotWith } from '../testing/SnapshotFixtures.ts';
@@ -43,6 +43,20 @@ test('a question waits only on a live dashboard-owned session holding one', () =
   expect(OrchestratorSessionUtil.isQuestionWaiting(projectSnapshotWith('example', { orchestrator: waiting }))).toBe(true);
   expect(OrchestratorSessionUtil.isQuestionWaiting(projectSnapshotWith('example', { orchestrator: { ...waiting, state: 'ended' } }))).toBe(false);
   expect(OrchestratorSessionUtil.isQuestionWaiting(projectSnapshotWith('example'))).toBe(false);
+});
+
+test('a live session counts its questions for the rail badge; an ended one and none count zero', () => {
+  const waiting = orchestratorSessionWith({ state: 'waiting-for-answer', pendingQuestions: [PENDING_QUESTION, { ...PENDING_QUESTION, requestId: 'second' }] });
+  expect(OrchestratorSessionUtil.questionCountOf(projectSnapshotWith('example', { orchestrator: waiting }))).toBe(2);
+  expect(OrchestratorSessionUtil.questionCountOf(projectSnapshotWith('example', { orchestrator: { ...waiting, state: 'ended' } }))).toBe(0);
+  expect(OrchestratorSessionUtil.questionCountOf(projectSnapshotWith('example'))).toBe(0);
+});
+
+test('a glyph names its session and state on hover, and the last action once there is one', () => {
+  const session = orchestratorSessionWith({ state: 'busy' });
+  expect(OrchestratorSessionUtil.hoverTextOf(session)).toBe('Dashboard orchestrator · busy');
+  const acting = orchestratorSessionWith({ state: 'busy', lastAction: { at: '2026-10-21T10:00:00+02:00', text: 'Started #042' } });
+  expect(OrchestratorSessionUtil.hoverTextOf(acting)).toBe('Dashboard orchestrator · busy · Started #042');
 });
 
 test('a Start is offered with no dashboard-owned session or an ended one', () => {

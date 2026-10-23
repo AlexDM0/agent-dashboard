@@ -9,12 +9,13 @@ interface OrchestratorRequestButtonProperties {
   label:                 string;
   accessibleLabel:       string;
   isDisabled?:           boolean;
+  isPrimary?:            boolean;
   orchestratorRequestOf: () => OrchestratorRequest;
   onSent?:               () => void;
 }
 
 export function OrchestratorRequestButton({
-  trackerId, label, accessibleLabel, isDisabled = false, orchestratorRequestOf, onSent
+  trackerId, label, accessibleLabel, isDisabled = false, isPrimary = false, orchestratorRequestOf, onSent
 }: OrchestratorRequestButtonProperties) {
   const [requestState, dispatch] = useReducer(
     OrchestratorRequestStateUtil.nextStateOf,
@@ -47,6 +48,7 @@ export function OrchestratorRequestButton({
       <button
         type="button"
         className="ap-control"
+        data-primary={isPrimary}
         aria-label={accessibleLabel}
         disabled={isBusy || isDisabled}
         onClick={() => void sendRequest()}

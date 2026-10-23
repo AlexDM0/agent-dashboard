@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useRef } from 'react';
-import type { DashboardSnapshot }         from '../../src/shared/DashboardContract.ts';
-import { OrchestratorPanel }              from '../orchestrator/OrchestratorPanel.tsx';
-import { OrchestratorSessionUtil }        from '../orchestrator/OrchestratorSessionUtil.ts';
-import { ConnectingPanel }                from '../shell/ConnectingPanel.tsx';
-import { OVERVIEW_HASH }                  from '../shell/HashRoute.ts';
-import { BoardToolbar }                   from './BoardToolbar.tsx';
-import { NoPagePanel }                    from './NoPagePanel.tsx';
-import { PageFrame }                      from './PageFrame.tsx';
-import { ProjectRail }                    from './ProjectRail.tsx';
-import { UnknownProjectPanel }            from './UnknownProjectPanel.tsx';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState
+} from 'react';
+import type { DashboardSnapshot }           from '../../src/shared/DashboardContract.ts';
+import { CrewDrawer, type CrewDrawerFocus } from '../orchestrator/CrewDrawer.tsx';
+import { CrewStrip }                        from '../orchestrator/CrewStrip.tsx';
+import { OrchestratorSessionUtil }          from '../orchestrator/OrchestratorSessionUtil.ts';
+import { ConnectingPanel }                  from '../shell/ConnectingPanel.tsx';
+import { OVERVIEW_HASH }                    from '../shell/HashRoute.ts';
+import { BoardToolbar }                     from './BoardToolbar.tsx';
+import { NoPagePanel }                      from './NoPagePanel.tsx';
+import { PageFrame }                        from './PageFrame.tsx';
+import { ProjectRail }                      from './ProjectRail.tsx';
+import { RootPathUtil }                     from './RootPathUtil.ts';
+import { UnknownProjectPanel }              from './UnknownProjectPanel.tsx';
 
 interface BoardViewProperties {
   snapshot:  DashboardSnapshot | null;
@@ -17,6 +25,9 @@ interface BoardViewProperties {
 
 export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
   const frameReference = useRef<HTMLIFrameElement | null>(null);
+  const crewStripReference = useRef<HTMLButtonElement | null>(null);
+  const drawerId = useId();
+  const [drawerFocus, setDrawerFocus] = useState<CrewDrawerFocus | null>(null);
 
   useEffect(() => {
     const backOnEscape = (event: KeyboardEvent): void => {
@@ -30,6 +41,14 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
     return () => window.removeEventListener('keydown', backOnEscape);
   }, []);
 
+  // Another project's board opens with the drawer closed.
+  useEffect(() => setDrawerFocus(null), [trackerId]);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerFocus(null);
+    crewStripReference.current?.focus();
+  }, []);
+
   const reloadPage = useCallback(() => {
     // A board on another origin cannot be told to reload, but its frame may be sent to its page again.
     const frame = frameReference.current;
@@ -40,6 +59,7 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
     return <ConnectingPanel />;
   }
   const project = snapshot.projects.find((candidate) => candidate.trackerId === trackerId);
+  const watchedSessions = OrchestratorSessionUtil.watchedSessionsOf(snapshot.watchedOrchestratorsByTracker, trackerId);
   return (
     <div className="ap-board">
       <ProjectRail projects={snapshot.projects} watchedOrchestratorsByTracker={snapshot.watchedOrchestratorsByTracker} selectedTrackerId={trackerId} />
@@ -48,7 +68,15 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
           ? <UnknownProjectPanel trackerId={trackerId} />
           : (
             <>
-              <BoardToolbar project={project} onReload={reloadPage} />
+              <BoardToolbar project={project} homeDirectory={RootPathUtil.homeDirectoryOf(snapshot.registryPath)} onReload={reloadPage} />
+              <CrewStrip
+                project={project}
+                watchedSessions={watchedSessions}
+                isDrawerOpen={drawerFocus !== null}
+                drawerId={drawerId}
+                stripReference={crewStripReference}
+                onOpenDrawer={setDrawerFocus}
+              />
               {project.pageAvailable
                 ? (
                   <PageFrame
@@ -61,12 +89,12 @@ export function BoardView({ snapshot, trackerId }: BoardViewProperties) {
                   />
                 )
                 : <NoPagePanel root={project.root} />}
+              {drawerFocus === null
+                ? null
+                : <CrewDrawer drawerId={drawerId} project={project} watchedSessions={watchedSessions} initialFocus={drawerFocus} onClose={closeDrawer} />}
             </>
           )}
       </main>
-      {project === undefined
-        ? null
-        : <OrchestratorPanel project={project} watchedSessions={OrchestratorSessionUtil.watchedSessionsOf(snapshot.watchedOrchestratorsByTracker, project.trackerId)} />}
     </div>
   );
 }
