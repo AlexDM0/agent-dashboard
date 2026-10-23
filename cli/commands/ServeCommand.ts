@@ -1,15 +1,16 @@
-import { startDashboardServer }                    from '../../src/services/DashboardServer.ts';
-import type { CommandContext }                     from '../CommandContext.ts';
-import type { CommandOptions }                     from '../ParsedCommandLine.ts';
-import { removeServerRecordOf, writeServerRecord } from '../ServerRecordFile.ts';
-import { portHeldRefusalFor }                      from './PortHeldRefusal.ts';
-import { runningDashboardServerOf }                from './RunningDashboardServer.ts';
-import { runningElsewhereRefusalFor }              from './RunningElsewhereRefusal.ts';
-import { startDetachedServer }                     from './StartDetachedServer.ts';
+import { startDashboardServer }                                     from '../../src/services/DashboardServer.ts';
+import type { CommandContext }                                      from '../CommandContext.ts';
+import type { CommandOptions }                                      from '../ParsedCommandLine.ts';
+import { removeServerRecordOf, serverLogPathOf, writeServerRecord } from '../ServerRecordFile.ts';
+import { detachedServerAnswerOf, unansweredServerTextOf }           from './DetachedServerAnswer.ts';
+import { portHeldRefusalFor }                                       from './PortHeldRefusal.ts';
+import { runningDashboardServerOf }                                 from './RunningDashboardServer.ts';
+import { runningElsewhereRefusalFor }                               from './RunningElsewhereRefusal.ts';
+import { startDetachedServer }                                      from './StartDetachedServer.ts';
 
 /**
  * Runs until the server stops, by `stop`, a restart or SIGINT or SIGTERM, then removes the record if it still names this
- * process; after a restart it starts a detached successor on the same port, as `open` starts one.
+ * process; after a restart it starts a detached successor on the same port, as `open` starts one, and says when it does not answer.
  */
 export async function serveCommand(options: CommandOptions, context: CommandContext): Promise<void> {
   // The record names one server; a second one would take it over and leave the first beyond `status` and `stop`.
@@ -51,7 +52,10 @@ export async function serveCommand(options: CommandOptions, context: CommandCont
   }
   // Both listeners are closed and the record is gone by now, so the successor finds the ports free and no server running.
   if (server.isRestartRequested()) {
-    startDetachedServer(context, server.port);
+    const successor = startDetachedServer(context, server.port);
     context.standardOutput(`Restarting the dashboard server at ${server.url}.`);
+    // This process writes to the server log, so the line saying why the page stays on reconnecting lands where the person looks.
+    const answer = await detachedServerAnswerOf(server.url, successor);
+    if (answer.kind !== 'answered') context.standardError(unansweredServerTextOf(answer, serverLogPathOf(context.homeDirectory)));
   }
 }
