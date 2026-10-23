@@ -1,7 +1,8 @@
 /**
  * The real binary, start to stop, under a scratch home on a free port: `open` must start a detached server and return, a
  * second `open` must reuse it rather than start another, `status` must report it, and `stop` must end it and leave no record.
- * A restart the page asks for must leave the same port answered by a fresh process, its own record written, the old one gone.
+ * A restart the page asks for must leave the same port answered by a fresh process, its own record written, the old one gone
+ * once it has seen the fresh one answer.
  */
 import { existsSync }             from 'node:fs';
 import { afterAll, expect, test } from 'bun:test';
@@ -87,6 +88,8 @@ test('a restart hands the port to a fresh server with a new pid and start time i
   expect(successorRecord.record.boardOrigin).toBe(firstRecord.record.boardOrigin);
   const identity = await (await fetch(`${url}${DASHBOARD_PROTOCOL.IDENTITY_PATH}`)).json() as { pid: number };
   expect(identity.pid).toBe(successorRecord.record.pid);
+  // The old process exits once it has seen its successor answer.
+  while (performance.now() < deadline && processIsAlive(firstRecord.record.pid)) await Bun.sleep(RESTART_POLL_INTERVAL_MILLISECONDS);
   expect(processIsAlive(firstRecord.record.pid)).toBe(false);
 
   expect((await runAgentDashboard(['stop'], home)).exitCode).toBe(0);
