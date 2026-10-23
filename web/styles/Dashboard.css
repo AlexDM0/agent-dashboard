@@ -266,7 +266,8 @@ ul { padding: 0; list-style: none; }
 .ap-ticket-legend-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--s-fill); }
 
 .ap-card-crew { display: flex; flex-direction: column; gap: 4px; }
-.ap-card-crew-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ap-card-crew-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.ap-card-crew-line > .ap-caption { white-space: nowrap; }
 .ap-card-crew-name { min-width: 0; font-size: var(--fs-small); font-weight: 500; }
 .ap-card-crew-action { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-left: 32px; font-size: var(--fs-small); color: var(--ink-muted); }
 .ap-card-crew-action > .ap-caption { flex: none; }
