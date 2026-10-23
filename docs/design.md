@@ -560,31 +560,44 @@ stamps. No gradients, no emoji, no left-border cards, no shadows beyond the temp
   clicking it focuses the tab on that project's board. Where `navigator.setAppBadge` exists (the dashboard installed
   as a web app in Chrome or Edge) the icon carries the inbox count, cleared at zero.
 - **Filter bar**: a search field (project name or path) and a segmented toggle `All | Active`.
-- **Two groups**: "Active" (agents in flight, or the dispatcher `running`) and "Idle", each a responsive grid of
-  project cards (`repeat(auto-fill, minmax(360px, 1fr))`); within a group, A–Z by project name,
-  ignoring case (ties by tracker id), whenever it last changed.
-- **Project card** (`--surface`, `--line` border, `--r-3`), top to bottom:
-  1. Status dot (pulsing `--status-live` with agents in flight; amber when the dispatcher runs with none; grey
-     otherwise), project name (`--fs-title`, 600), dispatcher pill (`running` / `finished` / `stopped`).
-  2. Root path in mono `--fs-small` `--ink-muted`, and the origin shortened to `owner/repo`.
-  3. Slot meter: one cell per concurrency slot, filled `in-progress` amber for each agent in flight, with
-     "2 of 2 slots busy".
-  4. Ticket bar: one stacked 8 px bar over every ticket, a segment per status in the `[data-state]` fills (delivered,
-     reviewed, in-review, in-progress, pending, abandoned), with the caption "16 of 56 delivered · 2 in review · 37
-     pending".
-  5. In flight: up to four active rows, each a status badge (`Building` in-progress amber, `Review 1` reviewing cyan,
-     `Task` pending grey), `#042` in mono, the title truncated with an ellipsis, owner, elapsed ("12m"); "+2 more".
-  6. Queue line: `Ready #003 #005` chips, `Awaiting review #011`, `Held #007` (only those present).
-  7. Latest log line: time (mono, `--ink-muted`) and text, one line.
-  8. Footer: "Changed 3m ago · ticket claim" ("Changed just now" under 30 seconds) and an "Open board" button (primary, `--link`).
+- **Two groups**: "Active" (agents in flight, or the dispatcher `running`), a responsive grid of project cards
+  (`repeat(auto-fill, minmax(560px, 1fr))`: two per row at 1440 px, one on a phone), and "Idle", one panel of one-line
+  rows; within a group, A–Z by project name, ignoring case (ties by tracker id), whenever it last changed. The Idle
+  heading reads "Idle n", with "· all delivered, nothing ready" when every idle board has every live ticket delivered
+  and none ready. Neither group collapses on a phone.
+- **Active project card** (`--surface`, `--line` border, `--r-3`), six sections, each on its own line:
+  1. Head: status dot (pulsing `--status-live` with agents in flight; amber when the dispatcher runs with none; grey
+     otherwise), project name (`--fs-title`, 600), the orchestrator's and product owner's session glyphs as the rail
+     draws them (`web/orchestrator/SessionGlyph.tsx`), the dispatcher pill at the right. Under it the root as `~/…`
+     (`RootPathUtil.shortenedRootOf`) and the origin shortened to `owner/repo`, one line, each with an ellipsis.
+  2. Capacity (`web/overview/CardCapacity.tsx`), one line that never wraps at rest: the concurrency stepper holding
+     the slot cells (filled amber per agent in flight) and `n/m`; "all slots busy · n ready wait" when every slot is
+     busy and tickets are ready; at the right only the actions `BoardCommandUtil.commandsOf` gives for the dispatcher's
+     state, drawn by `web/board/BoardCommandControls.tsx` as the board's command bar and Fleet's run cell draw them.
+     A stop confirmation or a refusal may wrap the line while it shows.
+  3. Tickets: one stacked 8 px bar (delivered, reviewed, in review, building, pending; abandoned left out) with
+     `delivered/total` at its end, and under it a legend of only the non-zero parts (`TicketBar.ticketBarOf`).
+  4. Crew (`web/overview/CardCrew.tsx`): the leading live session, the orchestrator before the product owner, as its
+     glyph, name, `hosted` or `desktop app`, its context meter, and its last action with its age on a second line;
+     left out when no session lives.
+  5. In flight: up to four active rows on one column grid shared by every row (status badge, `#042` in mono, the
+     title with an ellipsis, model, elapsed), then "+n more on the board", then the `Ready`, `Awaiting review` and
+     `Held` chips present.
+  6. Footer: the latest log line's time and text, "Changed 3m ago" (the last command as its tooltip) and an
+     "Open board" button (primary, `--link`).
   The whole card opens the board; the button is the keyboard target.
+- **Idle row** (`web/overview/IdleProjectRow.tsx`, about 56 px tall from 900 px, its cells on a column grid the panel's
+  rows share): dot, name and `~/…` path; the ticket bar with `delivered/total`; `slots 0/m`; the latest log line with
+  its time; the change age and Open board. An idle board with ready tickets adds the stepper around `0/m`, its Ready
+  chips, "+ n low" when low-priority tickets wait, and the `BoardCommandUtil` actions. Under 900 px the cells wrap
+  onto further lines, never scrolling sideways. A click on the row outside its controls opens the board.
 - **Unreadable / missing card**: `--err-tint` ground, `--err-edge` border, the reason in mono, the path; still opens
-  the board when the page exists.
+  the board when the page exists. It keeps its card in whichever group it sorts into, under the Idle panel there.
 - **Empty registry**: a centred panel: "No projects yet", with the line "agent-progress registers a project the first
   time a command renders its page", the registry path in mono, and the hint to run `agent-progress render` in a
   tracked repository (`status` is read-only and registers nothing).
 - **Lost connection**: a `--warn-tint` banner under the header, "Reconnecting to the dashboard server…", and each
-  card's slot row ends "as of 14:30", the last snapshot's time, until the stream is back.
+  active card's capacity line shows "as of 14:30" before its actions, the last snapshot's time, until the stream is back.
 
 ### Fleet (`#/fleet`)
 

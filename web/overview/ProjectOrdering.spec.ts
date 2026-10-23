@@ -3,9 +3,15 @@
  * unreadable board; each group is A to Z by name, ignoring case and the change stamp, ties stable by tracker id; the
  * search reads the name and the path; the Active filter drops the idle group entirely.
  */
-import { describe, expect, test }                from 'bun:test';
-import { boardSummaryWith, projectSnapshotWith } from '../testing/SnapshotFixtures.ts';
-import { ProjectOrdering }                       from './ProjectOrdering.ts';
+import { describe, expect, test }                                      from 'bun:test';
+import { boardSummaryWith, overviewSnapshotWith, projectSnapshotWith } from '../testing/SnapshotFixtures.ts';
+import { ProjectOrdering }                                             from './ProjectOrdering.ts';
+
+test('the overview fixture groups two active projects as cards and four idle ones as rows', () => {
+  const groups = ProjectOrdering.grouped(overviewSnapshotWith().projects, 'all', '');
+  expect(groups.active.map((project) => project.project)).toEqual(['example-invoice-service', 'example-storefront']);
+  expect(groups.idle).toHaveLength(4);
+});
 
 const building = projectSnapshotWith('example-storefront', {
   lastChangedAt: '2026-10-21T10:00:00+02:00',

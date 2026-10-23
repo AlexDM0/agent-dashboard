@@ -1,4 +1,9 @@
-import { useEffect, useReducer, useRef }                   from 'react';
+import {
+  type ReactNode,
+  useEffect,
+  useReducer,
+  useRef
+} from 'react';
 import { WEB_LIMITS }                                      from '../constants/WebLimits.ts';
 import { requestConcurrencyLimit }                         from './ConcurrencyRequest.ts';
 import { steppedConcurrencyLimitOf, type ConcurrencyStep } from './ConcurrencyStep.ts';
@@ -9,9 +14,13 @@ interface ConcurrencyStepperProperties {
   projectName: string;
   /** The limit the current snapshot carries; a step is computed from it and shown only once a snapshot carries it. */
   shownLimit:  number;
+  /** What the stepper holds between its two buttons, such as the slots it steps. */
+  children?:   ReactNode;
 }
 
-export function ConcurrencyStepper({ trackerId, projectName, shownLimit }: ConcurrencyStepperProperties) {
+export function ConcurrencyStepper({
+  trackerId, projectName, shownLimit, children = null
+}: ConcurrencyStepperProperties) {
   const [stepperState, dispatch] = useReducer(
     ConcurrencyStepperStateUtil.nextStateOf,
     undefined,
@@ -57,6 +66,7 @@ export function ConcurrencyStepper({ trackerId, projectName, shownLimit }: Concu
       >
         −
       </button>
+      {children}
       <button
         type="button"
         className="ap-control ap-stepper-button"

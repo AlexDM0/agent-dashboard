@@ -1,16 +1,20 @@
-import type { ProjectSnapshot }   from '../../src/shared/DashboardContract.ts';
-import { CardFooter }             from './CardFooter.tsx';
-import { CardIdentity }           from './CardIdentity.tsx';
-import { openBoardFromCardClick } from './CardNavigation.ts';
+import type { OrchestratorSession, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
+import { CardFooter }                                from './CardFooter.tsx';
+import { CardIdentity }                              from './CardIdentity.tsx';
+import { openBoardFromCardClick }                    from './CardNavigation.ts';
 
 interface ProblemCardProperties {
-  project: ProjectSnapshot;
-  reason:  string;
-  now:     number;
+  project:         ProjectSnapshot;
+  reason:          string;
+  watchedSessions: OrchestratorSession[];
+  homeDirectory:   string | null;
+  now:             number;
 }
 
 /** An unreadable or missing project: the reason is the CLI's own stderr or the missing path, shown as given. */
-export function ProblemCard({ project, reason, now }: ProblemCardProperties) {
+export function ProblemCard({
+  project, reason, watchedSessions, homeDirectory, now
+}: ProblemCardProperties) {
   const title = project.health.kind === 'missing' ? 'Project missing' : 'Board unreadable';
   return (
     <article
@@ -19,7 +23,7 @@ export function ProblemCard({ project, reason, now }: ProblemCardProperties) {
       onClick={project.pageAvailable ? (event) => openBoardFromCardClick(event, project.trackerId) : undefined}
       data-openable={project.pageAvailable}
     >
-      <CardIdentity project={project} />
+      <CardIdentity project={project} watchedSessions={watchedSessions} homeDirectory={homeDirectory} />
       <div className="ap-card-section ap-problem">
         <span className="ap-queue-label ap-problem-title">{title}</span>
         <p className="ap-reason">{reason}</p>

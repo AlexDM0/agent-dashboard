@@ -178,6 +178,94 @@ export function chatSnapshotWith(): DashboardSnapshot {
   return { ...fleet, projects };
 }
 
+function activeRowWith(rowId: number, ticketId: string, title: string, startedAt: string): ActiveRow {
+  return {
+    rowId, kind: 'build', ticketId, reviewRound: null, title, owner: 'opus', startedAt, note: ''
+  };
+}
+
+function ticketCountsWith(delivered: number, inReview: number, inProgress: number, pending: number): BoardSummary['ticketCountByStatus'] {
+  return {
+    pending, 'in-progress': inProgress, 'in-review': inReview, 'reviewed': 0, delivered, 'abandoned': 0
+  };
+}
+
+/**
+ * The overview's two-active, four-idle fixture: a running storefront with every slot busy, five rows in flight and
+ * ready and low-priority tickets waiting, a running invoice service led by a watched desktop session; idle, a
+ * finished agency site with ready and low-priority tickets, a stopped notes board and two fully delivered ones.
+ */
+export function overviewSnapshotWith(): DashboardSnapshot {
+  const fleet = fleetSnapshotWith();
+  const log = (at: string, text: string) => [{ at, text }];
+  const storefrontRows = [
+    activeRowWith(1, '041', 'Example checkout copy with a title long enough to need an ellipsis on a card', '2026-10-21T09:12:00+02:00'),
+    activeRowWith(2, '042', 'Example basket badge', '2026-10-21T09:40:00+02:00'),
+    { ...activeRowWith(3, '038', 'Example price rounding', '2026-10-21T09:45:00+02:00'), kind: 'review' as const, reviewRound: 1 },
+    activeRowWith(4, '044', 'Example search filters', '2026-10-21T09:50:00+02:00'),
+    activeRowWith(5, '045', 'Example footer links', '2026-10-21T09:55:00+02:00'),
+  ];
+  const lowPriorityWaitingTickets = [{ ticketId: '012', title: 'Example low-priority tidy-up' }, { ticketId: '014', title: 'Example copy fix' }];
+  const projects = [
+    activeProjectWith('example-storefront', {
+      concurrencyLimit:    4,
+      agentsInFlight:      4,
+      freeSlots:           0,
+      ticketCountByStatus: ticketCountsWith(16, 2, 4, 12),
+      ticketTotal:         34,
+      activeRows:          storefrontRows,
+      readyTicketIds:      ['043', '046'],
+      heldTicketIds:       ['047'],
+      lowPriorityWaitingTickets,
+      recentLog:           log('2026-10-21T09:58:00+02:00', 'Started a builder on #045 after the review of #038 came back'),
+    }, orchestratorSessionWith({ state: 'busy', context: contextUsageWith(124_000, 200_000), lastAction: { at: '2026-10-21T09:58:00+02:00', text: 'Started a builder on #045' } })),
+    {
+      ...activeProjectWith('example-invoice-service', {
+        concurrencyLimit:    3,
+        agentsInFlight:      1,
+        freeSlots:           2,
+        ticketCountByStatus: ticketCountsWith(8, 0, 1, 3),
+        ticketTotal:         12,
+        activeRows:          [activeRowWith(6, '019', 'Example invoice numbering', '2026-10-21T09:30:00+02:00')],
+        recentLog:           log('2026-10-21T09:31:00+02:00', 'ticket claim 019'),
+      }, null),
+      productOwner: orchestratorSessionWith({ sessionId: 'product-owner-example', state: 'idle', lastAction: { at: '2026-10-21T09:20:00+02:00', text: 'Filed #020' } }),
+    },
+    projectSnapshotWith('example-agency-site', {
+      health: {
+        kind:  'ready',
+        board: boardSummaryWith({
+          ticketCountByStatus: ticketCountsWith(9, 0, 0, 3),
+          ticketTotal:         12,
+          readyTicketIds:      ['010', '011'],
+          lowPriorityWaitingTickets,
+          recentLog:           log('2026-10-21T08:10:00+02:00', 'dispatcher finished'),
+        }),
+      },
+    }),
+    projectSnapshotWith('example-archive', {
+      health: {
+        kind:  'ready',
+        board: boardSummaryWith({ ticketCountByStatus: ticketCountsWith(21, 0, 0, 0), ticketTotal: 21, recentLog: log('2026-10-20T17:00:00+02:00', 'ticket deliver 021') }),
+      },
+    }),
+    projectSnapshotWith('example-mobile-app', { health: { kind: 'ready', board: boardSummaryWith({ ticketCountByStatus: ticketCountsWith(5, 0, 0, 0), ticketTotal: 5 }) }, }),
+    projectSnapshotWith('example-notes', {
+      health: {
+        kind:  'ready',
+        board: boardSummaryWith({
+          dispatcherState: 'stopped', ticketCountByStatus: ticketCountsWith(2, 1, 0, 4), ticketTotal: 7, recentLog: log('2026-10-21T07:45:00+02:00', 'dispatcher stopped')
+        }),
+      },
+    }),
+  ];
+  const watchedOrchestratorsByTracker: Record<string, OrchestratorSession[]> = Object.fromEntries(projects.map((project) => [project.trackerId, []]));
+  watchedOrchestratorsByTracker['tracker-example-invoice-service'] = [orchestratorSessionWith({
+    ownership: 'watched', sessionId: 'watched-example', name: 'Alex Example desktop', state: 'busy', context: contextUsageWith(61_000, null)
+  })];
+  return { ...fleet, projects, watchedOrchestratorsByTracker };
+}
+
 export const MARKUP_INJECTION_LINE = 'Checking the build <img src=x onerror=alert(1)> before asking';
 
 /**

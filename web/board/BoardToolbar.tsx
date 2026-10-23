@@ -1,49 +1,14 @@
-import type { BoardSummary, ProjectSnapshot }  from '../../src/shared/DashboardContract.ts';
-import { ConcurrencyStepper }                  from '../shell/ConcurrencyStepper.tsx';
-import { DispatcherPill }                      from '../shell/DispatcherPill.tsx';
-import { OVERVIEW_HASH }                       from '../shell/HashRoute.ts';
-import { StartBuildingButton }                 from '../shell/StartBuildingButton.tsx';
-import { StopDispatcherButton }                from '../shell/StopDispatcherButton.tsx';
-import { type BoardCommand, BoardCommandUtil } from './BoardCommandUtil.ts';
-import { LowTicketPopover }                    from './LowTicketPopover.tsx';
-import { RootPathUtil }                        from './RootPathUtil.ts';
+import type { BoardSummary, ProjectSnapshot } from '../../src/shared/DashboardContract.ts';
+import { ConcurrencyStepper }                 from '../shell/ConcurrencyStepper.tsx';
+import { DispatcherPill }                     from '../shell/DispatcherPill.tsx';
+import { OVERVIEW_HASH }                      from '../shell/HashRoute.ts';
+import { BoardCommandControls }               from './BoardCommandControls.tsx';
+import { RootPathUtil }                       from './RootPathUtil.ts';
 
 interface BoardToolbarProperties {
   project:       ProjectSnapshot;
   homeDirectory: string | null;
   onReload:      () => void;
-}
-
-interface BoardCommandControlProperties {
-  command: BoardCommand;
-  project: ProjectSnapshot;
-  board:   BoardSummary;
-}
-
-function BoardCommandControl({ command, project, board }: BoardCommandControlProperties) {
-  switch (command) {
-    case 'start-building':
-      return <StartBuildingButton trackerId={project.trackerId} projectName={project.project} isPrimary />;
-    case 'stop-dispatcher':
-      return (
-        <StopDispatcherButton
-          trackerId={project.trackerId}
-          projectName={project.project}
-          dispatcherState={board.dispatcherState}
-          agentsInFlight={board.agentsInFlight}
-        />
-      );
-    case 'include-low-priority':
-    case 'pick-up-low-priority':
-      return (
-        <LowTicketPopover
-          trackerId={project.trackerId}
-          projectName={project.project}
-          label={BoardCommandUtil.lowPriorityLabelOf(board.dispatcherState, board.lowPriorityWaitingTickets.length)}
-          waitingTickets={board.lowPriorityWaitingTickets}
-        />
-      );
-  }
 }
 
 function DispatcherControls({ project, board }: { project: ProjectSnapshot; board: BoardSummary }) {
@@ -57,9 +22,7 @@ function DispatcherControls({ project, board }: { project: ProjectSnapshot; boar
         </span>
         <ConcurrencyStepper trackerId={project.trackerId} projectName={project.project} shownLimit={board.concurrencyLimit} />
       </span>
-      {BoardCommandUtil.commandsOf(board.dispatcherState, board.lowPriorityWaitingTickets.length).map((command) => (
-        <BoardCommandControl key={command} command={command} project={project} board={board} />
-      ))}
+      <BoardCommandControls project={project} board={board} isStartPrimary />
     </>
   );
 }

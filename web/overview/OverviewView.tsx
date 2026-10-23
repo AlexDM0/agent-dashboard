@@ -1,4 +1,5 @@
 import type { DashboardSnapshot }              from '../../src/shared/DashboardContract.ts';
+import { RootPathUtil }                        from '../board/RootPathUtil.ts';
 import { ConnectingPanel }                     from '../shell/ConnectingPanel.tsx';
 import { EmptyRegistryPanel }                  from './EmptyRegistryPanel.tsx';
 import { FilterBar }                           from './FilterBar.tsx';
@@ -30,6 +31,7 @@ export function OverviewView({
     return <EmptyRegistryPanel registryPath={snapshot.registryPath} />;
   }
   const groups = ProjectOrdering.grouped(snapshot.projects, filter, searchText);
+  const homeDirectory = RootPathUtil.homeDirectoryOf(snapshot.registryPath);
   return (
     <>
       <FilterBar
@@ -40,14 +42,23 @@ export function OverviewView({
         onSearchChange={onSearchChange}
         onFilterChange={onFilterChange}
       />
-      <ProjectGroup title="Active" projects={groups.active} watchedOrchestratorsByTracker={snapshot.watchedOrchestratorsByTracker} now={now} staleSince={staleSince} />
       <ProjectGroup
-        title="Idle"
-        projects={groups.idle}
+        title="Active"
+        layout="cards"
+        projects={groups.active}
         watchedOrchestratorsByTracker={snapshot.watchedOrchestratorsByTracker}
+        homeDirectory={homeDirectory}
         now={now}
         staleSince={staleSince}
-        collapsesOnPhone
+      />
+      <ProjectGroup
+        title="Idle"
+        layout="rows"
+        projects={groups.idle}
+        watchedOrchestratorsByTracker={snapshot.watchedOrchestratorsByTracker}
+        homeDirectory={homeDirectory}
+        now={now}
+        staleSince={staleSince}
       />
       {groups.shownCount === 0 ? <NoMatchPanel searchText={searchText} /> : null}
     </>

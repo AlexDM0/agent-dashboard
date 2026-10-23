@@ -25,7 +25,7 @@ export function QueueLine({ board }: QueueLineProperties) {
     return null;
   }
   return (
-    <div className="ap-card-section ap-queue">
+    <div className="ap-queue">
       {groups.map((group) => (
         <div key={group.label} className="ap-queue-group">
           <span className="ap-queue-label">{group.label}</span>
