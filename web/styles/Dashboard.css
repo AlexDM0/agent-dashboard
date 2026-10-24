@@ -477,10 +477,7 @@ ul { padding: 0; list-style: none; }
 .ap-transfer-stage { display: flex; align-items: center; gap: 12px; padding: 4px 0; }
 .ap-transfer-line { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 1 1 auto; min-width: 54px; }
 .ap-transfer-dots { display: flex; gap: 6px; }
-.ap-transfer-dots > span {
-  width: 4px; height: 4px; border-radius: 50%; background: var(--link-soft);
-  transition: width var(--motion-base) ease, background var(--motion-base) ease;
-}
+.ap-transfer-dots > span { width: 4px; height: 4px; border-radius: 50%; background: var(--link-soft); }
 .ap-transfer-severed { position: absolute; font: 700 var(--fs-title)/1 var(--font-ui); color: var(--err-ink); }
 .ap-transfer-app {
   position: relative; flex: none; width: 30px; height: 30px; display: grid; place-items: center;
@@ -505,6 +502,7 @@ ul { padding: 0; list-style: none; }
 @keyframes ap-transfer-check-pop { 0% { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.25); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes ap-transfer-leave { to { opacity: 0; transform: translateY(-6px); } }
 @media (prefers-reduced-motion: no-preference) {
+  .ap-transfer-dots > span { transition: width var(--motion-base) ease, background var(--motion-base) ease; }
   .ap-transfer[data-phase="transferring"] .ap-transfer-dots > span { animation: ap-transfer-dot-run 1.2s ease-in-out infinite both; }
   .ap-transfer[data-phase="transferring"] .ap-transfer-dots > span:nth-child(2) { animation-delay: 120ms; }
   .ap-transfer[data-phase="transferring"] .ap-transfer-dots > span:nth-child(3) { animation-delay: 240ms; }
