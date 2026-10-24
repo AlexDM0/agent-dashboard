@@ -5,3 +5,4 @@ node_modules/
 .agent-progress/
 .claude/skills/agent-progress-orchestrate/
 .claude/skills/agent-po/
+.claude/.evidence/
