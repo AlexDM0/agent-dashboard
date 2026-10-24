@@ -5,8 +5,8 @@ import type {
   QuestionContext,
   SessionRole
 } from '../../src/shared/DashboardContract.ts';
-import { ContextUsageUtil }        from '../orchestrator/ContextUsageUtil.ts';
-import { OrchestratorSessionUtil } from '../orchestrator/OrchestratorSessionUtil.ts';
+import { ContextUsageUtil }   from '../orchestrator/ContextUsageUtil.ts';
+import { SessionRefreshUtil } from '../orchestrator/SessionRefreshUtil.ts';
 
 const SESSION_ROLES: SessionRole[] = ['orchestrator', 'product-owner'];
 
@@ -51,18 +51,12 @@ function compareByAskedAt(a: InboxEntry, b: InboxEntry): number {
   return a.trackerId.localeCompare(b.trackerId) || a.pendingQuestion.requestId.localeCompare(b.pendingQuestion.requestId);
 }
 
-function liveDashboardSessionOf(project: ProjectSnapshot, role: SessionRole = 'orchestrator'): OrchestratorSession | null {
-  const session = OrchestratorSessionUtil.dashboardSessionOf(project, role);
-  if (session === null || session.state === 'ended' || session.ownership !== 'dashboard') return null;
-  return session;
-}
-
 /** Every pending question of a live dashboard-owned orchestrator or product owner, across every project, the longest waiting first. */
 function entriesOf(projects: ProjectSnapshot[]): InboxEntry[] {
   const entries: InboxEntry[] = [];
   for (const project of projects) {
     for (const role of SESSION_ROLES) {
-      const session = liveDashboardSessionOf(project, role);
+      const session = SessionRefreshUtil.liveDashboardSessionOf(project, role);
       // A stopping session's question is never answered: its turn is being cut short.
       if (session === null || session.state === 'stopping') continue;
       for (const pendingQuestion of session.pendingQuestions) {
@@ -75,31 +69,20 @@ function entriesOf(projects: ProjectSnapshot[]): InboxEntry[] {
   return entries.sort(compareByAskedAt);
 }
 
-/** The server's handoff refusals, in its order and words, so the button is disabled exactly while a click would be refused. */
-function handoffRefusalOf(project: ProjectSnapshot, session: OrchestratorSession): string | null {
-  if (session.pendingQuestions.length > 0 || session.state === 'waiting-for-answer') {
-    return 'A question of the orchestrator is pending; answer it before refreshing';
-  }
-  if (session.state !== 'idle') return `The orchestrator is ${session.state}; refresh once it is idle`;
-  if (project.health.kind !== 'ready') return 'The board cannot be read, so whether its dispatcher runs is unknown';
-  if (project.health.board.dispatcherState === 'running') return 'The board\'s dispatcher is running; refresh once it has stopped or finished';
-  return null;
-}
-
 /** One alert per live dashboard-owned orchestrator whose known context share is at or past the critical one, in project order. */
 function alertsOf(projects: ProjectSnapshot[]): InboxAlert[] {
   const alerts: InboxAlert[] = [];
   for (const project of projects) {
-    const session = liveDashboardSessionOf(project);
+    const session = SessionRefreshUtil.refreshDueSessionOf(project);
     const context = session?.context ?? null;
-    if (session === null || context === null || !ContextUsageUtil.suggestsHandoff(context)) continue;
+    if (session === null || context === null) continue;
     const share = ContextUsageUtil.shareOf(context) ?? 1;
     alerts.push({
       trackerId:      project.trackerId,
       project:        project.project,
       session,
       contextPercent: Math.round(share * PERCENT),
-      handoffRefusal: handoffRefusalOf(project, session),
+      handoffRefusal: SessionRefreshUtil.handoffRefusalOf(project, session),
     });
   }
   return alerts;
@@ -124,5 +107,5 @@ function documentTitleOf(waitingCount: number, pageTitle: string): string {
 }
 
 export const InboxUtil = Object.freeze({
-  entriesOf, alertsOf, handoffRefusalOf, contextRowsOf, documentTitleOf
+  entriesOf, alertsOf, contextRowsOf, documentTitleOf
 });

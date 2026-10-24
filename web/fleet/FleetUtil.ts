@@ -2,6 +2,7 @@ import type { BoardSummary, ProjectSnapshot, SessionRole } from '../../src/share
 import type { InboxEntry }                                 from '../inbox/InboxUtil.ts';
 import { ContextUsageUtil }                                from '../orchestrator/ContextUsageUtil.ts';
 import { OrchestratorSessionUtil }                         from '../orchestrator/OrchestratorSessionUtil.ts';
+import { SessionRefreshUtil }                              from '../orchestrator/SessionRefreshUtil.ts';
 import { ProjectOrdering }                                 from '../overview/ProjectOrdering.ts';
 
 export type FleetFilter = 'all' | 'running' | 'needs-you';
@@ -27,14 +28,8 @@ function isRunning(project: ProjectSnapshot): boolean {
   return project.health.kind === 'ready' && project.health.board.dispatcherState === 'running';
 }
 
-/** Only a live dashboard-owned session is offered Refresh orchestrator, so only its context can be critical here. */
-function isContextCritical(project: ProjectSnapshot): boolean {
-  const session = project.orchestrator;
-  return session !== null && session.state !== 'ended' && ContextUsageUtil.suggestsHandoff(session.context);
-}
-
 function needsYou(project: ProjectSnapshot): boolean {
-  return OrchestratorSessionUtil.isQuestionWaiting(project) || isContextCritical(project);
+  return OrchestratorSessionUtil.isQuestionWaiting(project) || SessionRefreshUtil.isRefreshDue(project);
 }
 
 function rowsOf(projects: ProjectSnapshot[], filter: FleetFilter): ProjectSnapshot[] {
@@ -61,8 +56,8 @@ function attentionCardsOf(inboxEntries: InboxEntry[], projects: ProjectSnapshot[
   }));
   const handoffCards: AttentionCard[] = [];
   for (const project of orderedProjectsOf(projects)) {
-    const context = project.orchestrator?.context ?? null;
-    if (context !== null && isContextCritical(project)) {
+    const context = SessionRefreshUtil.refreshDueSessionOf(project)?.context ?? null;
+    if (context !== null) {
       handoffCards.push({
         kind: 'handoff', trackerId: project.trackerId, project: project.project, contextCaption: ContextUsageUtil.captionOf(context), measuredAt: context.measuredAt
       });
