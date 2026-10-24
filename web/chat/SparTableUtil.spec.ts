@@ -18,6 +18,17 @@ test('a valid block reads as its whole table', () => {
   expect(SparTableUtil.tableOfText(fenced(JSON.stringify(FIXTURE_SPAR_TABLE)))).toEqual(FIXTURE_SPAR_TABLE as never);
 });
 
+test('a reply that follows the spar brief\'s instruction, ending in its example block filled in, reads as a non-empty table', () => {
+  const reply = 'CSV export is agreed; PDF is parked for now.\n\n```spar-table\n'
+    + '{"points":[{"id":"p1","text":"Export line items to CSV.","state":"agreed"},{"id":"p2","text":"PDF export.","state":"parked"}],'
+    + '"draftTickets":[{"key":"d1","title":"Export invoice line items to CSV","type":"ticket","summary":"A CSV download of the invoice page."}],'
+    + '"referencedTicketIds":["042"]}\n```';
+  const table = SparTableUtil.tableOfText(reply);
+  expect(table?.points.map((point) => point.state)).toEqual(['agreed', 'parked']);
+  expect(table?.draftTickets.map((draft) => draft.key)).toEqual(['d1']);
+  expect(table?.referencedTicketIds).toEqual(['042']);
+});
+
 test('malformed JSON, a missing array, a state or type outside its union, or a bad ticket id rejects the block', () => {
   const malformedBlocks = [
     '{"points":[',
