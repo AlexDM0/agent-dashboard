@@ -24,6 +24,7 @@ export function orchestratorSessionWith(overrides: Partial<OrchestratorSession> 
     pendingQuestions:  [],
     lastAction:        null,
     previousSessionId: null,
+    productOwnerMode:  null,
     ...overrides,
   };
 }

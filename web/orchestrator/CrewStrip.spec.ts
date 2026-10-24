@@ -1,7 +1,9 @@
 /**
  * The crew strip, the project rail and the Fleet row read as static markup with an ended, an absent and a live product
  * owner: an ended or absent one leaves nothing of itself, the strip's half only "+ New ticket", while a live one shows
- * its glyph, name, state and last action as before.
+ * its glyph, name, state and last action as before, prefixed "Sparring: " or "Filing: " by its start mode. A product
+ * owner with no mode, recorded before modes or served by an older server without the field, and the orchestrator read
+ * their last action plain.
  */
 import { expect, test }         from 'bun:test';
 import { createElement }        from 'react';
@@ -60,6 +62,34 @@ test('a live product owner shows its glyph, name, state and last action beside "
   expect(half).toContain('>busy<');
   expect(half).toContain('Read example-file');
   expect(half).toContain('+ New ticket');
+});
+
+test('a live product owner\'s last action reads "Sparring: " or "Filing: " by the mode it was started in', () => {
+  expect(productOwnerHalfOf({ ...LIVE_PRODUCT_OWNER, productOwnerMode: 'spar' })).toContain('>Sparring: Read example-file<');
+  expect(productOwnerHalfOf({ ...LIVE_PRODUCT_OWNER, productOwnerMode: 'file' })).toContain('>Filing: Read example-file<');
+});
+
+test('the orchestrator\'s last action reads plain, whatever mode its session carries', () => {
+  const orchestrator = orchestratorSessionWith({ state: 'busy', lastAction: LAST_ACTION, productOwnerMode: 'spar' });
+  const markup = renderToStaticMarkup(createElement(CrewStrip, {
+    project:         projectSnapshotWith('example-project', { orchestrator, productOwner: null }),
+    watchedSessions: [],
+    isDrawerOpen:    false,
+    drawerId:        'crew-example',
+    stripReference:  { current: null },
+    onOpenDrawer:    () => undefined
+  }));
+  const orchestratorHalf = markup.slice(0, markup.indexOf('ap-crew-strip-divider'));
+  expect(orchestratorHalf).toContain('>Read example-file<');
+  expect(orchestratorHalf).not.toContain('Sparring');
+});
+
+test('a product owner with no mode recorded, or from a snapshot without the field, reads its last action plain', () => {
+  expect(productOwnerHalfOf({ ...LIVE_PRODUCT_OWNER, productOwnerMode: null })).toContain('>Read example-file<');
+  const withoutModeField = Object.fromEntries(Object.entries(LIVE_PRODUCT_OWNER).filter(([field]) => field !== 'productOwnerMode'));
+  const half = productOwnerHalfOf(withoutModeField as unknown as OrchestratorSession);
+  expect(half).toContain('>Read example-file<');
+  expect(half).not.toContain('undefined');
 });
 
 test('"+ New ticket" starts a product owner when the one shown has ended', () => {

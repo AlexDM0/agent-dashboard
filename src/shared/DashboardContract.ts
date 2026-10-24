@@ -90,6 +90,8 @@ export interface OrchestratorSession {
   lastAction:        SessionAction | null;  // null before any, and always for a watched session
   /** The dashboard-owned session this one took the board over from by a handoff, while this server runs; else null. */
   previousSessionId: string | null;
+  /** The mode a dashboard-owned product owner was started in; null for any other session and for one whose record has none. */
+  productOwnerMode:  ProductOwnerMode | null;
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';

@@ -26,6 +26,7 @@ import type {
   ChatMessage,
   OrchestratorSession,
   PendingQuestion,
+  ProductOwnerMode,
   QuestionContext,
   SessionAction,
   SessionRole
@@ -46,6 +47,13 @@ export interface OrchestratorSessionsOptions {
   reconnectMilliseconds:    number;
   /** The whole environment a supervisor starts with, its `HOME` and `AGENT_DASHBOARD_CLAUDE` among it. */
   supervisorEnvironment:    Record<string, string>;
+}
+
+export interface SessionLaunchDetails {
+  /** The session a handoff took the board from, shown beside the fresh one. */
+  previousSessionId: string | null;
+  /** A product owner's start mode, kept in its record so a restarted server still shows it. */
+  productOwnerMode:  ProductOwnerMode | null;
 }
 
 export type OrchestratorLaunch =
@@ -71,8 +79,7 @@ export interface OrchestratorSessions {
   /** The project's dashboard-owned session, live or ended since this server started, or null. */
   sessionOf(trackerId: string): OrchestratorSession | null;
   isLive(trackerId: string): boolean;
-  /** `previousSessionId` names the session a handoff took the board from, shown beside the fresh one. */
-  launch(trackerId: string, root: string, firstMessage: string | null, previousSessionId?: string): Promise<OrchestratorLaunch>;
+  launch(trackerId: string, root: string, firstMessage: string | null, launchDetails?: Partial<SessionLaunchDetails>): Promise<OrchestratorLaunch>;
   stop(trackerId: string): Promise<SupervisorDelivery>;
   /** Stops the session and resolves once it shows `ended`, or fails past the bound with the session left as it is. */
   stopAndAwaitEnd(trackerId: string, timeoutMilliseconds: number): Promise<SessionEnd>;
@@ -116,7 +123,7 @@ function supervisedOf(recordPath: string, record: OrchestratorRecord, previousSe
     recordPath,
     socketPath:                 record.socketPath,
     supervisorPid:              record.supervisorPid,
-    session:                    sessionFromRecord(record.sessionId, record.sessionPid, record.startedAt, previousSessionId),
+    session:                    sessionFromRecord(record, previousSessionId),
     connection:                 null,
     reconnectTimer:             null,
     questionContextByRequestId: new Map(),
@@ -164,9 +171,19 @@ function answerMismatchOf(pending: PendingQuestion, answers: Record<string, stri
   return unanswered.length > 0 ? `Left unanswered: ${unanswered.join(', ')}` : null;
 }
 
-function sessionFromRecord(sessionId: string, sessionPid: number, startedAt: string, previousSessionId: string | null): OrchestratorSession {
+function sessionFromRecord(record: OrchestratorRecord, previousSessionId: string | null): OrchestratorSession {
   return {
-    ownership: 'dashboard', sessionId, pid: sessionPid, name: null, state: 'starting', startedAt, context: null, pendingQuestions: [], lastAction: null, previousSessionId
+    ownership:        'dashboard',
+    sessionId:        record.sessionId,
+    pid:              record.sessionPid,
+    name:             null,
+    state:            'starting',
+    startedAt:        record.startedAt,
+    context:          null,
+    pendingQuestions: [],
+    lastAction:       null,
+    previousSessionId,
+    productOwnerMode: record.role === 'product-owner' ? record.productOwnerMode : null,
   };
 }
 
@@ -293,11 +310,13 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     return supervised !== undefined && supervised.session.state !== 'ended';
   }
 
-  function spawnSupervisor(trackerId: string, root: string, logPath: string): { pid: number | undefined; exited: Promise<string> } {
+  function spawnSupervisor(trackerId: string, root: string, logPath: string, productOwnerMode: ProductOwnerMode | null): { pid: number | undefined; exited: Promise<string> } {
     mkdirSync(options.orchestratorDirectory, { recursive: true });
     const logDescriptor = openSync(logPath, 'a');
+    const modeArguments = options.role === 'product-owner' && productOwnerMode !== null ? [productOwnerMode] : [];
     try {
-      const supervisor = spawn(options.runtimeExecutablePath, [options.dashboardEntryPointPath, DASHBOARD_PROTOCOL.SUPERVISE_COMMAND, trackerId, root, options.role], {
+      const superviseArguments = [options.dashboardEntryPointPath, DASHBOARD_PROTOCOL.SUPERVISE_COMMAND, trackerId, root, options.role, ...modeArguments];
+      const supervisor = spawn(options.runtimeExecutablePath, superviseArguments, {
         cwd:      options.orchestratorDirectory,
         env:      options.supervisorEnvironment,
         detached: true,
@@ -314,32 +333,35 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     }
   }
 
-  async function launch(trackerId: string, root: string, firstMessage: string | null, previousSessionId?: string): Promise<OrchestratorLaunch> {
+  async function launch(trackerId: string, root: string, firstMessage: string | null, launchDetails: Partial<SessionLaunchDetails> = {}): Promise<OrchestratorLaunch> {
     const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role);
     const onDisk = readOrchestratorRecord(paths.recordPath);
     const supervisorRuns = isLive(trackerId) || (onDisk.kind === 'present' && processIsAlive(onDisk.record.supervisorPid));
     if (supervisorRuns || trackersBeingLaunched.has(trackerId)) return { kind: 'running' };
     trackersBeingLaunched.add(trackerId);
     try {
-      return await launchSupervisor(trackerId, root, firstMessage, previousSessionId ?? null);
+      return await launchSupervisor(trackerId, root, firstMessage, {
+        previousSessionId: launchDetails.previousSessionId ?? null,
+        productOwnerMode:  launchDetails.productOwnerMode ?? null,
+      });
     } finally {
       trackersBeingLaunched.delete(trackerId);
     }
   }
 
-  async function launchSupervisor(trackerId: string, root: string, firstMessage: string | null, previousSessionId: string | null): Promise<OrchestratorLaunch> {
+  async function launchSupervisor(trackerId: string, root: string, firstMessage: string | null, launchDetails: SessionLaunchDetails): Promise<OrchestratorLaunch> {
     const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role);
     if (Buffer.byteLength(paths.socketPath) > DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES) {
       return { kind: 'refused', reason: `The socket path ${paths.socketPath} is longer than ${DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES} bytes` };
     }
-    const supervisor = spawnSupervisor(trackerId, root, paths.logPath);
+    const supervisor = spawnSupervisor(trackerId, root, paths.logPath, launchDetails.productOwnerMode);
     let exitReason: string | null = null;
     void supervisor.exited.then((reason) => { exitReason = reason; });
     const deadline = performance.now() + options.startTimeoutMilliseconds;
     while (performance.now() < deadline && exitReason === null) {
       const reading = readOrchestratorRecord(paths.recordPath);
       if (reading.kind === 'present' && reading.record.supervisorPid === supervisor.pid) {
-        const supervised = supervisedOf(paths.recordPath, reading.record, previousSessionId);
+        const supervised = supervisedOf(paths.recordPath, reading.record, launchDetails.previousSessionId);
         if (await connect(supervised)) {
           supervisedByTracker.set(trackerId, supervised);
           if (firstMessage !== null) await chat(trackerId, firstMessage);

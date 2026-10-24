@@ -27,6 +27,7 @@ import type {
   ChatMessage,
   ContextUsage,
   OrchestratorState,
+  ProductOwnerMode,
   SessionRole
 } from '../shared/DashboardContract.ts';
 import { orchestratorFilePathsOf } from '../shared/OrchestratorFilePaths.ts';
@@ -36,6 +37,8 @@ import { DASHBOARD_LIMITS }        from '../shared/constants/DashboardLimits.ts'
 export interface OrchestratorSupervisorOptions {
   trackerId:             string;
   role:                  SessionRole;
+  /** Written into the record for the server to show; null for an orchestrator. */
+  productOwnerMode:      ProductOwnerMode | null;
   root:                  string;
   claudeExecutable:      string;
   orchestratorDirectory: string;
@@ -113,6 +116,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
   const record: OrchestratorRecord = {
     trackerId:         options.trackerId,
     role:              options.role,
+    productOwnerMode:  options.productOwnerMode,
     root:              options.root,
     supervisorPid:     options.supervisorPid,
     sessionPid,

@@ -1,7 +1,8 @@
 /**
  * The server reconnects to supervisors from these records, so a good record must read whole, a missing or damaged one
  * must be a verdict rather than a throw, a damaged one must not hide a good sibling, and only record files are read.
- * A record without a role is read as the orchestrator's, so a supervisor started before roles existed is still found.
+ * A record without a role is read as the orchestrator's, so a supervisor started before roles existed is still found,
+ * and one without a product owner mode reads with a null mode, so a product owner started before modes still shows.
  */
 import { writeFileSync } from 'node:fs';
 import { join }          from 'node:path';
@@ -18,6 +19,7 @@ import { readOrchestratorRecord, readOrchestratorRecords } from './OrchestratorR
 const EXAMPLE_RECORD = {
   trackerId:         'example-tracker',
   role:              'product-owner' as const,
+  productOwnerMode:  'spar' as const,
   root:              '/Users/alex.example/development/example-agency',
   supervisorPid:     4100,
   sessionPid:        4101,
@@ -51,6 +53,16 @@ test('a record without a role, as a supervisor started before roles wrote it, re
   const unknownRolePath = join(directory, 'unknown-role.json');
   writeFileSync(unknownRolePath, JSON.stringify({ ...EXAMPLE_RECORD, role: 'example-role' }));
   expect(readOrchestratorRecord(unknownRolePath).kind).toBe('unreadable');
+});
+
+test('a record without a product owner mode, as a supervisor started before modes wrote it, reads with a null mode; an unknown mode is unreadable', () => {
+  const recordWithoutMode = Object.fromEntries(Object.entries(EXAMPLE_RECORD).filter(([field]) => field !== 'productOwnerMode'));
+  const recordPath = join(directory, 'without-mode.json');
+  writeFileSync(recordPath, JSON.stringify(recordWithoutMode));
+  expect(readOrchestratorRecord(recordPath)).toEqual({ kind: 'present', record: { ...EXAMPLE_RECORD, productOwnerMode: null }, recordPath });
+  const unknownModePath = join(directory, 'unknown-mode.json');
+  writeFileSync(unknownModePath, JSON.stringify({ ...EXAMPLE_RECORD, productOwnerMode: 'example-mode' }));
+  expect(readOrchestratorRecord(unknownModePath).kind).toBe('unreadable');
 });
 
 test('a missing record is missing and a damaged one unreadable, never a throw', () => {

@@ -74,7 +74,7 @@ export async function handOffOrchestrator(request: OrchestratorHandoffRequest): 
   if (end.kind === 'failed') return { kind: 'failed', reason: `${end.reason}; the note is kept at ${notePath}`, oldSessionRuns: false };
 
   const firstMessage = freshSessionMessageOf(previousSession.sessionId, notePath, reply.text);
-  const launch = await orchestratorSessions.launch(trackerId, request.root, firstMessage, previousSession.sessionId);
+  const launch = await orchestratorSessions.launch(trackerId, request.root, firstMessage, { previousSessionId: previousSession.sessionId });
   if (launch.kind === 'started') return { kind: 'handed-off', session: launch.session, notePath };
   const reason = launch.kind === 'running' ? 'Another orchestrator of this project started meanwhile' : launch.reason;
   return { kind: 'failed', reason: `${reason}; the note is kept at ${notePath}`, oldSessionRuns: false };

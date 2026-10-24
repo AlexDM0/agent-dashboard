@@ -156,6 +156,7 @@ async function startFixture(recordNaming: 'role-qualified' | 'before-roles' = 'r
   const record: OrchestratorRecord = {
     trackerId:         TRACKER_ID,
     role:              'orchestrator',
+    productOwnerMode:  null,
     root:              projectRoot,
     supervisorPid:     process.pid,
     sessionPid:        process.pid,
@@ -536,6 +537,8 @@ test('the product owner\'s first message is its brief: the spar brief carries th
   const fixture = await startLiveSessionFixture(null);
   try {
     const { productOwner: sparring } = await startBothRoles(fixture);
+    expect(sparring.productOwnerMode).toBe('spar');
+    expect((await servedSnapshotOf(fixture)).projects[0]?.orchestrator?.productOwnerMode).toBeNull();
     const sparBrief = productOwnerBriefTextOf('example-storefront', 'spar');
     await waitUntil(() => userTextsReadBy(fixture, sparring.pid).length > 0, 'the sparring product owner read its brief');
     expect(userTextsReadBy(fixture, sparring.pid)).toEqual([sparBrief]);
@@ -549,6 +552,10 @@ test('the product owner\'s first message is its brief: the spar brief carries th
     const fileStart = await startProductOwner(fixture, '{"mode":"file"}');
     expect(fileStart.status).toBe(201);
     const filing = await fileStart.json() as OrchestratorSession;
+    expect(filing.productOwnerMode).toBe('file');
+    const recordedModes = readOrchestratorRecords(orchestratorDirectoryOf(fixture.home))
+      .flatMap((reading) => (reading.kind === 'present' && reading.record.role === 'product-owner' ? [reading.record.productOwnerMode] : []));
+    expect(recordedModes).toEqual(['file']);
     await waitUntil(() => userTextsReadBy(fixture, filing.pid).length > 0, 'the filing product owner read its brief');
     const fileBrief = productOwnerBriefTextOf('example-storefront', 'file');
     expect(userTextsReadBy(fixture, filing.pid)).toEqual([fileBrief]);

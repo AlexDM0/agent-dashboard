@@ -86,6 +86,7 @@ async function startBusySession(behaviour: FakeSessionBehaviour, stopGraceMillis
   const end = superviseOrchestrator({
     trackerId:        TRACKER_ID,
     role:             'orchestrator',
+    productOwnerMode: null,
     root:             home,
     claudeExecutable: writeFakeSession(home, transcriptPath, behaviour),
     orchestratorDirectory,

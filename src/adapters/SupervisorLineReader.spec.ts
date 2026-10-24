@@ -41,6 +41,7 @@ test('a tool message keeps its call fields, and one in the shape before calls ca
 const EXAMPLE_RECORD = {
   trackerId:         'example-tracker',
   role:              'orchestrator' as const,
+  productOwnerMode:  null,
   root:              '/Users/alex.example/development/example-agency',
   supervisorPid:     4100,
   sessionPid:        4101,

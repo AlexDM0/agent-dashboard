@@ -265,7 +265,9 @@ message opens with the line `/agent-po`, names the project, tells it it is the p
 `agent-progress-orchestrate`, and never to dispatch, claim or start a ticket. In `spar` mode it files nothing until the
 user says "wrap up" (the text the overlay's Wrap up button sends), then files what was agreed; in `file` mode it files
 each ticket once agreed. It writes the tracker through the agent-progress CLI, as a started orchestrator does. Its
-pending questions reach the snapshot as the orchestrator's do (`ProjectSnapshot.productOwner`).
+pending questions reach the snapshot as the orchestrator's do (`ProjectSnapshot.productOwner`). Its mode is passed to
+its supervisor and kept in its record, so the session carries it as `productOwnerMode` after a server restart too; a
+record written before modes reads as `null`.
 Settled: the dashboard owns the process (headless, never a terminal); the session runs in `auto` permission mode, so
 permission prompts never reach the dashboard and only `AskUserQuestion` questions do; a watched session shows its
 context usage and takes chat, but its questions are answered in its own app.
@@ -290,7 +292,7 @@ Raw `claude -p --input-format stream-json --output-format stream-json --verbose 
 
 ### The supervisor
 
-`agent-dashboard supervise <trackerId> <root> <role>`, a command the server alone runs (not in `help`), spawned detached
+`agent-dashboard supervise <trackerId> <root> <role> [<mode>]` (the mode, `spar` or `file`, a product owner's alone), a command the server alone runs (not in `help`), spawned detached
 (`detached: true`, its own process group, stdio to its log, `unref()`), as `open` starts the server. It spawns the
 session (`AGENT_DASHBOARD_CLAUDE`, else `claude` on `PATH`, else the path `setup.sh` recorded in
 `~/.agent-progress-monitor/agent-dashboard/executables.json` while it still names an executable file; agent-progress
@@ -520,6 +522,7 @@ export interface OrchestratorSession {
   pendingQuestions: PendingQuestion[];  // always empty for a watched session
   lastAction: SessionAction | null;     // null before any, and always for a watched session
   previousSessionId: string | null;     // the session a handoff took the board from, while this server runs
+  productOwnerMode: ProductOwnerMode | null;  // a dashboard-owned product owner's start mode; else, or unrecorded, null
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
@@ -703,8 +706,8 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   "Orchestrator", its state pill and compact context meter, and on a second line its `lastAction` text and age ("No
   action yet" before one); then Chat (opens the drawer on the session's chat box) and, while no dashboard-owned
   orchestrator lives, "Start orchestrator" (`startBuilding` false). Beside it, after a divider, the Product owner
-  half: while a product owner lives, the `PO` glyph, "Product owner", its state pill and meter, its `lastAction` and
-  age; an ended or absent product owner is not shown, the half shrinking to "+ New ticket" alone (kept under 768 px
+  half: while a product owner lives, the `PO` glyph, "Product owner", its state pill and meter, its `lastAction`, prefixed
+  "Sparring: " or "Filing: " by its `productOwnerMode` (plain for none), and age; an ended or absent product owner is not shown, the half shrinking to "+ New ticket" alone (kept under 768 px
   too). "+ New ticket" (`web/orchestrator/StartProductOwnerButton.tsx`), which, unconfirmed
   as Start orchestrator is, starts a product owner with `{ "mode": "file" }` when none lives and then opens the
   drawer's Product owner tab, or only opens the tab when one lives. A click on either half opens the drawer on that

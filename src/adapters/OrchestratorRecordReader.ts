@@ -5,15 +5,17 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join }                      from 'node:path';
 
-import type { SessionRole } from '../shared/DashboardContract.ts';
-import { UnknownValueUtil } from '../shared/UnknownValueUtil.ts';
-import { DASHBOARD_FILES }  from '../shared/constants/DashboardFiles.ts';
-import { SESSION_ROLES }    from '../shared/constants/SessionRoles.ts';
+import type { ProductOwnerMode, SessionRole } from '../shared/DashboardContract.ts';
+import { UnknownValueUtil }                   from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_FILES }                    from '../shared/constants/DashboardFiles.ts';
+import { PRODUCT_OWNER_MODES, SESSION_ROLES } from '../shared/constants/SessionRoles.ts';
 
 export interface OrchestratorRecord {
   trackerId:         string;
   /** Read as `orchestrator` from a record without one, which a supervisor started before roles existed wrote. */
   role:              SessionRole;
+  /** A product owner's start mode; read as null from a record without one, which a supervisor started before modes wrote. */
+  productOwnerMode:  ProductOwnerMode | null;
   root:              string;
   supervisorPid:     number;
   sessionPid:        number;
@@ -41,16 +43,19 @@ export function orchestratorRecordOf(value: unknown): OrchestratorRecord | null 
   if (claudeCodeVersion !== null && typeof claudeCodeVersion !== 'string') return null;
   const role = value['role'] ?? 'orchestrator';
   if (!SESSION_ROLES.some((sessionRole) => sessionRole === role)) return null;
+  const productOwnerMode = value['productOwnerMode'] ?? null;
+  if (productOwnerMode !== null && !PRODUCT_OWNER_MODES.some((mode) => mode === productOwnerMode)) return null;
   return {
-    trackerId:     value['trackerId'] as string,
-    role:          role as SessionRole,
-    root:          value['root'] as string,
-    supervisorPid: value['supervisorPid'] as number,
-    sessionPid:    value['sessionPid'] as number,
-    sessionId:     value['sessionId'] as string,
-    socketPath:    value['socketPath'] as string,
+    trackerId:        value['trackerId'] as string,
+    role:             role as SessionRole,
+    productOwnerMode: productOwnerMode as ProductOwnerMode | null,
+    root:             value['root'] as string,
+    supervisorPid:    value['supervisorPid'] as number,
+    sessionPid:       value['sessionPid'] as number,
+    sessionId:        value['sessionId'] as string,
+    socketPath:       value['socketPath'] as string,
     claudeCodeVersion,
-    startedAt:     value['startedAt'] as string,
+    startedAt:        value['startedAt'] as string,
   };
 }
 

@@ -27,10 +27,17 @@ describe('commands', () => {
   test('supervise takes a tracker id, a root and a known role, and refuses a missing or unknown role', () => {
     expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'product-owner']))
       .toEqual({
-        kind: 'supervise', trackerId: 'example-tracker', root: '/example/root', role: 'product-owner'
+        kind: 'supervise', trackerId: 'example-tracker', root: '/example/root', role: 'product-owner', productOwnerMode: null
       });
     expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root']).kind).toBe('refused');
     expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'example-role']).kind).toBe('refused');
+  });
+
+  test('supervise takes a product owner\'s mode after its role, and refuses a mode for an orchestrator or an unknown mode', () => {
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'product-owner', 'spar']))
+      .toMatchObject({ kind: 'supervise', role: 'product-owner', productOwnerMode: 'spar' });
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'orchestrator', 'file']).kind).toBe('refused');
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'product-owner', 'example-mode']).kind).toBe('refused');
   });
 
   test('stop and status take no options', () => {

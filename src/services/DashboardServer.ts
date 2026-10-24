@@ -365,6 +365,7 @@ function watchedOrchestratorOf(homeDirectory: string, session: LiveSession, cont
     pendingQuestions:  [],
     lastAction:        null,
     previousSessionId: null,
+    productOwnerMode:  null,
   };
 }
 
@@ -903,7 +904,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
     const briefText = productOwnerBriefTextOf(project?.project ?? trackerId, mode);
-    return launchedSessionResponse(await productOwnerSessions.launch(trackerId, root, briefText), 'product-owner');
+    return launchedSessionResponse(await productOwnerSessions.launch(trackerId, root, briefText, { productOwnerMode: mode }), 'product-owner');
   }
 
   function launchedSessionResponse(launch: OrchestratorLaunch, role: SessionRole): Response {

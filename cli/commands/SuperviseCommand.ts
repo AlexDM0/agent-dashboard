@@ -1,16 +1,19 @@
-import { superviseOrchestrator }   from '../../src/services/OrchestratorSupervisor.ts';
-import type { SessionRole }        from '../../src/shared/DashboardContract.ts';
-import { orchestratorDirectoryOf } from '../../src/shared/OrchestratorFilePaths.ts';
-import { DASHBOARD_LIMITS }        from '../../src/shared/constants/DashboardLimits.ts';
-import type { CommandContext }     from '../CommandContext.ts';
-import { CommandRefusal }          from '../CommandRefusal.ts';
+import { superviseOrchestrator }              from '../../src/services/OrchestratorSupervisor.ts';
+import type { ProductOwnerMode, SessionRole } from '../../src/shared/DashboardContract.ts';
+import { orchestratorDirectoryOf }            from '../../src/shared/OrchestratorFilePaths.ts';
+import { DASHBOARD_LIMITS }                   from '../../src/shared/constants/DashboardLimits.ts';
+import type { CommandContext }                from '../CommandContext.ts';
+import { CommandRefusal }                     from '../CommandRefusal.ts';
 
 /** Run by the server alone, detached with its output to the supervisor's log; it returns when the session has ended. */
-export async function superviseCommand(trackerId: string, root: string, role: SessionRole, context: CommandContext): Promise<void> {
+export async function superviseCommand(
+  trackerId: string, root: string, role: SessionRole, productOwnerMode: ProductOwnerMode | null, context: CommandContext
+): Promise<void> {
   if (context.claudeExecutable === null) throw new CommandRefusal('claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path, or rerun setup.sh.');
   const end = await superviseOrchestrator({
     trackerId,
     role,
+    productOwnerMode,
     root,
     claudeExecutable:      context.claudeExecutable,
     orchestratorDirectory: orchestratorDirectoryOf(context.homeDirectory),

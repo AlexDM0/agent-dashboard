@@ -1,13 +1,18 @@
-import type { RefObject }                                         from 'react';
-import type { OrchestratorSession, ProjectSnapshot, SessionRole } from '../../src/shared/DashboardContract.ts';
-import { useNow }                                                 from '../shell/UseNow.ts';
-import { TimeUtil }                                               from '../time/TimeUtil.ts';
-import { ContextMeter }                                           from './ContextMeter.tsx';
-import type { CrewDrawerFocus }                                   from './CrewDrawer.tsx';
-import { OrchestratorSessionUtil }                                from './OrchestratorSessionUtil.ts';
-import { SessionGlyph }                                           from './SessionGlyph.tsx';
-import { StartOrchestratorButton }                                from './StartOrchestratorButton.tsx';
-import { StartProductOwnerButton }                                from './StartProductOwnerButton.tsx';
+import type { RefObject } from 'react';
+import type {
+  OrchestratorSession,
+  ProductOwnerMode,
+  ProjectSnapshot,
+  SessionRole
+} from '../../src/shared/DashboardContract.ts';
+import { useNow }                  from '../shell/UseNow.ts';
+import { TimeUtil }                from '../time/TimeUtil.ts';
+import { ContextMeter }            from './ContextMeter.tsx';
+import type { CrewDrawerFocus }    from './CrewDrawer.tsx';
+import { OrchestratorSessionUtil } from './OrchestratorSessionUtil.ts';
+import { SessionGlyph }            from './SessionGlyph.tsx';
+import { StartOrchestratorButton } from './StartOrchestratorButton.tsx';
+import { StartProductOwnerButton } from './StartProductOwnerButton.tsx';
 
 interface CrewStripProperties {
   project:         ProjectSnapshot;
@@ -31,12 +36,22 @@ interface CrewMemberProperties {
 const ROLE_LABELS: Record<SessionRole, string> = { 'orchestrator': 'Orchestrator', 'product-owner': 'Product owner' };
 const ABSENT_TEXTS: Record<SessionRole, string> = { 'orchestrator': 'No orchestrator runs in this project', 'product-owner': 'No product owner runs in this project' };
 
+const MODE_PREFIXES: Record<ProductOwnerMode, string> = { spar: 'Sparring: ', file: 'Filing: ' };
+
+/** A snapshot from a server older than modes carries no `productOwnerMode`, so the mode is checked rather than trusted. */
+function modePrefixOf(role: SessionRole, session: OrchestratorSession): string {
+  const mode: unknown = session.productOwnerMode;
+  if (role !== 'product-owner' || typeof mode !== 'string' || !Object.hasOwn(MODE_PREFIXES, mode)) return '';
+  return MODE_PREFIXES[mode as ProductOwnerMode];
+}
+
 function LastActionLine({ role, session, now }: { role: SessionRole; session: OrchestratorSession | null; now: number }) {
   if (session === null) return <span className="muted ap-crew-action">{ABSENT_TEXTS[role]}</span>;
   if (session.lastAction === null) return <span className="muted ap-crew-action">No action yet</span>;
+  const shownText = `${modePrefixOf(role, session)}${session.lastAction.text}`;
   return (
-    <span className="ap-crew-action" title={session.lastAction.text}>
-      <span className="ellipsis">{session.lastAction.text}</span>
+    <span className="ap-crew-action" title={shownText}>
+      <span className="ellipsis">{shownText}</span>
       <span className="mono muted ap-crew-action-age">{TimeUtil.agoPhraseOfStamp(session.lastAction.at, now)}</span>
     </span>
   );

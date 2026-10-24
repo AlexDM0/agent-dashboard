@@ -2,11 +2,11 @@
  * The whole command line read into one verdict: a command with its options, a request for help, an unknown command word, or
  * a refusal worded for the person who typed it.
  */
-import type { SessionRole }    from '../src/shared/DashboardContract.ts';
-import { DASHBOARD_LIMITS }    from '../src/shared/constants/DashboardLimits.ts';
-import { DASHBOARD_PROTOCOL }  from '../src/shared/constants/DashboardProtocol.ts';
-import { SESSION_ROLES }       from '../src/shared/constants/SessionRoles.ts';
-import { COMMAND_LINE_LIMITS } from './constants/CommandLineLimits.ts';
+import type { ProductOwnerMode, SessionRole } from '../src/shared/DashboardContract.ts';
+import { DASHBOARD_LIMITS }                   from '../src/shared/constants/DashboardLimits.ts';
+import { DASHBOARD_PROTOCOL }                 from '../src/shared/constants/DashboardProtocol.ts';
+import { PRODUCT_OWNER_MODES, SESSION_ROLES } from '../src/shared/constants/SessionRoles.ts';
+import { COMMAND_LINE_LIMITS }                from './constants/CommandLineLimits.ts';
 
 export type CommandName = 'open' | 'serve' | 'stop' | 'restart' | 'status' | 'help';
 
@@ -20,7 +20,7 @@ export interface CommandOptions {
 export type ParsedCommandLine =
   | { kind: 'command'; command: Exclude<CommandName, 'help'>; options: CommandOptions }
   | { kind: 'help' }
-  | { kind: 'supervise'; trackerId: string; root: string; role: SessionRole }
+  | { kind: 'supervise'; trackerId: string; root: string; role: SessionRole; productOwnerMode: ProductOwnerMode | null }
   | { kind: 'unknown-command'; commandWord: string }
   | { kind: 'refused'; reason: string };
 
@@ -96,13 +96,18 @@ export function parsedCommandLineOf(commandLineArguments: readonly string[]): Pa
   if (firstArgument === 'help') return remainingArguments.length === 0 ? { kind: 'help' } : { kind: 'refused', reason: 'help takes no arguments.' };
   if (firstArgument.startsWith('-')) return optionsFor('open', commandLineArguments);
   if (firstArgument === DASHBOARD_PROTOCOL.SUPERVISE_COMMAND) {
-    const [trackerId, root, role, ...extraArguments] = remainingArguments;
+    const [trackerId, root, role, mode, ...extraArguments] = remainingArguments;
     const sessionRole = SESSION_ROLES.find((knownRole) => knownRole === role);
-    if (trackerId === undefined || root === undefined || sessionRole === undefined || extraArguments.length > 0) {
-      return { kind: 'refused', reason: `supervise takes a tracker id, a project root and a role (${SESSION_ROLES.join(' or ')}).` };
+    const productOwnerMode = PRODUCT_OWNER_MODES.find((knownMode) => knownMode === mode) ?? null;
+    const modeIsWellPlaced = mode === undefined || (sessionRole === 'product-owner' && productOwnerMode !== null);
+    if (trackerId === undefined || root === undefined || sessionRole === undefined || !modeIsWellPlaced || extraArguments.length > 0) {
+      return {
+        kind:   'refused',
+        reason: `supervise takes a tracker id, a project root, a role (${SESSION_ROLES.join(' or ')}) and, for a product owner, a mode (${PRODUCT_OWNER_MODES.join(' or ')}).`
+      };
     }
     return {
-      kind: 'supervise', trackerId, root, role: sessionRole
+      kind: 'supervise', trackerId, root, role: sessionRole, productOwnerMode
     };
   }
   const command = commandNameOf(firstArgument);
