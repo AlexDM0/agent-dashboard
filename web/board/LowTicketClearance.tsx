@@ -1,46 +1,25 @@
-import { useState }                  from 'react';
 import type { WaitingTicket }        from '../../src/shared/DashboardContract.ts';
-import { ticketReferenceOf }         from '../overview/TicketReference.ts';
 import { OrchestratorRequestButton } from '../shell/OrchestratorRequestButton.tsx';
-import { LowTicketSelectionUtil }    from './LowTicketSelectionUtil.ts';
+import { BoardCommandUtil }          from './BoardCommandUtil.ts';
 
 interface LowTicketClearanceProperties {
   trackerId:      string;
   projectName:    string;
+  label:          string;
   waitingTickets: WaitingTicket[];
 }
 
-export function LowTicketClearance({ trackerId, projectName, waitingTickets }: LowTicketClearanceProperties) {
-  const [pickedTicketIds, setPickedTicketIds] = useState<string[]>([]);
-  if (waitingTickets.length === 0) return null;
-  const selectedTicketIds = LowTicketSelectionUtil.stillWaitingSelectionOf(pickedTicketIds, waitingTickets);
-
+/** The command bar's low-priority control: one click asks the orchestrator to clear every waiting low ticket to run. */
+export function LowTicketClearance({
+  trackerId, projectName, label, waitingTickets
+}: LowTicketClearanceProperties) {
   return (
-    <fieldset className="ap-low-tickets">
-      <legend className="ap-queue-label">Low priority, waiting</legend>
-      <ul className="ap-low-ticket-list">
-        {waitingTickets.map((waitingTicket) => (
-          <li key={waitingTicket.ticketId}>
-            <label className="ap-low-ticket">
-              <input
-                type="checkbox"
-                checked={selectedTicketIds.includes(waitingTicket.ticketId)}
-                onChange={() => setPickedTicketIds(LowTicketSelectionUtil.toggledSelectionOf(selectedTicketIds, waitingTicket.ticketId))}
-              />
-              <span className="mono">{ticketReferenceOf(waitingTicket.ticketId)}</span>
-              <span className="ellipsis" title={waitingTicket.title}>{waitingTicket.title}</span>
-            </label>
-          </li>
-        ))}
-      </ul>
-      <OrchestratorRequestButton
-        trackerId={trackerId}
-        label="Clear to run"
-        accessibleLabel={`Clear the selected low-priority tickets of ${projectName} to run`}
-        isDisabled={selectedTicketIds.length === 0}
-        orchestratorRequestOf={() => LowTicketSelectionUtil.clearRequestOf(selectedTicketIds)}
-        onSent={() => setPickedTicketIds([])}
-      />
-    </fieldset>
+    <OrchestratorRequestButton
+      trackerId={trackerId}
+      label={label}
+      accessibleLabel={`Clear every low-priority ticket of ${projectName} to run`}
+      isDisabled={waitingTickets.length === 0}
+      orchestratorRequestOf={() => BoardCommandUtil.lowTicketClearRequestOf(waitingTickets)}
+    />
   );
 }

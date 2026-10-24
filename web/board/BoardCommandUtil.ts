@@ -1,4 +1,6 @@
-import type { DispatcherState } from '../../src/shared/DashboardContract.ts';
+import type { DispatcherState, OrchestratorRequest, WaitingTicket } from '../../src/shared/DashboardContract.ts';
+
+const TICKET_ID_ORDER = new Intl.Collator('en', { numeric: true });
 
 /** The dispatcher actions the board's command bar offers, in the order it shows them. */
 export type BoardCommand = 'start-building' | 'include-low-priority' | 'pick-up-low-priority' | 'stop-dispatcher';
@@ -18,4 +20,10 @@ function lowPriorityLabelOf(dispatcherState: DispatcherState, lowPriorityWaiting
   return `${verb} low-priority ${String(lowPriorityWaitingCount)}`;
 }
 
-export const BoardCommandUtil = Object.freeze({ commandsOf, lowPriorityLabelOf });
+/** Every waiting low ticket, lowest id first, so the request names exactly the tickets the control counts. */
+function lowTicketClearRequestOf(waitingTickets: readonly WaitingTicket[]): OrchestratorRequest {
+  const ticketIds = waitingTickets.map((waitingTicket) => waitingTicket.ticketId).sort((a, b) => TICKET_ID_ORDER.compare(a, b));
+  return { kind: 'clear-low-tickets', ticketIds };
+}
+
+export const BoardCommandUtil = Object.freeze({ commandsOf, lowPriorityLabelOf, lowTicketClearRequestOf });

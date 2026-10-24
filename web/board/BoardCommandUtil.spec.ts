@@ -26,3 +26,8 @@ test('the low-priority control is worded for the dispatcher state and carries th
   expect(BoardCommandUtil.lowPriorityLabelOf('running', 3)).toBe('Pick up low-priority 3');
   expect(BoardCommandUtil.lowPriorityLabelOf('stopped', 1)).toBe('Include low-priority 1');
 });
+
+test('the clear-low request orders ticket ids numerically, so a longer id sorts after a shorter one', () => {
+  const waitingTickets = [{ ticketId: '1000', title: 'Example ticket' }, { ticketId: '999', title: 'Example ticket' }];
+  expect(BoardCommandUtil.lowTicketClearRequestOf(waitingTickets)).toEqual({ kind: 'clear-low-tickets', ticketIds: ['999', '1000'] });
+});

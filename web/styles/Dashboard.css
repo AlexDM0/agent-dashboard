@@ -215,10 +215,6 @@ ul { padding: 0; list-style: none; }
 .ap-stepper-note { min-width: 0; font-size: var(--fs-small); color: var(--ink-muted); overflow-wrap: anywhere; }
 .ap-orchestrator-request { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
 .ap-meter-row:has(.ap-orchestrator-request [role]) { flex-wrap: wrap; }
-.ap-low-tickets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.ap-low-tickets legend { float: left; padding: 0; }
-.ap-low-ticket-list { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 0; margin: 0; padding: 0; list-style: none; }
-.ap-low-ticket { display: inline-flex; align-items: center; gap: 6px; max-width: 320px; min-width: 0; font-size: var(--fs-small); cursor: pointer; }
 
 .ap-ticket-bar-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .ap-ticket-bar-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -399,16 +395,6 @@ ul { padding: 0; list-style: none; }
 .ap-icon-control { width: 26px; padding: 0; justify-content: center; }
 .ap-control[data-primary="true"] { color: var(--surface); background: var(--link); border-color: var(--link); }
 .ap-control[data-primary="true"]:hover { color: var(--surface); background: var(--ink); border-color: var(--ink); }
-.ap-low-ticket-popover { position: relative; }
-.ap-low-ticket-panel {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20;
-  width: min(420px, calc(100vw - 32px)); padding: var(--sp-3);
-  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-3);
-  box-shadow: 0 4px 16px var(--shadow-card-lift);
-}
-.ap-low-ticket-panel .ap-low-tickets { flex-direction: column; align-items: stretch; }
-.ap-low-ticket-panel .ap-low-tickets legend { float: none; margin-bottom: 6px; }
-.ap-low-ticket-panel .ap-low-ticket-list { flex-direction: column; }
 
 .ap-crew-strip {
   display: flex; align-items: center; gap: 12px; min-width: 0; padding: 4px 10px 4px 4px;

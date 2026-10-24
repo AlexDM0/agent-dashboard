@@ -2,7 +2,7 @@ import type { BoardSummary, ProjectSnapshot }  from '../../src/shared/DashboardC
 import { StartBuildingButton }                 from '../shell/StartBuildingButton.tsx';
 import { StopDispatcherButton }                from '../shell/StopDispatcherButton.tsx';
 import { type BoardCommand, BoardCommandUtil } from './BoardCommandUtil.ts';
-import { LowTicketPopover }                    from './LowTicketPopover.tsx';
+import { LowTicketClearance }                  from './LowTicketClearance.tsx';
 
 interface BoardCommandControlsProperties {
   project:         ProjectSnapshot;
@@ -35,7 +35,7 @@ function BoardCommandControl({
     case 'include-low-priority':
     case 'pick-up-low-priority':
       return (
-        <LowTicketPopover
+        <LowTicketClearance
           trackerId={project.trackerId}
           projectName={project.project}
           label={BoardCommandUtil.lowPriorityLabelOf(board.dispatcherState, board.lowPriorityWaitingTickets.length)}

@@ -8,7 +8,7 @@ never writes to a tracked repository itself: the changes it makes there are effe
 and writes its own tracker, or starting an orchestrator session there through its supervisor, so that session writes
 the tracker. The second
 effect a click can have writes nothing at all: a message to the board's live orchestrator Claude Code session, asking
-it to start building or telling it which low-priority tickets the user cleared to run. The server finds that session
+it to start building or telling it to clear the board's waiting low-priority tickets to run. The server finds that session
 by reading `~/.claude/sessions/` (one record per live session) and `~/.claude/projects/` (each session's workflow
 transcripts), and the orchestrator decides what to do with the message. On the user's click the dashboard also starts
 a headless orchestrator session in a project's root and holds it through a detached supervisor (see "Orchestrator
@@ -675,8 +675,10 @@ waits for the user beside it (`web/fleet/`; its decisions in `web/fleet/FleetUti
   then on the right the dispatcher pill, "slots", `n/m` and the − / + stepper, and only the actions that fit the
   dispatcher state (`web/board/BoardCommandUtil.ts`): `stopped` or `finished` shows "Start building" (primary) and,
   with low-priority tickets waiting, "Include low-priority n"; `running` shows "Pick up low-priority n" (when n > 0)
-  and Stop. The low-priority control opens the "Low priority, waiting" checklist with "Clear to run" as a popover,
-  closed by Esc, a press outside and the window's blur. Last come the icon buttons "Reload board" and "Open board in a
+  and Stop. One click on the low-priority control sends the orchestrator the clear-low request naming every waiting
+  low-priority ticket it counts (`web/board/LowTicketClearance.tsx`), with no picker or confirm step; it then shows
+  the request's note, sent or the refusal, as the other orchestrator request buttons do, and is disabled while the
+  request is out or n is 0. Last come the icon buttons "Reload board" and "Open board in a
   new tab", named by `aria-label`.
 - A **crew strip** under the command bar (`web/orchestrator/CrewStrip.tsx`): the leading orchestrator's glyph,
   "Orchestrator", its state pill and compact context meter, and on a second line its `lastAction` text and age ("No
