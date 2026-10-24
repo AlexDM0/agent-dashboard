@@ -9,6 +9,8 @@ export const WEB_LIMITS = {
   CONCURRENCY_SNAPSHOT_WAIT_MILLISECONDS: 4_000,
   /** How long "Sent to the orchestrator" stays beside the button that sent it. */
   ORCHESTRATOR_SENT_NOTE_MILLISECONDS:    4_000,
+  /** How long an opened transfer's card plays its opened beat before it leaves; its CSS fade ends just before. */
+  TRANSFER_OPENED_BEAT_MILLISECONDS:      2_000,
   /** The age below which an update reads "just now" rather than its seconds. */
   JUST_NOW_THRESHOLD_SECONDS:             30,
   /**

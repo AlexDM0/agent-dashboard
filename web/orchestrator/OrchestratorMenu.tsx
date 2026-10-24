@@ -1,7 +1,7 @@
 import type { OrchestratorSession, SessionRole }               from '../../src/shared/DashboardContract.ts';
 import { PopoverMenu, type PopoverMenuAction }                 from '../menu/PopoverMenu.tsx';
 import { type OrchestratorMenuActionId, OrchestratorMenuUtil } from './OrchestratorMenuUtil.ts';
-import { handOffOrchestrator, openSessionInApp, stopSession }  from './OrchestratorSessionDelivery.ts';
+import { handOffOrchestrator, stopSession }                    from './OrchestratorSessionDelivery.ts';
 import type { SessionRequest }                                 from './UseSessionRequest.ts';
 
 interface OrchestratorMenuProperties {
@@ -9,8 +9,9 @@ interface OrchestratorMenuProperties {
   trackerId:           string;
   session:             OrchestratorSession;
   refreshRequest:      SessionRequest;
-  openInAppRequest:    SessionRequest;
   stopRequest:         SessionRequest;
+  /** Sends Open in Claude app; its caller shows the transfer, which outlives the session's `ended`. */
+  onOpenInApp:         () => Promise<boolean>;
   /** The board's dispatcher runs, so Stop's question says the run stops with the orchestrator. */
   isDispatcherRunning: boolean;
 }
@@ -19,11 +20,11 @@ const MENU_LABELS: Record<SessionRole, string> = { 'orchestrator': 'Orchestrator
 
 /** The session card's menu, left of its name; a request's progress and refusal show beside the session, so the panel closes once it is sent. */
 export function OrchestratorMenu({
-  role, trackerId, session, refreshRequest, openInAppRequest, stopRequest, isDispatcherRunning
+  role, trackerId, session, refreshRequest, stopRequest, onOpenInApp, isDispatcherRunning
 }: OrchestratorMenuProperties) {
   const requestsByAction: Record<OrchestratorMenuActionId, () => Promise<boolean>> = {
     'refresh':     () => refreshRequest.send(() => handOffOrchestrator(trackerId)),
-    'open-in-app': () => openInAppRequest.send(() => openSessionInApp(role, trackerId)),
+    'open-in-app': onOpenInApp,
     'stop':        () => stopRequest.send(() => stopSession(role, trackerId)),
   };
   const entries = role === 'orchestrator' ? OrchestratorMenuUtil.entriesOf(session.context, isDispatcherRunning) : OrchestratorMenuUtil.productOwnerEntriesOf();

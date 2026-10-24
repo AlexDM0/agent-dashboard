@@ -1,15 +1,17 @@
-import type { OrchestratorSession, SessionRole }  from '../../src/shared/DashboardContract.ts';
-import { PendingQuestionForm }                    from '../questions/PendingQuestionForm.tsx';
-import { TimeUtil }                               from '../time/TimeUtil.ts';
-import { ChatBox }                                from './ChatBox.tsx';
-import { ContextMeter }                           from './ContextMeter.tsx';
-import { ContextUsageUtil }                       from './ContextUsageUtil.ts';
-import { ConversationLog }                        from './ConversationLog.tsx';
-import { OrchestratorMenu }                       from './OrchestratorMenu.tsx';
-import { OrchestratorSessionUtil }                from './OrchestratorSessionUtil.ts';
-import { SessionStateBadge }                      from './SessionStateBadge.tsx';
-import { useOrchestratorConversation }            from './UseOrchestratorConversation.ts';
-import { type SessionRequest, useSessionRequest } from './UseSessionRequest.ts';
+import type { OrchestratorSession, SessionRole }     from '../../src/shared/DashboardContract.ts';
+import { PendingQuestionForm }                       from '../questions/PendingQuestionForm.tsx';
+import { TimeUtil }                                  from '../time/TimeUtil.ts';
+import { ChatBox }                                   from './ChatBox.tsx';
+import { ContextMeter }                              from './ContextMeter.tsx';
+import { ContextUsageUtil }                          from './ContextUsageUtil.ts';
+import { ConversationLog }                           from './ConversationLog.tsx';
+import { OrchestratorMenu }                          from './OrchestratorMenu.tsx';
+import { OrchestratorSessionUtil }                   from './OrchestratorSessionUtil.ts';
+import { SessionStateBadge }                         from './SessionStateBadge.tsx';
+import { type SessionTransfer, SessionTransferUtil } from './SessionTransferUtil.ts';
+import { TransferringCard }                          from './TransferringCard.tsx';
+import { useOrchestratorConversation }               from './UseOrchestratorConversation.ts';
+import { type SessionRequest, useSessionRequest }    from './UseSessionRequest.ts';
 
 interface SessionCardProperties {
   role:                 SessionRole;
@@ -19,15 +21,22 @@ interface SessionCardProperties {
   isReadOnly?:          boolean;
   /** The board's dispatcher runs, which an orchestrator's Stop ends with it. */
   isDispatcherRunning?: boolean;
+  /** The session's Open in Claude app request, held by its list so the card outlives `ended`. */
+  transfer?:            SessionTransfer | null;
+  /** Without it the card offers no menu. */
+  onOpenInApp?:         () => Promise<boolean>;
+  onDismissTransfer?:   () => void;
 }
 
 interface DashboardSessionDetailsProperties {
-  role:             SessionRole;
-  trackerId:        string;
-  session:          OrchestratorSession;
-  refreshRequest:   SessionRequest;
-  openInAppRequest: SessionRequest;
-  stopRequest:      SessionRequest;
+  role:              SessionRole;
+  trackerId:         string;
+  session:           OrchestratorSession;
+  refreshRequest:    SessionRequest;
+  stopRequest:       SessionRequest;
+  /** A refusal of Open in Claude app before the stop, the session still live. */
+  openInAppRefusal:  string | null;
+  onDismissTransfer: () => void;
 }
 
 const STOPPING_TEXTS: Record<SessionRole, string> = { 'orchestrator': 'Stopping…', 'product-owner': 'Ending…' };
@@ -38,15 +47,15 @@ function RequestNote({ request, sendingText }: { request: SessionRequest; sendin
 }
 
 function DashboardSessionDetails({
-  role, trackerId, session, refreshRequest, openInAppRequest, stopRequest
+  role, trackerId, session, refreshRequest, stopRequest, openInAppRefusal, onDismissTransfer
 }: DashboardSessionDetailsProperties) {
   const messages = useOrchestratorConversation(role, trackerId);
   const hasEnded = session.state === 'ended';
   const isStopping = session.state === 'stopping';
   // Only an orchestrator is refreshed; a product owner near its limit is ended and started afresh.
   const isRefreshSuggested = role === 'orchestrator' && ContextUsageUtil.suggestsHandoff(session.context);
-  const requests = [refreshRequest, openInAppRequest, stopRequest];
-  const hasNotes = isRefreshSuggested || requests.some((request) => request.isSending || request.refusal !== null);
+  const requests = [refreshRequest, stopRequest];
+  const hasNotes = isRefreshSuggested || openInAppRefusal !== null || requests.some((request) => request.isSending || request.refusal !== null);
   return (
     <>
       {hasEnded || isStopping
@@ -68,7 +77,14 @@ function DashboardSessionDetails({
               : null}
             <RequestNote request={stopRequest} sendingText={STOPPING_TEXTS[role]} />
             <RequestNote request={refreshRequest} sendingText="Refreshing…" />
-            <RequestNote request={openInAppRequest} sendingText="Opening in the Claude app…" />
+            {openInAppRefusal === null
+              ? null
+              : (
+                <>
+                  <span className="ap-stepper-refusal" role="alert">{openInAppRefusal}</span>
+                  <button type="button" className="ap-control is-quiet" onClick={onDismissTransfer}>Dismiss</button>
+                </>
+              )}
           </div>
         )}
     </>
@@ -77,21 +93,32 @@ function DashboardSessionDetails({
 
 /** A watched session offers neither the menu nor answers: it was not started here, and its questions are answered in its own app. */
 export function SessionCard({
-  role, trackerId, session, isReadOnly = false, isDispatcherRunning = false
+  role, trackerId, session, isReadOnly = false, isDispatcherRunning = false, transfer = null, onOpenInApp, onDismissTransfer = () => undefined
 }: SessionCardProperties) {
   const sessionName = OrchestratorSessionUtil.nameOf(session, role);
   const refreshRequest = useSessionRequest();
-  const openInAppRequest = useSessionRequest();
   const stopRequest = useSessionRequest();
+  if (transfer !== null && SessionTransferUtil.isShownAsTransfer({ session, transfer })) {
+    return <TransferringCard role={role} transfer={transfer} onDismiss={onDismissTransfer} />;
+  }
   const isDashboardOwned = session.ownership === 'dashboard';
-  const sessionRequests = { refreshRequest, openInAppRequest, stopRequest };
   const shownSession = { ...session, state: OrchestratorSessionUtil.shownStateOf(session, stopRequest.isSending || stopRequest.wasTaken) };
-  const isMenuOffered = isDashboardOwned && shownSession.state !== 'ended' && shownSession.state !== 'stopping';
+  const isMenuOffered = isDashboardOwned && onOpenInApp !== undefined && shownSession.state !== 'ended' && shownSession.state !== 'stopping';
   return (
     <section className="ap-session" aria-label={sessionName}>
       <header className="ap-session-head">
         {isMenuOffered
-          ? <OrchestratorMenu role={role} trackerId={trackerId} session={session} isDispatcherRunning={isDispatcherRunning} {...sessionRequests} />
+          ? (
+            <OrchestratorMenu
+              role={role}
+              trackerId={trackerId}
+              session={session}
+              isDispatcherRunning={isDispatcherRunning}
+              refreshRequest={refreshRequest}
+              stopRequest={stopRequest}
+              onOpenInApp={onOpenInApp}
+            />
+          )
           : null}
         <span className="ap-session-name ellipsis" title={sessionName}>{sessionName}</span>
         <SessionStateBadge role={role} session={shownSession} />
@@ -103,7 +130,17 @@ export function SessionCard({
           : <span className="mono muted ap-session-started" title={session.startedAt}>started {TimeUtil.clockOfInstant(Date.parse(session.startedAt))}</span>}
       </div>
       {isDashboardOwned
-        ? <DashboardSessionDetails role={role} trackerId={trackerId} session={shownSession} {...sessionRequests} />
+        ? (
+          <DashboardSessionDetails
+            role={role}
+            trackerId={trackerId}
+            session={shownSession}
+            refreshRequest={refreshRequest}
+            stopRequest={stopRequest}
+            openInAppRefusal={transfer?.refusal ?? null}
+            onDismissTransfer={onDismissTransfer}
+          />
+        )
         : null}
       {isReadOnly && !isDashboardOwned ? <p className="muted ap-caption">This desktop app session&apos;s conversation is in its own app.</p> : null}
       {isReadOnly

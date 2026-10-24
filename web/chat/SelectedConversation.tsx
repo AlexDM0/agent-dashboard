@@ -4,6 +4,7 @@ import type { InboxAlert }                                 from '../inbox/InboxU
 import { ContextMeter }                                    from '../orchestrator/ContextMeter.tsx';
 import { ConversationLog }                                 from '../orchestrator/ConversationLog.tsx';
 import { OrchestratorMenu }                                from '../orchestrator/OrchestratorMenu.tsx';
+import { openSessionInApp }                                from '../orchestrator/OrchestratorSessionDelivery.ts';
 import { OrchestratorSessionUtil }                         from '../orchestrator/OrchestratorSessionUtil.ts';
 import { SessionGlyph }                                    from '../orchestrator/SessionGlyph.tsx';
 import { SessionStateBadge }                               from '../orchestrator/SessionStateBadge.tsx';
@@ -42,7 +43,18 @@ function SessionMenu({ conversation, isDispatcherRunning }: { conversation: Chat
   const openInAppRequest = useSessionRequest();
   const stopRequest = useSessionRequest();
   const shownState = OrchestratorSessionUtil.shownStateOf(conversation.session, stopRequest.isSending || stopRequest.wasTaken);
-  if (conversation.isSendOnly || shownState === 'ended') return null;
+  if (conversation.isSendOnly) return null;
+  // Opening in the app stops the session first, so its progress and a refusal after the stop outlive `ended`.
+  if (openInAppRequest.isSending) return <span className="muted ap-caption" role="status">Moving to the Claude app…</span>;
+  if (shownState === 'ended' && openInAppRequest.refusal !== null) {
+    return (
+      <>
+        <span className="ap-stepper-refusal" role="alert">{openInAppRequest.refusal}</span>
+        <button type="button" className="ap-control is-quiet" onClick={openInAppRequest.dismissRefusal}>Dismiss</button>
+      </>
+    );
+  }
+  if (shownState === 'ended') return null;
   if (shownState === 'stopping') return <span className="muted ap-caption" role="status">Stopping…</span>;
   const requests = [refreshRequest, openInAppRequest, stopRequest];
   const refusal = requests.find((request) => request.refusal !== null)?.refusal ?? null;
@@ -53,8 +65,8 @@ function SessionMenu({ conversation, isDispatcherRunning }: { conversation: Chat
         trackerId={conversation.trackerId}
         session={conversation.session}
         refreshRequest={refreshRequest}
-        openInAppRequest={openInAppRequest}
         stopRequest={stopRequest}
+        onOpenInApp={() => openInAppRequest.send(() => openSessionInApp(conversation.role, conversation.trackerId))}
         isDispatcherRunning={isDispatcherRunning}
       />
       {requests.some((request) => request.isSending) ? <span className="muted ap-caption" role="status">Sending…</span> : null}

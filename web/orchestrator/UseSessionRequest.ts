@@ -2,12 +2,13 @@ import { useCallback, useState }           from 'react';
 import type { OrchestratorRequestVerdict } from '../shell/OrchestratorRequestDelivery.ts';
 
 export interface SessionRequest {
-  isSending: boolean;
-  refusal:   string | null;
+  isSending:      boolean;
+  refusal:        string | null;
   /** True once the latest request was taken by the server, until the next one is sent. */
-  wasTaken:  boolean;
+  wasTaken:       boolean;
   /** Sends one request at a time; resolves true when the server took it. */
-  send:      (deliver: () => Promise<OrchestratorRequestVerdict>) => Promise<boolean>;
+  send:           (deliver: () => Promise<OrchestratorRequestVerdict>) => Promise<boolean>;
+  dismissRefusal: () => void;
 }
 
 /** One control's request: busy while it is out, then the server's refusal text until the next attempt. */
@@ -27,7 +28,9 @@ export function useSessionRequest(): SessionRequest {
     return verdict.kind === 'sent';
   }, []);
 
+  const dismissRefusal = useCallback((): void => setRefusal(null), []);
+
   return {
-    isSending, refusal, wasTaken, send
+    isSending, refusal, wasTaken, send, dismissRefusal
   };
 }

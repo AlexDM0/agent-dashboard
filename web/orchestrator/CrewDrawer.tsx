@@ -7,11 +7,13 @@ import {
 import type { OrchestratorSession, ProjectSnapshot, SessionRole } from '../../src/shared/DashboardContract.ts';
 import { EndedFold }                                              from './EndedFold.tsx';
 import { EndedSessionLine }                                       from './EndedSessionLine.tsx';
-import { EndedSessionSplitUtil }                                  from './EndedSessionSplitUtil.ts';
+import { openSessionInApp }                                       from './OrchestratorSessionDelivery.ts';
 import { OrchestratorSessionUtil }                                from './OrchestratorSessionUtil.ts';
 import { SessionCard }                                            from './SessionCard.tsx';
+import { SessionTransferUtil }                                    from './SessionTransferUtil.ts';
 import { StartOrchestratorButton }                                from './StartOrchestratorButton.tsx';
 import { StartProductOwnerButton }                                from './StartProductOwnerButton.tsx';
+import { useSessionTransfers }                                    from './UseSessionTransfers.ts';
 
 /** Where focus lands as the drawer opens: its close button, or the leading session's chat box. */
 export type CrewDrawerFocus = 'close' | 'chat';
@@ -38,26 +40,26 @@ function isTypingField(target: EventTarget | null): boolean {
   return (target instanceof HTMLInputElement && target.type === 'text') || target instanceof HTMLTextAreaElement;
 }
 
-function sessionItself(session: OrchestratorSession): OrchestratorSession {
-  return session;
-}
-
-/** The running sessions as cards, the ended ones in the closed fold under them. */
+/** The running sessions and those moving into the Claude app as cards, the other ended ones in the closed fold under them. */
 function SessionList({
   role, project, sessions, emptyCaption
 }: { role: SessionRole; project: ProjectSnapshot; sessions: OrchestratorSession[]; emptyCaption: string }) {
-  const { running, ended } = EndedSessionSplitUtil.splitOf(sessions, sessionItself);
+  const transfers = useSessionTransfers();
+  const { cards, ended } = SessionTransferUtil.listedSessionsOf(sessions, transfers.transfersBySessionId);
   const isDispatcherRunning = project.health.kind === 'ready' && project.health.board.dispatcherState === 'running';
   return (
     <>
-      {sessions.length === 0 ? <p className="muted ap-caption">{emptyCaption}</p> : null}
-      {running.map((session) => (
+      {cards.length === 0 && ended.length === 0 ? <p className="muted ap-caption">{emptyCaption}</p> : null}
+      {cards.map(({ session, transfer }) => (
         <SessionCard
           key={`${project.trackerId}:${session.sessionId}`}
           role={role}
           trackerId={project.trackerId}
           session={session}
           isDispatcherRunning={isDispatcherRunning}
+          transfer={transfer}
+          onOpenInApp={() => transfers.open(session, () => openSessionInApp(role, project.trackerId))}
+          onDismissTransfer={() => transfers.dismiss(session.sessionId)}
         />
       ))}
       <EndedFold endedCount={ended.length}>

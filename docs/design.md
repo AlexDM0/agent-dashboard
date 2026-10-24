@@ -463,6 +463,25 @@ the ended session, so the snapshot's `orchestrator` or `productOwner` is null an
 `~/.claude/sessions/<pid>.json` record, the session is listed as watched like any desktop session. It needs a Claude
 subscription, as `/desktop` does.
 
+On the page, from the confirm until the request resolves, the session's card stays where it is as a transferring card
+(`web/orchestrator/TransferringCard.tsx`, #083's "Handshake"): five dots between the session's glyph and a small Claude
+app mark run left to right like a connection being dialled while the two marks ping in turn, "Moving to the Claude
+app…" below. The request is held by the crew list (`web/orchestrator/UseSessionTransfers.ts`), not the card, and
+`SessionTransferUtil.listedSessionsOf` keeps a session with a request as a card through `ended` and after the snapshot
+drops it, so the card never moves into the Ended fold mid-request. It ends in one of three ways:
+
+- **Opened**: the dots join into a green line, the app mark gets a check, "The session lives in the Claude app now."
+  shows, and after `TRANSFER_OPENED_BEAT_MILLISECONDS` (2 s) the card leaves; the session then shows as watched.
+- **Refused after the stop** (`claude --desktop` exits non-zero, the session already ended): the line breaks with a
+  cross and the refusal text shows in place, with a Dismiss, until the user dismisses it; then the ended session goes
+  to the fold.
+- **Refused before the stop** (no launch token, no live session, no `claude`): the session is still live, so its own
+  card returns with the refusal and a Dismiss beside its menu, as for any request.
+
+Every motion is CSS keyframes inside `prefers-reduced-motion: no-preference`; under `reduce` the card shows its still
+state: five evenly soft dots, no pings, the same text. The chat window's session menu shows "Moving to the Claude
+app…" while the request is out and a refusal after the stop, with a Dismiss, though its session has ended.
+
 The snapshot carries each project's dashboard-owned `orchestrator` and `productOwner` (each live, or `ended` since this
 server started; null for none) so the overview needs no second stream, and the event stream sends a snapshot on every change of its state.
 When one lives, `orchestrator-requests` sends its text to it as `chat`, before any `~/.claude/sessions/` lookup, and

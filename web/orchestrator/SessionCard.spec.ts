@@ -13,7 +13,9 @@ import { SessionCard }                                  from './SessionCard.tsx'
 
 function cardMarkupOf(state: OrchestratorState): string {
   const session = orchestratorSessionWith({ state, pendingQuestions: [pendingQuestionWith('request-example', '2026-10-21T09:00:00+02:00')] });
-  return renderToStaticMarkup(createElement(SessionCard, { role: 'orchestrator', trackerId: 'example-tracker', session }));
+  return renderToStaticMarkup(createElement(SessionCard, {
+    role: 'orchestrator', trackerId: 'example-tracker', session, onOpenInApp: () => Promise.resolve(true)
+  }));
 }
 
 test('a stopping card says stopping, disables the composer with "Stopping…" and offers neither the menu nor the question', () => {
