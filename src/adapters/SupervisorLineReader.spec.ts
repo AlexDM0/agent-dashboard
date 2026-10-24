@@ -49,6 +49,7 @@ const EXAMPLE_RECORD = {
   socketPath:        '/tmp/example.sock',
   claudeCodeVersion: '9.9.9',
   startedAt:         '2026-10-22T10:00:00.000Z',
+  topic:             null,
 };
 
 test('chat, answer and stop read as requests, and nothing else does', () => {

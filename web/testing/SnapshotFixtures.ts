@@ -25,6 +25,7 @@ export function orchestratorSessionWith(overrides: Partial<OrchestratorSession> 
     lastAction:        null,
     previousSessionId: null,
     productOwnerMode:  null,
+    topic:             null,
     ...overrides,
   };
 }
@@ -88,6 +89,7 @@ export function projectSnapshotWith(project: string, overrides: Partial<ProjectS
     health,
     orchestrator:  null,
     productOwner:  null,
+    productOwners: [],
     ...overrides,
   };
 }

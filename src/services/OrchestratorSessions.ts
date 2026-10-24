@@ -1,10 +1,11 @@
 /**
- * The server's side of the dashboard-owned sessions of one role: it starts a detached supervisor per project, connects
- * to every supervisor of its role whose record lives (again after a server restart), holds each session's latest state,
- * and sends chat and stop to it. Closing it disconnects and leaves every supervisor running. Nothing here throws on a
- * supervisor gone.
+ * The server's side of the dashboard-owned sessions of one role: it starts a detached supervisor per session, up to the
+ * role's limit per project, connects to every supervisor of its role whose record lives (again after a server restart),
+ * holds each session's latest state, and sends chat and stop to it. Closing it disconnects and leaves every supervisor
+ * running. Nothing here throws on a supervisor gone.
  */
-import { spawn } from 'node:child_process';
+import { spawn }      from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   closeSync,
   mkdirSync,
@@ -38,15 +39,20 @@ import { DASHBOARD_PROTOCOL }      from '../shared/constants/DashboardProtocol.t
 
 export interface OrchestratorSessionsOptions {
   /** Every session these sessions start, recover and address is of this role; another role's records are left alone. */
-  role:                     SessionRole;
-  orchestratorDirectory:    string;
+  role:                          SessionRole;
+  /**
+   * A launch past this many live sessions of the project is refused. Past one, each session's files are keyed by a
+   * launch id of its own; at one, by the role and tracker alone, and a live record there refuses a launch too.
+   */
+  maximumLiveSessionsPerProject: number;
+  orchestratorDirectory:         string;
   /** The Bun running the server and `agent-dashboard.ts`, which a supervisor is started with. */
-  runtimeExecutablePath:    string;
-  dashboardEntryPointPath:  string;
-  startTimeoutMilliseconds: number;
-  reconnectMilliseconds:    number;
+  runtimeExecutablePath:         string;
+  dashboardEntryPointPath:       string;
+  startTimeoutMilliseconds:      number;
+  reconnectMilliseconds:         number;
   /** The whole environment a supervisor starts with, its `HOME` and `AGENT_DASHBOARD_CLAUDE` among it. */
-  supervisorEnvironment:    Record<string, string>;
+  supervisorEnvironment:         Record<string, string>;
 }
 
 export interface SessionLaunchDetails {
@@ -54,6 +60,8 @@ export interface SessionLaunchDetails {
   previousSessionId: string | null;
   /** A product owner's start mode, kept in its record so a restarted server still shows it. */
   productOwnerMode:  ProductOwnerMode | null;
+  /** A product owner's topic, kept in its record likewise; passed on only by a role whose sessions carry launch ids. */
+  topic:             string | null;
 }
 
 export type OrchestratorLaunch =
@@ -70,39 +78,53 @@ export type SessionReply = { kind: 'replied'; text: string } | { kind: 'failed';
 
 export type SessionEnd = { kind: 'ended' } | { kind: 'failed'; reason: string };
 
+/**
+ * A method's trailing `sessionId` addresses that session of the project; without one it addresses the project's default
+ * session, the one `sessionOf(trackerId)` answers.
+ */
 export interface OrchestratorSessions {
   /**
    * Connects to every supervisor whose record lives and removes the records of those gone; `dispatcherRunIdOf` reads
    * the board's run when a question is first seen, for its context.
    */
   start(dispatcherRunIdOf: (trackerId: string) => string | null): void;
-  /** The project's dashboard-owned session, live or ended since this server started, or null. */
-  sessionOf(trackerId: string): OrchestratorSession | null;
-  isLive(trackerId: string): boolean;
+  /** The project's session of that id, else its first live one, else its newest ended one since this server started; else null. */
+  sessionOf(trackerId: string, sessionId?: string): OrchestratorSession | null;
+  /** Every session of the project since this server started, live first, then newest start first. */
+  sessionsOf(trackerId: string): OrchestratorSession[];
+  isLive(trackerId: string, sessionId?: string): boolean;
   launch(trackerId: string, root: string, firstMessage: string | null, launchDetails?: Partial<SessionLaunchDetails>): Promise<OrchestratorLaunch>;
-  stop(trackerId: string): Promise<SupervisorDelivery>;
+  stop(trackerId: string, sessionId?: string): Promise<SupervisorDelivery>;
   /** Stops the session and resolves once it shows `ended`, or fails past the bound with the session left as it is. */
-  stopAndAwaitEnd(trackerId: string, timeoutMilliseconds: number): Promise<SessionEnd>;
-  /** Drops the project's session once it has ended, so `sessionOf` answers null; a live session is left as it is. */
-  forgetEnded(trackerId: string): void;
-  chat(trackerId: string, text: string): Promise<SupervisorDelivery>;
+  stopAndAwaitEnd(trackerId: string, timeoutMilliseconds: number, sessionId?: string): Promise<SessionEnd>;
+  /** Drops the session once it has ended, so `sessionOf` no longer answers it; a live session is left as it is. */
+  forgetEnded(trackerId: string, sessionId?: string): void;
+  chat(trackerId: string, text: string, sessionId?: string): Promise<SupervisorDelivery>;
   /**
    * Sends the text as a chat and resolves with the assistant text of the turn it opens, once the session is idle again;
    * fails when the session ends, asks a question instead, or gives no complete reply within the bound.
    */
-  replyTo(trackerId: string, text: string, timeoutMilliseconds: number): Promise<SessionReply>;
+  replyTo(trackerId: string, text: string, timeoutMilliseconds: number, sessionId?: string): Promise<SessionReply>;
   /**
    * Claims the pending question in the same turn it is checked, then sends the answers: a second answer arriving while
    * the first is in flight finds nothing pending. A delivery that is not made puts the question back.
    */
-  answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<AnswerDelivery>;
-  /** The project's conversation so far, oldest first, at most the supervisor's held history; empty for none. */
-  conversationOf(trackerId: string): ChatMessage[];
+  answer(trackerId: string, requestId: string, answers: Record<string, string>, sessionId?: string): Promise<AnswerDelivery>;
+  /** The session's conversation so far, oldest first, at most the supervisor's held history; empty for none. */
+  conversationOf(trackerId: string, sessionId?: string): ChatMessage[];
   /** Called on every change of a session's state; returns the unsubscribe. */
   subscribe(listener: () => void): () => void;
-  /** Called with each new chat message of the project's session, in order; returns the unsubscribe. */
-  subscribeToConversation(trackerId: string, listener: (message: ChatMessage) => void): () => void;
+  /**
+   * Called with each new chat message of the session, in order; without a `sessionId`, of whichever session is the
+   * project's default when the message arrives. Returns the unsubscribe.
+   */
+  subscribeToConversation(trackerId: string, listener: (message: ChatMessage) => void, sessionId?: string): () => void;
   close(): void;
+}
+
+interface ConversationListener {
+  sessionId: string | undefined;
+  listener:  (message: ChatMessage) => void;
 }
 
 interface Supervised {
@@ -184,16 +206,34 @@ function sessionFromRecord(record: OrchestratorRecord, previousSessionId: string
     lastAction:       null,
     previousSessionId,
     productOwnerMode: record.role === 'product-owner' ? record.productOwnerMode : null,
+    topic:            record.topic,
   };
 }
 
+function hasEnded(supervised: Supervised): boolean {
+  return supervised.session.state === 'ended';
+}
+
+/**
+ * The supervisor's arguments after the role: a product owner's mode, then, for a role whose sessions carry launch ids,
+ * the launch id and any topic, each only after the one before it.
+ */
+function launchArgumentsOf(role: SessionRole, launchId: string | null, launchDetails: SessionLaunchDetails): string[] {
+  const { productOwnerMode, topic } = launchDetails;
+  if (role !== 'product-owner' || productOwnerMode === null) return [];
+  if (launchId === null) return [productOwnerMode];
+  return topic === null ? [productOwnerMode, launchId] : [productOwnerMode, launchId, topic];
+}
+
 export function createOrchestratorSessions(options: OrchestratorSessionsOptions): OrchestratorSessions {
-  const supervisedByTracker = new Map<string, Supervised>();
+  // Newest launch first, so of two sessions started in the same millisecond the later one sorts first.
+  const supervisedByTracker = new Map<string, Supervised[]>();
   const listeners = new Set<() => void>();
-  // Kept by tracker rather than by supervisor, so a project's conversation outlives its session until the next one starts.
-  const conversationByTracker = new Map<string, { sessionId: string; entries: ConversationEntry[] }>();
-  const conversationListenersByTracker = new Map<string, Set<(message: ChatMessage) => void>>();
-  const trackersBeingLaunched = new Set<string>();
+  // Kept past `forgetEnded`, so a session's conversation stays readable by its id until the server stops.
+  const conversationBySessionId = new Map<string, ConversationEntry[]>();
+  const conversationListenersByTracker = new Map<string, Set<ConversationListener>>();
+  const launchesInFlightByTracker = new Map<string, number>();
+  const sessionsCarryLaunchIds = options.maximumLiveSessionsPerProject > 1;
   let dispatcherRunIdOf: (trackerId: string) => string | null = () => null;
   let closed = false;
 
@@ -201,8 +241,32 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     for (const listener of [...listeners]) listener();
   }
 
-  function conversationOf(trackerId: string): ChatMessage[] {
-    return (conversationByTracker.get(trackerId)?.entries ?? []).map((entry) => entry.message);
+  function projectSupervisedOf(trackerId: string): Supervised[] {
+    return [...(supervisedByTracker.get(trackerId) ?? [])].sort((a, b) => Number(hasEnded(a)) - Number(hasEnded(b))
+      || (b.session.startedAt ?? '').localeCompare(a.session.startedAt ?? ''));
+  }
+
+  function addressedOf(trackerId: string, sessionId: string | undefined): Supervised | undefined {
+    const projectSupervised = projectSupervisedOf(trackerId);
+    return sessionId === undefined ? projectSupervised[0] : projectSupervised.find((supervised) => supervised.session.sessionId === sessionId);
+  }
+
+  function supervise(supervised: Supervised): void {
+    supervisedByTracker.set(supervised.trackerId, [supervised, ...(supervisedByTracker.get(supervised.trackerId) ?? [])]);
+  }
+
+  function conversationOf(trackerId: string, sessionId?: string): ChatMessage[] {
+    const conversationSessionId = sessionId ?? addressedOf(trackerId, undefined)?.session.sessionId;
+    if (conversationSessionId === undefined) return [];
+    return (conversationBySessionId.get(conversationSessionId) ?? []).map((entry) => entry.message);
+  }
+
+  function tellConversationListeners(supervised: Supervised, message: ChatMessage): void {
+    const { trackerId, session: { sessionId } } = supervised;
+    const isDefaultSession = addressedOf(trackerId, undefined) === supervised;
+    for (const registration of [...(conversationListenersByTracker.get(trackerId) ?? [])]) {
+      if (registration.sessionId === sessionId || (registration.sessionId === undefined && isDefaultSession)) registration.listener(message);
+    }
   }
 
   /**
@@ -210,10 +274,9 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
    * action changes without a notify: the supervisor sends a state line after every session line and every replay.
    */
   function takeConversationEntries(supervised: Supervised, entries: ConversationEntry[]): void {
-    const { trackerId, session: { sessionId } } = supervised;
-    const held = conversationByTracker.get(trackerId);
-    const conversation = held?.sessionId === sessionId ? held.entries : [];
-    conversationByTracker.set(trackerId, { sessionId, entries: conversation });
+    const { sessionId } = supervised.session;
+    const conversation = conversationBySessionId.get(sessionId) ?? [];
+    conversationBySessionId.set(sessionId, conversation);
     let latestHeldSequence = conversation.at(-1)?.sequence ?? 0;
     for (const entry of entries) {
       if (entry.sequence <= latestHeldSequence) continue;
@@ -222,14 +285,15 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
       if (conversation.length > DASHBOARD_LIMITS.CONVERSATION_HISTORY_MESSAGE_COUNT) conversation.shift();
       const lastAction = lastActionOf(entry.message);
       if (lastAction !== null) supervised.session = { ...supervised.session, lastAction };
-      for (const listener of [...(conversationListenersByTracker.get(trackerId) ?? [])]) listener(entry.message);
+      tellConversationListeners(supervised, entry.message);
     }
   }
 
   function pendingQuestionOf(supervised: Supervised, captured: CapturedQuestion): PendingQuestion {
     let context = supervised.questionContextByRequestId.get(captured.requestId);
     if (context === undefined) {
-      context = questionContextOf(captured, conversationOf(supervised.trackerId), dispatcherRunIdOf(supervised.trackerId));
+      const conversation = conversationOf(supervised.trackerId, supervised.session.sessionId);
+      context = questionContextOf(captured, conversation, dispatcherRunIdOf(supervised.trackerId));
       supervised.questionContextByRequestId.set(captured.requestId, context);
     }
     return { ...captured, context };
@@ -300,22 +364,21 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
         continue;
       }
       const supervised = supervisedOf(reading.recordPath, record);
-      supervisedByTracker.set(record.trackerId, supervised);
+      supervise(supervised);
       void connect(supervised);
     }
   }
 
-  function isLive(trackerId: string): boolean {
-    const supervised = supervisedByTracker.get(trackerId);
-    return supervised !== undefined && supervised.session.state !== 'ended';
+  function isLive(trackerId: string, sessionId?: string): boolean {
+    const supervised = addressedOf(trackerId, sessionId);
+    return supervised !== undefined && !hasEnded(supervised);
   }
 
-  function spawnSupervisor(trackerId: string, root: string, logPath: string, productOwnerMode: ProductOwnerMode | null): { pid: number | undefined; exited: Promise<string> } {
+  function spawnSupervisor(trackerId: string, root: string, launchArguments: string[], logPath: string): { pid: number | undefined; exited: Promise<string> } {
     mkdirSync(options.orchestratorDirectory, { recursive: true });
     const logDescriptor = openSync(logPath, 'a');
-    const modeArguments = options.role === 'product-owner' && productOwnerMode !== null ? [productOwnerMode] : [];
     try {
-      const superviseArguments = [options.dashboardEntryPointPath, DASHBOARD_PROTOCOL.SUPERVISE_COMMAND, trackerId, root, options.role, ...modeArguments];
+      const superviseArguments = [options.dashboardEntryPointPath, DASHBOARD_PROTOCOL.SUPERVISE_COMMAND, trackerId, root, options.role, ...launchArguments];
       const supervisor = spawn(options.runtimeExecutablePath, superviseArguments, {
         cwd:      options.orchestratorDirectory,
         env:      options.supervisorEnvironment,
@@ -333,28 +396,48 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     }
   }
 
+  /** Only a role of one session per project has a fixed record name, so only there can a live supervisor sit unconnected. */
+  function sessionRunsUnconnected(trackerId: string): boolean {
+    if (sessionsCarryLaunchIds) return false;
+    const onDisk = readOrchestratorRecord(orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role).recordPath);
+    return onDisk.kind === 'present' && processIsAlive(onDisk.record.supervisorPid);
+  }
+
   async function launch(trackerId: string, root: string, firstMessage: string | null, launchDetails: Partial<SessionLaunchDetails> = {}): Promise<OrchestratorLaunch> {
-    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role);
-    const onDisk = readOrchestratorRecord(paths.recordPath);
-    const supervisorRuns = isLive(trackerId) || (onDisk.kind === 'present' && processIsAlive(onDisk.record.supervisorPid));
-    if (supervisorRuns || trackersBeingLaunched.has(trackerId)) return { kind: 'running' };
-    trackersBeingLaunched.add(trackerId);
+    const launchesInFlight = launchesInFlightByTracker.get(trackerId) ?? 0;
+    const liveSessionCount = projectSupervisedOf(trackerId).filter((supervised) => !hasEnded(supervised)).length;
+    if (liveSessionCount + launchesInFlight >= options.maximumLiveSessionsPerProject || sessionRunsUnconnected(trackerId)) return { kind: 'running' };
+    launchesInFlightByTracker.set(trackerId, launchesInFlight + 1);
     try {
-      return await launchSupervisor(trackerId, root, firstMessage, {
+      const launchId = sessionsCarryLaunchIds ? randomUUID() : null;
+      return await launchSupervisor(trackerId, root, firstMessage, launchId, {
         previousSessionId: launchDetails.previousSessionId ?? null,
         productOwnerMode:  launchDetails.productOwnerMode ?? null,
+        topic:             launchDetails.topic ?? null,
       });
     } finally {
-      trackersBeingLaunched.delete(trackerId);
+      const remainingLaunches = (launchesInFlightByTracker.get(trackerId) ?? 1) - 1;
+      if (remainingLaunches > 0) launchesInFlightByTracker.set(trackerId, remainingLaunches);
+      else launchesInFlightByTracker.delete(trackerId);
     }
   }
 
-  async function launchSupervisor(trackerId: string, root: string, firstMessage: string | null, launchDetails: SessionLaunchDetails): Promise<OrchestratorLaunch> {
-    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role);
+  async function launchSupervisor(
+    trackerId: string,
+    root: string,
+    firstMessage: string | null,
+    launchId: string | null,
+    launchDetails: SessionLaunchDetails,
+  ): Promise<OrchestratorLaunch> {
+    const paths = orchestratorFilePathsOf(options.orchestratorDirectory, trackerId, options.role, launchId);
     if (Buffer.byteLength(paths.socketPath) > DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES) {
       return { kind: 'refused', reason: `The socket path ${paths.socketPath} is longer than ${DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES} bytes` };
     }
-    const supervisor = spawnSupervisor(trackerId, root, paths.logPath, launchDetails.productOwnerMode);
+    // The command line carries a launch id only after a product owner's mode, so without one the supervisor would key its files apart.
+    if (launchId !== null && (options.role !== 'product-owner' || launchDetails.productOwnerMode === null)) {
+      return { kind: 'refused', reason: 'A session with a launch id is a product owner started with a mode' };
+    }
+    const supervisor = spawnSupervisor(trackerId, root, launchArgumentsOf(options.role, launchId, launchDetails), paths.logPath);
     let exitReason: string | null = null;
     void supervisor.exited.then((reason) => { exitReason = reason; });
     const deadline = performance.now() + options.startTimeoutMilliseconds;
@@ -363,8 +446,8 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
       if (reading.kind === 'present' && reading.record.supervisorPid === supervisor.pid) {
         const supervised = supervisedOf(paths.recordPath, reading.record, launchDetails.previousSessionId);
         if (await connect(supervised)) {
-          supervisedByTracker.set(trackerId, supervised);
-          if (firstMessage !== null) await chat(trackerId, firstMessage);
+          supervise(supervised);
+          if (firstMessage !== null) await chat(trackerId, firstMessage, supervised.session.sessionId);
           notify();
           return { kind: 'started', session: supervised.session };
         }
@@ -374,9 +457,8 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     return { kind: 'failed', reason: exitReason ?? `The supervisor did not accept within ${options.startTimeoutMilliseconds} ms; its log is ${paths.logPath}` };
   }
 
-  function send(trackerId: string, request: SupervisorRequest): Promise<SupervisorDelivery> {
-    const supervised = supervisedByTracker.get(trackerId);
-    if (supervised === undefined || supervised.session.state === 'ended') return Promise.resolve({ kind: 'none' });
+  function send(supervised: Supervised | undefined, request: SupervisorRequest): Promise<SupervisorDelivery> {
+    if (supervised === undefined || hasEnded(supervised)) return Promise.resolve({ kind: 'none' });
     const { connection } = supervised;
     if (connection === null) return Promise.resolve({ kind: 'failed', reason: 'The supervisor is not connected; the server retries' });
     return new Promise((resolve) => {
@@ -388,7 +470,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
 
   function close(): void {
     closed = true;
-    for (const supervised of supervisedByTracker.values()) {
+    for (const supervised of [...supervisedByTracker.values()].flat()) {
       if (supervised.reconnectTimer !== null) clearTimeout(supervised.reconnectTimer);
       supervised.connection?.destroy();
     }
@@ -396,25 +478,26 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     conversationListenersByTracker.clear();
   }
 
-  function chat(trackerId: string, text: string): Promise<SupervisorDelivery> {
-    if (supervisedByTracker.get(trackerId)?.session.state === 'stopping') return Promise.resolve({ kind: 'failed', reason: 'The session is stopping' });
-    return send(trackerId, { kind: 'chat', text });
+  function chat(trackerId: string, text: string, sessionId?: string): Promise<SupervisorDelivery> {
+    const supervised = addressedOf(trackerId, sessionId);
+    if (supervised?.session.state === 'stopping') return Promise.resolve({ kind: 'failed', reason: 'The session is stopping' });
+    return send(supervised, { kind: 'chat', text });
   }
 
   /** A delivered Stop shows as stopping at once, its questions dropped, ahead of the supervisor's own state line saying so. */
-  async function stop(trackerId: string): Promise<SupervisorDelivery> {
-    const delivery = await send(trackerId, { kind: 'stop' });
-    const supervised = supervisedByTracker.get(trackerId);
-    if (delivery.kind === 'delivered' && supervised !== undefined && supervised.session.state !== 'ended') {
+  async function stop(trackerId: string, sessionId?: string): Promise<SupervisorDelivery> {
+    const supervised = addressedOf(trackerId, sessionId);
+    const delivery = await send(supervised, { kind: 'stop' });
+    if (delivery.kind === 'delivered' && supervised !== undefined && !hasEnded(supervised)) {
       supervised.session = { ...supervised.session, state: 'stopping', pendingQuestions: [] };
       notify();
     }
     return delivery;
   }
 
-  async function answer(trackerId: string, requestId: string, answers: Record<string, string>): Promise<AnswerDelivery> {
-    const supervised = supervisedByTracker.get(trackerId);
-    if (supervised === undefined || supervised.session.state === 'ended') return { kind: 'none' };
+  async function answer(trackerId: string, requestId: string, answers: Record<string, string>, sessionId?: string): Promise<AnswerDelivery> {
+    const supervised = addressedOf(trackerId, sessionId);
+    if (supervised === undefined || hasEnded(supervised)) return { kind: 'none' };
     const sessionBeforeAnswer = supervised.session;
     const pending = sessionBeforeAnswer.pendingQuestions.find((pendingQuestion) => pendingQuestion.requestId === requestId);
     if (pending === undefined) return { kind: 'not-pending' };
@@ -423,7 +506,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     const claimedSession = { ...sessionBeforeAnswer, pendingQuestions: sessionBeforeAnswer.pendingQuestions.filter((pendingQuestion) => pendingQuestion !== pending) };
     supervised.session = claimedSession;
     notify();
-    const delivery = await send(trackerId, { kind: 'answer', requestId, answers });
+    const delivery = await send(supervised, { kind: 'answer', requestId, answers });
     // A state line that arrived meanwhile is the supervisor's own word on what is pending, so only an untouched claim is undone.
     if (delivery.kind !== 'delivered' && supervised.session === claimedSession) {
       supervised.session = sessionBeforeAnswer;
@@ -432,16 +515,18 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     return delivery;
   }
 
-  function subscribeToConversation(trackerId: string, listener: (message: ChatMessage) => void): () => void {
+  function subscribeToConversation(trackerId: string, listener: (message: ChatMessage) => void, sessionId?: string): () => void {
     const trackerListeners = conversationListenersByTracker.get(trackerId) ?? new Set();
     conversationListenersByTracker.set(trackerId, trackerListeners);
-    trackerListeners.add(listener);
-    return () => trackerListeners.delete(listener);
+    const registration: ConversationListener = { sessionId, listener };
+    trackerListeners.add(registration);
+    return () => trackerListeners.delete(registration);
   }
 
   /** Settles once: on the first verdict `judge` gives on a state change, on `settle`, or as `timeoutVerdict` past the bound. */
   function awaitSessionVerdict<Verdict>(
     trackerId: string,
+    sessionId: string | undefined,
     timeoutMilliseconds: number,
     timeoutVerdict: Verdict,
     judge: (session: OrchestratorSession | null) => Verdict | null,
@@ -451,7 +536,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
       let settled = false;
 
       function onChange(): void {
-        const judged = judge(supervisedByTracker.get(trackerId)?.session ?? null);
+        const judged = judge(addressedOf(trackerId, sessionId)?.session ?? null);
         if (judged !== null) settle(judged);
       }
       const timer = setTimeout(() => settle(timeoutVerdict), timeoutMilliseconds);
@@ -467,13 +552,20 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     return { verdict, settle };
   }
 
-  async function replyTo(trackerId: string, text: string, timeoutMilliseconds: number): Promise<SessionReply> {
+  /** The session addressed now, by its id, so the default moving to another session later never retargets the wait. */
+  function pinnedSessionIdOf(trackerId: string, sessionId: string | undefined): string | undefined {
+    return sessionId ?? addressedOf(trackerId, undefined)?.session.sessionId;
+  }
+
+  async function replyTo(trackerId: string, text: string, timeoutMilliseconds: number, sessionId?: string): Promise<SessionReply> {
+    const pinnedSessionId = pinnedSessionIdOf(trackerId, sessionId);
     const replyTexts: string[] = [];
     const unsubscribeFromConversation = subscribeToConversation(trackerId, (message) => {
       if (message.role === 'assistant') replyTexts.push(message.text);
-    });
+    }, pinnedSessionId);
     const { verdict, settle } = awaitSessionVerdict<SessionReply>(
       trackerId,
+      pinnedSessionId,
       timeoutMilliseconds,
       { kind: 'failed', reason: `The session gave no complete reply within ${timeoutMilliseconds} ms` },
       (session) => {
@@ -482,7 +574,7 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
         return session.state === 'idle' && replyTexts.length > 0 ? { kind: 'replied', text: replyTexts.join('\n\n') } : null;
       },
     );
-    const delivery = await chat(trackerId, text);
+    const delivery = await chat(trackerId, text, pinnedSessionId);
     if (delivery.kind === 'none') settle({ kind: 'failed', reason: 'The session has ended' });
     if (delivery.kind === 'failed') settle(delivery);
     try {
@@ -492,31 +584,37 @@ export function createOrchestratorSessions(options: OrchestratorSessionsOptions)
     }
   }
 
-  async function stopAndAwaitEnd(trackerId: string, timeoutMilliseconds: number): Promise<SessionEnd> {
+  async function stopAndAwaitEnd(trackerId: string, timeoutMilliseconds: number, sessionId?: string): Promise<SessionEnd> {
+    const pinnedSessionId = pinnedSessionIdOf(trackerId, sessionId);
     const { verdict, settle } = awaitSessionVerdict<SessionEnd>(
       trackerId,
+      pinnedSessionId,
       timeoutMilliseconds,
       { kind: 'failed', reason: `The session did not end within ${timeoutMilliseconds} ms of Stop` },
       (session) => (session === null || session.state === 'ended' ? { kind: 'ended' } : null),
     );
-    const delivery = await stop(trackerId);
+    const delivery = await stop(trackerId, pinnedSessionId);
     if (delivery.kind === 'none') settle({ kind: 'ended' });
     if (delivery.kind === 'failed') settle(delivery);
     return verdict;
   }
 
+  function forgetEnded(trackerId: string, sessionId?: string): void {
+    const forgotten = addressedOf(trackerId, sessionId);
+    if (forgotten === undefined || !hasEnded(forgotten)) return;
+    supervisedByTracker.set(trackerId, (supervisedByTracker.get(trackerId) ?? []).filter((supervised) => supervised !== forgotten));
+    notify();
+  }
+
   return {
     start,
-    sessionOf: (trackerId) => supervisedByTracker.get(trackerId)?.session ?? null,
+    sessionOf:  (trackerId, sessionId) => addressedOf(trackerId, sessionId)?.session ?? null,
+    sessionsOf: (trackerId) => projectSupervisedOf(trackerId).map((supervised) => supervised.session),
     isLive,
     launch,
     stop,
     stopAndAwaitEnd,
-    forgetEnded(trackerId) {
-      if (supervisedByTracker.get(trackerId)?.session.state !== 'ended') return;
-      supervisedByTracker.delete(trackerId);
-      notify();
-    },
+    forgetEnded,
     chat,
     replyTo,
     answer,

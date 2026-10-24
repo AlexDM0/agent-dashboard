@@ -54,7 +54,7 @@ import {
   orchestratorStartTextOf
 } from './OrchestratorRequestMessage.ts';
 import { type OrchestratorLaunch, type OrchestratorSessions, createOrchestratorSessions } from './OrchestratorSessions.ts';
-import { PRODUCT_OWNER_START_BODY_REFUSAL, productOwnerBriefTextOf, productOwnerModeOf }  from './ProductOwnerBriefMessage.ts';
+import { PRODUCT_OWNER_START_BODY_REFUSAL, productOwnerBriefTextOf, productOwnerStartOf } from './ProductOwnerBriefMessage.ts';
 import { type MonitoredSnapshot, type ProjectMonitor, createProjectMonitor }              from './ProjectMonitor.ts';
 
 export interface DashboardServerOptions {
@@ -197,7 +197,27 @@ const PRODUCT_OWNER_ANSWERS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PR
 
 const PRODUCT_OWNER_EVENTS_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_EVENTS_PATH_SUFFIX}$`);
 
+/** Matched only after every id-less product-owner route, whose last segment this would otherwise take for a session id. */
+const PRODUCT_OWNER_SESSION_ROUTE_PATTERN = new RegExp(`^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX}/([^/]+)$`);
+
+const PRODUCT_OWNER_SESSION_MESSAGES_ROUTE_PATTERN = new RegExp(
+  `^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX}/([^/]+)${DASHBOARD_PROTOCOL.SESSION_MESSAGES_PATH_SUFFIX}$`
+);
+
+const PRODUCT_OWNER_SESSION_ANSWERS_ROUTE_PATTERN = new RegExp(
+  `^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX}/([^/]+)${DASHBOARD_PROTOCOL.SESSION_ANSWERS_PATH_SUFFIX}$`
+);
+
+const PRODUCT_OWNER_SESSION_EVENTS_ROUTE_PATTERN = new RegExp(
+  `^${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/([^/]+)${DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX}/([^/]+)${DASHBOARD_PROTOCOL.SESSION_EVENTS_PATH_SUFFIX}$`
+);
+
 const ROLE_WORDS: Record<SessionRole, string> = { 'orchestrator': 'orchestrator', 'product-owner': 'product owner' };
+
+const MAXIMUM_LIVE_SESSIONS_PER_PROJECT_BY_ROLE: Record<SessionRole, number> = {
+  'orchestrator':  1,
+  'product-owner': DASHBOARD_LIMITS.MAXIMUM_LIVE_PRODUCT_OWNERS_PER_PROJECT,
+};
 
 const HTTP_STATUS = {
   CREATED:               201,
@@ -366,6 +386,7 @@ function watchedOrchestratorOf(homeDirectory: string, session: LiveSession, cont
     lastAction:        null,
     previousSessionId: null,
     productOwnerMode:  null,
+    topic:             null,
   };
 }
 
@@ -385,16 +406,29 @@ interface RegisteredProjectRequest {
 
 type OrchestratorDelivery = { kind: 'delivered'; recipient: OrchestratorRecipient } | { kind: 'refused'; response: Response };
 
+type AddressedSession = { kind: 'found'; session: OrchestratorSession } | { kind: 'refused'; response: Response };
+
+function refusalOf(addressed: AddressedSession): Response | null {
+  return addressed.kind === 'refused' ? addressed.response : null;
+}
+
+/** The decoded id of a route that names a session, null for a route that names none, undefined for one that does not decode. */
+function routeSessionIdOf(encodedSessionId: string | null): string | null | undefined {
+  if (encodedSessionId === null) return null;
+  return decodedOrNull(encodedSessionId) ?? undefined;
+}
+
 interface OrchestratorSources {
-  homeDirectory:  string;
-  orchestratorOf: (trackerId: string) => OrchestratorSession | null;
-  productOwnerOf: (trackerId: string) => OrchestratorSession | null;
+  homeDirectory:   string;
+  orchestratorOf:  (trackerId: string) => OrchestratorSession | null;
+  /** Live first, then newest start first. */
+  productOwnersOf: (trackerId: string) => OrchestratorSession[];
 }
 
 /** Every dashboard-owned session of every role, so none of them is ever listed as watched. */
 function dashboardOwnedSessionsOf(projects: readonly { trackerId: string }[], orchestratorSources: OrchestratorSources): OrchestratorSession[] {
   return projects
-    .flatMap((project) => [orchestratorSources.orchestratorOf(project.trackerId), orchestratorSources.productOwnerOf(project.trackerId)])
+    .flatMap((project) => [orchestratorSources.orchestratorOf(project.trackerId), ...orchestratorSources.productOwnersOf(project.trackerId)])
     .filter((session): session is OrchestratorSession => session !== null);
 }
 
@@ -404,17 +438,21 @@ function dashboardOwnedSessionsOf(projects: readonly { trackerId: string }[], or
  * snapshot served.
  */
 function servedSnapshotOf(monitored: MonitoredSnapshot, boardOrigin: string, orchestratorSources: OrchestratorSources): DashboardSnapshot {
-  const { homeDirectory, orchestratorOf, productOwnerOf } = orchestratorSources;
+  const { homeDirectory, orchestratorOf, productOwnersOf } = orchestratorSources;
   const dashboardOwnedSessions = dashboardOwnedSessionsOf(monitored.projects, orchestratorSources);
   const contextWindowByModel = contextWindowsByModelOf(dashboardOwnedSessions);
   return {
     ...monitored,
-    projects: monitored.projects.map((project) => ({
-      ...project,
-      pageUrl:      `${boardOrigin}${project.pageUrl}`,
-      orchestrator: orchestratorOf(project.trackerId),
-      productOwner: productOwnerOf(project.trackerId),
-    })),
+    projects: monitored.projects.map((project) => {
+      const productOwners = productOwnersOf(project.trackerId);
+      return {
+        ...project,
+        pageUrl:      `${boardOrigin}${project.pageUrl}`,
+        orchestrator: orchestratorOf(project.trackerId),
+        productOwner: productOwners[0] ?? null,
+        productOwners,
+      };
+    }),
     boardOrigin,
     boardBridgeUrl:                `${boardOrigin}${DASHBOARD_PROTOCOL.BOARD_BRIDGE_PATH}`,
     watchedOrchestratorsByTracker: Object.fromEntries(monitored.projects.map((project) => [
@@ -451,11 +489,12 @@ export function createDashboardOrchestratorSessions(
 ): OrchestratorSessions {
   return createOrchestratorSessions({
     role,
-    orchestratorDirectory:    orchestratorDirectoryOf(options.homeDirectory),
-    runtimeExecutablePath:    options.runtimeExecutablePath,
-    dashboardEntryPointPath:  options.dashboardEntryPointPath,
-    startTimeoutMilliseconds: DASHBOARD_LIMITS.SUPERVISOR_START_TIMEOUT_MILLISECONDS,
-    reconnectMilliseconds:    DASHBOARD_LIMITS.SUPERVISOR_RECONNECT_MILLISECONDS,
+    maximumLiveSessionsPerProject: MAXIMUM_LIVE_SESSIONS_PER_PROJECT_BY_ROLE[role],
+    orchestratorDirectory:         orchestratorDirectoryOf(options.homeDirectory),
+    runtimeExecutablePath:         options.runtimeExecutablePath,
+    dashboardEntryPointPath:       options.dashboardEntryPointPath,
+    startTimeoutMilliseconds:      DASHBOARD_LIMITS.SUPERVISOR_START_TIMEOUT_MILLISECONDS,
+    reconnectMilliseconds:         DASHBOARD_LIMITS.SUPERVISOR_RECONNECT_MILLISECONDS,
     supervisorEnvironment,
   });
 }
@@ -531,7 +570,11 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   productOwnerSessions.start(boardDispatcherRunIdOf);
 
   const { homeDirectory } = options;
-  const orchestratorSources: OrchestratorSources = { homeDirectory, orchestratorOf: orchestratorSessions.sessionOf, productOwnerOf: productOwnerSessions.sessionOf };
+  const orchestratorSources: OrchestratorSources = {
+    homeDirectory,
+    orchestratorOf:  (trackerId) => orchestratorSessions.sessionOf(trackerId),
+    productOwnersOf: (trackerId) => productOwnerSessions.sessionsOf(trackerId),
+  };
 
   function servedSnapshot(): DashboardSnapshot {
     return servedSnapshotOf(monitor.snapshot(), boardOrigin, orchestratorSources);
@@ -624,23 +667,57 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     });
   }
 
-  /** The conversation from the role's session's start, then each new message, and the session on every change of it. */
-  async function sessionEventsResponse(request: Request, servingServer: Bun.Server<undefined>, encodedTrackerId: string, role: SessionRole): Promise<Response> {
+  /** Null while at most one session of the role lives in the project, else the refusal an id-less route answers. */
+  function severalLiveRefusalOf(role: SessionRole, trackerId: string): Response | null {
+    const liveSessionCount = sessionsByRole[role].sessionsOf(trackerId).filter((session) => session.state !== 'ended').length;
+    if (liveSessionCount <= 1) return null;
+    return plainResponse(HTTP_STATUS.CONFLICT, `${liveSessionCount} dashboard-owned ${ROLE_WORDS[role]}s of this project run; address one by its session id`);
+  }
+
+  /** A named session must be one of the project's; an unnamed one is the project's default, refused while several live. */
+  function addressedSessionOf(role: SessionRole, trackerId: string, sessionId: string | null): AddressedSession {
+    const sessions = sessionsByRole[role];
+    if (sessionId !== null) {
+      const named = sessions.sessionOf(trackerId, sessionId);
+      if (named === null) return { kind: 'refused', response: plainResponse(HTTP_STATUS.NOT_FOUND, `No dashboard-owned ${ROLE_WORDS[role]} ${sessionId} is this project's`) };
+      return { kind: 'found', session: named };
+    }
+    const severalLiveRefusal = severalLiveRefusalOf(role, trackerId);
+    if (severalLiveRefusal !== null) return { kind: 'refused', response: severalLiveRefusal };
+    const session = sessions.sessionOf(trackerId);
+    return session === null ? { kind: 'refused', response: plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText(role)) } : { kind: 'found', session };
+  }
+
+  /**
+   * The conversation from the session's start, then each new message, and the session on every change of it; without a
+   * session id, of the role's default session, whichever that is as the stream runs.
+   */
+  async function sessionEventsResponse(
+    request: Request,
+    servingServer: Bun.Server<undefined>,
+    encodedTrackerId: string,
+    role: SessionRole,
+    encodedSessionId: string | null = null,
+  ): Promise<Response> {
     if (isForeignOrigin(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     await monitorStarted;
     const trackerId = decodedOrNull(encodedTrackerId);
-    if (trackerId === null || monitor.rootOf(trackerId) === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const namedSessionId = routeSessionIdOf(encodedSessionId);
+    if (trackerId === null || monitor.rootOf(trackerId) === null || namedSessionId === undefined) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const refusal = namedSessionId === null ? severalLiveRefusalOf(role, trackerId) : refusalOf(addressedSessionOf(role, trackerId, namedSessionId));
+    if (refusal !== null) return refusal;
+    const sessionId = namedSessionId ?? undefined;
     const sessions = sessionsByRole[role];
     return serverSentEventsResponse(request, servingServer, (send) => {
-      let lastSentSessionText = JSON.stringify(sessions.sessionOf(trackerId));
-      const unsubscribeFromConversation = sessions.subscribeToConversation(trackerId, (message) => send(serverSentEventOf('message', message)));
+      let lastSentSessionText = JSON.stringify(sessions.sessionOf(trackerId, sessionId));
+      const unsubscribeFromConversation = sessions.subscribeToConversation(trackerId, (message) => send(serverSentEventOf('message', message)), sessionId);
       const unsubscribeFromSessions = sessions.subscribe(() => {
-        const sessionText = JSON.stringify(sessions.sessionOf(trackerId));
+        const sessionText = JSON.stringify(sessions.sessionOf(trackerId, sessionId));
         if (sessionText === lastSentSessionText) return;
         lastSentSessionText = sessionText;
         send(`event: session\ndata: ${sessionText}\n\n`);
       });
-      send(serverSentEventOf('history', sessions.conversationOf(trackerId)));
+      send(serverSentEventOf('history', sessions.conversationOf(trackerId, sessionId)));
       send(`event: session\ndata: ${lastSentSessionText}\n\n`);
       return () => {
         unsubscribeFromConversation();
@@ -767,9 +844,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
       dispatcherRunId:        board?.dispatcherRunId ?? null,
       socketAccepts:          (socketPath) => sessionSocketAccepts(socketPath, DASHBOARD_LIMITS.SESSION_SOCKET_TIMEOUT_MILLISECONDS),
       isNeverTheOrchestrator: (session) => {
-        const productOwners = monitor.snapshot().projects
-          .map((projectSnapshot) => productOwnerSessions.sessionOf(projectSnapshot.trackerId))
-          .filter((productOwner): productOwner is OrchestratorSession => productOwner !== null);
+        const productOwners = monitor.snapshot().projects.flatMap((projectSnapshot) => productOwnerSessions.sessionsOf(projectSnapshot.trackerId));
         return productOwners.some((productOwner) => productOwner.pid === session.pid || productOwner.sessionId === session.sessionId);
       },
     });
@@ -816,20 +891,22 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
   }
 
-  /** The product owner takes the text as its user's turn; a `sessionId` naming any other session is refused. */
-  async function productOwnerChatResponse(request: Request, encodedTrackerId: string): Promise<Response> {
+  /** The product owner the route names, else the project's one, takes the text as its user's turn; a body `sessionId` naming any other is refused. */
+  async function productOwnerChatResponse(request: Request, encodedTrackerId: string, encodedSessionId: string | null = null): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
-    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const routeSessionId = routeSessionIdOf(encodedSessionId);
+    if (projectRequest === null || routeSessionId === undefined) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const { trackerId, bodyText } = projectRequest;
     const chat = requestedChatOf(bodyText);
     if (chat === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_CHAT_BODY_REFUSAL);
-    const session = productOwnerSessions.sessionOf(trackerId);
-    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText('product-owner'));
+    const addressed = addressedSessionOf('product-owner', trackerId, routeSessionId);
+    if (addressed.kind === 'refused') return addressed.response;
+    const { session } = addressed;
     if (chat.sessionId !== undefined && chat.sessionId !== session.sessionId) {
       return plainResponse(HTTP_STATUS.CONFLICT, `The session ${chat.sessionId} is not this project's dashboard-owned product owner`);
     }
-    const delivery = await productOwnerSessions.chat(trackerId, chat.text);
+    const delivery = await productOwnerSessions.chat(trackerId, chat.text, session.sessionId);
     if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText('product-owner'));
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
@@ -844,18 +921,19 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
   }
 
   /** Only a dashboard-owned session's questions are answered here; a watched one answers in its own app. */
-  async function sessionAnswerResponse(request: Request, encodedTrackerId: string, role: SessionRole): Promise<Response> {
+  async function sessionAnswerResponse(request: Request, encodedTrackerId: string, role: SessionRole, encodedSessionId: string | null = null): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
-    if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const routeSessionId = routeSessionIdOf(encodedSessionId);
+    if (projectRequest === null || routeSessionId === undefined) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const { trackerId, bodyText } = projectRequest;
     const requestedAnswer = requestedAnswerOf(bodyText);
     if (requestedAnswer === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, ORCHESTRATOR_ANSWER_BODY_REFUSAL);
-    const sessions = sessionsByRole[role];
-    const session = sessions.sessionOf(trackerId);
-    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText(role));
+    const addressed = addressedSessionOf(role, trackerId, routeSessionId);
+    if (addressed.kind === 'refused') return addressed.response;
+    const { session } = addressed;
     if (session.state === 'ended') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText(role));
-    const delivery = await sessions.answer(trackerId, requestedAnswer.requestId, requestedAnswer.answers);
+    const delivery = await sessionsByRole[role].answer(trackerId, requestedAnswer.requestId, requestedAnswer.answers, session.sessionId);
     if (delivery.kind === 'not-pending') return plainResponse(HTTP_STATUS.CONFLICT, `No question ${requestedAnswer.requestId} is pending`);
     if (delivery.kind === 'mismatched') return plainResponse(HTTP_STATUS.CONFLICT, delivery.reason);
     if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText(role));
@@ -893,26 +971,30 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return launchedSessionResponse(await orchestratorSessions.launch(trackerId, root, firstMessage), 'orchestrator');
   }
 
-  /** Starts the supervisor in the project's root, beside any orchestrator; the brief is the session's first message. */
+  /** Starts the supervisor in the project's root, beside any orchestrator and other product owners; the brief is the session's first message. */
   async function productOwnerStartResponse(request: Request, encodedTrackerId: string): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     const projectRequest = await registeredProjectRequestOf(request, encodedTrackerId);
     if (projectRequest === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const { trackerId, root, bodyText } = projectRequest;
-    const mode = productOwnerModeOf(bodyText);
-    if (mode === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, PRODUCT_OWNER_START_BODY_REFUSAL);
+    const start = productOwnerStartOf(bodyText);
+    if (start === null) return plainResponse(HTTP_STATUS.BAD_REQUEST, PRODUCT_OWNER_START_BODY_REFUSAL);
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
     const project = monitor.snapshot().projects.find((projectSnapshot) => projectSnapshot.trackerId === trackerId);
-    const briefText = productOwnerBriefTextOf(project?.project ?? trackerId, mode);
-    return launchedSessionResponse(await productOwnerSessions.launch(trackerId, root, briefText, { productOwnerMode: mode }), 'product-owner');
+    const briefText = productOwnerBriefTextOf(project?.project ?? trackerId, start.mode, start.topic);
+    const launch = await productOwnerSessions.launch(trackerId, root, briefText, { productOwnerMode: start.mode, topic: start.topic });
+    return launchedSessionResponse(launch, 'product-owner');
   }
 
   function launchedSessionResponse(launch: OrchestratorLaunch, role: SessionRole): Response {
+    const maximumLiveSessions = MAXIMUM_LIVE_SESSIONS_PER_PROJECT_BY_ROLE[role];
     switch (launch.kind) {
       case 'started':
         return Response.json(launch.session, { status: HTTP_STATUS.CREATED, headers: NO_STORE_HEADERS });
       case 'running':
-        return plainResponse(HTTP_STATUS.CONFLICT, `A dashboard-owned ${ROLE_WORDS[role]} of this project already runs`);
+        return plainResponse(HTTP_STATUS.CONFLICT, maximumLiveSessions === 1
+          ? `A dashboard-owned ${ROLE_WORDS[role]} of this project already runs`
+          : `This project already runs ${maximumLiveSessions} dashboard-owned ${ROLE_WORDS[role]}s, the most it may at once`);
       case 'refused':
         return plainResponse(HTTP_STATUS.CONFLICT, launch.reason);
       case 'failed':
@@ -920,13 +1002,16 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     }
   }
 
-  async function sessionStopResponse(request: Request, encodedTrackerId: string, role: SessionRole): Promise<Response> {
+  async function sessionStopResponse(request: Request, encodedTrackerId: string, role: SessionRole, encodedSessionId: string | null = null): Promise<Response> {
     if (!carriesLaunchGrant(request)) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden');
     await monitorStarted;
     const trackerId = decodedOrNull(encodedTrackerId);
     const root = trackerId === null ? null : monitor.rootOf(trackerId);
-    if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
-    const delivery = await sessionsByRole[role].stop(trackerId);
+    const routeSessionId = routeSessionIdOf(encodedSessionId);
+    if (trackerId === null || root === null || routeSessionId === undefined) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
+    const addressed = addressedSessionOf(role, trackerId, routeSessionId);
+    if (addressed.kind === 'refused') return addressed.response;
+    const delivery = await sessionsByRole[role].stop(trackerId, addressed.session.sessionId);
     if (delivery.kind === 'none') return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText(role));
     if (delivery.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, delivery.reason);
     return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
@@ -943,15 +1028,16 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     const root = trackerId === null ? null : monitor.rootOf(trackerId);
     if (trackerId === null || root === null) return plainResponse(HTTP_STATUS.NOT_FOUND, 'Not found');
     const sessions = sessionsByRole[role];
-    const session = sessions.sessionOf(trackerId);
-    if (session === null) return plainResponse(HTTP_STATUS.NOT_FOUND, noSessionRunsText(role));
+    const addressed = addressedSessionOf(role, trackerId, null);
+    if (addressed.kind === 'refused') return addressed.response;
+    const { session } = addressed;
     if (session.state === 'ended') return plainResponse(HTTP_STATUS.CONFLICT, sessionEndedText(role));
     if (options.claudeExecutable === null) return plainResponse(HTTP_STATUS.BAD_GATEWAY, 'claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path');
-    const openingKey = `${role}:${trackerId}`;
+    const openingKey = `${role}:${session.sessionId}`;
     if (sessionsBeingOpenedInApp.has(openingKey)) return plainResponse(HTTP_STATUS.CONFLICT, `This ${ROLE_WORDS[role]} is already being opened in the Claude app`);
     sessionsBeingOpenedInApp.add(openingKey);
     try {
-      const end = await sessions.stopAndAwaitEnd(trackerId, DASHBOARD_LIMITS.HANDOFF_END_TIMEOUT_MILLISECONDS);
+      const end = await sessions.stopAndAwaitEnd(trackerId, DASHBOARD_LIMITS.HANDOFF_END_TIMEOUT_MILLISECONDS, session.sessionId);
       if (end.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, end.reason);
       const opening = await openInClaudeDesktop({
         claudeExecutable:    options.claudeExecutable,
@@ -960,7 +1046,7 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
         timeoutMilliseconds: DASHBOARD_LIMITS.DESKTOP_OPEN_TIMEOUT_MILLISECONDS,
       });
       if (opening.kind === 'failed') return plainResponse(HTTP_STATUS.BAD_GATEWAY, opening.reason);
-      sessions.forgetEnded(trackerId);
+      sessions.forgetEnded(trackerId, session.sessionId);
       return new Response(null, { status: HTTP_STATUS.NO_CONTENT, headers: NO_STORE_HEADERS });
     } finally {
       sessionsBeingOpenedInApp.delete(openingKey);
@@ -1078,6 +1164,27 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     return pageFileResponse(pathname);
   }
 
+  /** The routes naming a product owner by its session id, or null for any other path; asked after every id-less product-owner route. */
+  function productOwnerSessionRouteResponse(request: Request, servingServer: Bun.Server<undefined>, pathname: string): Promise<Response> | Response | null {
+    const messagesMatch = PRODUCT_OWNER_SESSION_MESSAGES_ROUTE_PATTERN.exec(pathname);
+    if (messagesMatch?.[1] !== undefined && messagesMatch[2] !== undefined) {
+      return request.method === 'POST' ? productOwnerChatResponse(request, messagesMatch[1], messagesMatch[2]) : methodNotAllowed('POST');
+    }
+    const answersMatch = PRODUCT_OWNER_SESSION_ANSWERS_ROUTE_PATTERN.exec(pathname);
+    if (answersMatch?.[1] !== undefined && answersMatch[2] !== undefined) {
+      return request.method === 'POST' ? sessionAnswerResponse(request, answersMatch[1], 'product-owner', answersMatch[2]) : methodNotAllowed('POST');
+    }
+    const eventsMatch = PRODUCT_OWNER_SESSION_EVENTS_ROUTE_PATTERN.exec(pathname);
+    if (eventsMatch?.[1] !== undefined && eventsMatch[2] !== undefined) {
+      return request.method === 'GET' ? sessionEventsResponse(request, servingServer, eventsMatch[1], 'product-owner', eventsMatch[2]) : methodNotAllowed('GET');
+    }
+    const sessionMatch = PRODUCT_OWNER_SESSION_ROUTE_PATTERN.exec(pathname);
+    if (sessionMatch?.[1] !== undefined && sessionMatch[2] !== undefined) {
+      return request.method === 'DELETE' ? sessionStopResponse(request, sessionMatch[1], 'product-owner', sessionMatch[2]) : methodNotAllowed('DELETE');
+    }
+    return null;
+  }
+
   async function answer(request: Request, servingServer: Bun.Server<undefined>): Promise<Response> {
     if (!allowedHosts.has(request.headers.get('Host') ?? '')) return plainResponse(HTTP_STATUS.FORBIDDEN, 'Forbidden host');
     const { pathname, searchParams } = new URL(request.url);
@@ -1132,6 +1239,8 @@ export async function serveDashboard(options: DashboardServerOptions, dependenci
     if (productOwnerEventsRouteMatch?.[1] !== undefined) {
       return request.method === 'GET' ? sessionEventsResponse(request, servingServer, productOwnerEventsRouteMatch[1], 'product-owner') : methodNotAllowed('GET');
     }
+    const productOwnerSessionResponse = productOwnerSessionRouteResponse(request, servingServer, pathname);
+    if (productOwnerSessionResponse !== null) return productOwnerSessionResponse;
     const orchestratorMessagesRouteMatch = ORCHESTRATOR_MESSAGES_ROUTE_PATTERN.exec(pathname);
     if (orchestratorMessagesRouteMatch?.[1] !== undefined) {
       return request.method === 'POST' ? orchestratorChatResponse(request, orchestratorMessagesRouteMatch[1]) : methodNotAllowed('POST');

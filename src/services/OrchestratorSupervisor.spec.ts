@@ -87,6 +87,8 @@ async function startBusySession(behaviour: FakeSessionBehaviour, stopGraceMillis
     trackerId:        TRACKER_ID,
     role:             'orchestrator',
     productOwnerMode: null,
+    launchId:         null,
+    topic:            null,
     root:             home,
     claudeExecutable: writeFakeSession(home, transcriptPath, behaviour),
     orchestratorDirectory,

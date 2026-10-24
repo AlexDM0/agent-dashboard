@@ -1,6 +1,7 @@
 /**
  * Where a project's dashboard-owned session of a role keeps its record, socket, history and log, named by a hash of the
- * role and the tracker id, so the name stays as short as the socket path needs whatever the role.
+ * role, the tracker id and, for a role a project runs several of, the launch id, so the name stays as short as the
+ * socket path needs.
  */
 import { createHash } from 'node:crypto';
 import { join }       from 'node:path';
@@ -19,8 +20,10 @@ export function orchestratorDirectoryOf(homeDirectory: string): string {
   return join(homeDirectory, DASHBOARD_FILES.REGISTRY_DIRECTORY_NAME, DASHBOARD_FILES.DASHBOARD_DIRECTORY_NAME, DASHBOARD_FILES.ORCHESTRATORS_DIRECTORY_NAME);
 }
 
-export function orchestratorFilePathsOf(orchestratorDirectory: string, trackerId: string, role: SessionRole): OrchestratorFilePaths {
-  const key = createHash('sha256').update(`${role}\n${trackerId}`).digest('hex').slice(0, DASHBOARD_FILES.ORCHESTRATOR_KEY_HEX_DIGITS);
+/** A null `launchId` gives the one name of the role and tracker, which a supervisor started before launch ids also used. */
+export function orchestratorFilePathsOf(orchestratorDirectory: string, trackerId: string, role: SessionRole, launchId: string | null = null): OrchestratorFilePaths {
+  const keyText = launchId === null ? `${role}\n${trackerId}` : `${role}\n${trackerId}\n${launchId}`;
+  const key = createHash('sha256').update(keyText).digest('hex').slice(0, DASHBOARD_FILES.ORCHESTRATOR_KEY_HEX_DIGITS);
   return {
     recordPath:  join(orchestratorDirectory, `${key}${DASHBOARD_FILES.ORCHESTRATOR_RECORD_SUFFIX}`),
     socketPath:  join(orchestratorDirectory, `${key}${DASHBOARD_FILES.ORCHESTRATOR_SOCKET_SUFFIX}`),

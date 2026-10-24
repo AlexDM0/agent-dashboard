@@ -92,6 +92,8 @@ export interface OrchestratorSession {
   previousSessionId: string | null;
   /** The mode a dashboard-owned product owner was started in; null for any other session and for one whose record has none. */
   productOwnerMode:  ProductOwnerMode | null;
+  /** The question a product owner researches or the feature it files for, as its start named it; null for none and any other session. */
+  topic:             string | null;
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
@@ -103,7 +105,7 @@ export interface ToolCall { callId: string; toolName: string; inputSummary: stri
  */
 export interface ChatMessage { at: string; role: ChatRole; text: string; toolCall?: ToolCall }
 
-/** What a dashboard-owned session is briefed as; a project runs at most one live session per role. */
+/** What a dashboard-owned session is briefed as; a project runs at most one live orchestrator and a few live product owners. */
 export type SessionRole = 'orchestrator' | 'product-owner';
 
 /** A conversation the page's one event stream carries, asked for as `?<role>=<trackerId>` on `GET /api/events`. */
@@ -121,8 +123,8 @@ export interface OrchestratorStartRequest { startBuilding: boolean }
 /** `spar` files nothing until the user says "wrap up"; `file` files tickets as they are agreed. */
 export type ProductOwnerMode = 'spar' | 'file';
 
-/** The body of `POST /api/projects/<trackerId>/product-owner`. */
-export interface ProductOwnerStartRequest { mode: ProductOwnerMode }
+/** The body of `POST /api/projects/<trackerId>/product-owner`; a topic is 1 to 120 characters after trimming. */
+export interface ProductOwnerStartRequest { mode: ProductOwnerMode; topic?: string }
 
 /**
  * The body of `POST /api/projects/<trackerId>/orchestrator/messages`: 1 to 20000 characters after trimming, to the
@@ -153,8 +155,13 @@ export interface ProjectSnapshot {
   health:        ProjectHealth;
   /** The dashboard-owned orchestrator session of the project, live or ended since this server started; null for none. */
   orchestrator:  OrchestratorSession | null;
-  /** The dashboard-owned product-owner session of the project, live or ended since this server started; null for none. */
+  /**
+   * @deprecated `productOwners`' first live entry, else its newest ended one, else null; kept until the web reads
+   * `productOwners`.
+   */
   productOwner:  OrchestratorSession | null;
+  /** Every dashboard-owned product owner of the project, live or ended since this server started: live first, then newest start first. */
+  productOwners: OrchestratorSession[];
 }
 
 export type RegistryHealth =

@@ -24,6 +24,8 @@ export interface OrchestratorRecord {
   /** The `claude_code_version` of the session's `init` line, null until that line arrived. */
   claudeCodeVersion: string | null;
   startedAt:         string;
+  /** The product owner's topic; read as null from a record without one, as an orchestrator's and an older one's are. */
+  topic:             string | null;
 }
 
 export type OrchestratorRecordReading =
@@ -45,6 +47,8 @@ export function orchestratorRecordOf(value: unknown): OrchestratorRecord | null 
   if (!SESSION_ROLES.some((sessionRole) => sessionRole === role)) return null;
   const productOwnerMode = value['productOwnerMode'] ?? null;
   if (productOwnerMode !== null && !PRODUCT_OWNER_MODES.some((mode) => mode === productOwnerMode)) return null;
+  const topic = value['topic'] ?? null;
+  if (topic !== null && typeof topic !== 'string') return null;
   return {
     trackerId:        value['trackerId'] as string,
     role:             role as SessionRole,
@@ -56,6 +60,7 @@ export function orchestratorRecordOf(value: unknown): OrchestratorRecord | null 
     socketPath:       value['socketPath'] as string,
     claudeCodeVersion,
     startedAt:        value['startedAt'] as string,
+    topic,
   };
 }
 

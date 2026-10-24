@@ -1164,6 +1164,7 @@ test('Open in Claude app with no claude executable is 502 naming that, and the l
     lastAction:        null,
     previousSessionId: null,
     productOwnerMode:  null,
+    topic:             null,
   };
   const ownedServer = startedOrThrow(await serveDashboard(ownedOptions, {
     monitor: createProjectMonitor({
@@ -1329,6 +1330,7 @@ test('the snapshot lists only the live sessions holding the run as watched, with
         lastAction:        null,
         previousSessionId: null,
         productOwnerMode:  null,
+        topic:             null,
       },
       {
         ownership:         'watched',
@@ -1342,6 +1344,7 @@ test('the snapshot lists only the live sessions holding the run as watched, with
         lastAction:        null,
         previousSessionId: null,
         productOwnerMode:  null,
+        topic:             null,
       },
     ],
   });

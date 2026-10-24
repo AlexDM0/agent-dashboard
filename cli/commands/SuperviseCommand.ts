@@ -5,16 +5,26 @@ import { DASHBOARD_LIMITS }                   from '../../src/shared/constants/D
 import type { CommandContext }                from '../CommandContext.ts';
 import { CommandRefusal }                     from '../CommandRefusal.ts';
 
+export interface SupervisedSessionRequest {
+  trackerId:        string;
+  root:             string;
+  role:             SessionRole;
+  productOwnerMode: ProductOwnerMode | null;
+  launchId:         string | null;
+  topic:            string | null;
+}
+
 /** Run by the server alone, detached with its output to the supervisor's log; it returns when the session has ended. */
-export async function superviseCommand(
-  trackerId: string, root: string, role: SessionRole, productOwnerMode: ProductOwnerMode | null, context: CommandContext
-): Promise<void> {
+export async function superviseCommand(request: SupervisedSessionRequest, context: CommandContext): Promise<void> {
   if (context.claudeExecutable === null) throw new CommandRefusal('claude is not on PATH; set AGENT_DASHBOARD_CLAUDE to its path, or rerun setup.sh.');
+  const { trackerId, role } = request;
   const end = await superviseOrchestrator({
     trackerId,
     role,
-    productOwnerMode,
-    root,
+    productOwnerMode:      request.productOwnerMode,
+    launchId:              request.launchId,
+    topic:                 request.topic,
+    root:                  request.root,
     claudeExecutable:      context.claudeExecutable,
     orchestratorDirectory: orchestratorDirectoryOf(context.homeDirectory),
     supervisorPid:         context.processId,

@@ -35,7 +35,7 @@ export interface ProjectMonitorOptions {
 export type MonitoredSnapshot = Omit<DashboardSnapshot, 'boardOrigin' | 'boardBridgeUrl' | 'projects' | 'watchedOrchestratorsByTracker'> & { projects: MonitoredProjectSnapshot[] };
 
 /** A project before the server adds its dashboard-owned sessions, which the monitor does not hold. */
-export type MonitoredProjectSnapshot = Omit<ProjectSnapshot, 'orchestrator' | 'productOwner'>;
+export type MonitoredProjectSnapshot = Omit<ProjectSnapshot, 'orchestrator' | 'productOwner' | 'productOwners'>;
 
 export type SnapshotListener = (snapshot: MonitoredSnapshot) => void;
 

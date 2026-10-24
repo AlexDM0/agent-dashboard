@@ -7,9 +7,12 @@
  * Over a real supervisor and the fake `claude`, the served snapshot carries the session's last action (the newest reply's
  * tool call line, the start turn's first), and a question's context: the board's run id at asking (null for none), the
  * ticket ids of the question text first, then of the assistant messages before it oldest first, and the last line said.
- * A product owner starts beside a live orchestrator, one per project, briefed by its first message for its mode; with
- * both live, nothing sent to the product owner reaches the orchestrator. A record under the file name used before roles
- * is recovered as the orchestrator's, so a server upgraded mid-run still finds a live one.
+ * A product owner starts beside a live orchestrator, briefed by its first message for its mode and topic; with both
+ * live, nothing sent to the product owner reaches the orchestrator. Up to four product owners live in one project at
+ * once, a fifth start refused: each takes only what its session id route names, the id-less routes refuse while several
+ * live, and one stopping leaves the others live; the snapshot's `productOwner` is `productOwners`' first live entry,
+ * else its newest ended one. A record under the file name used before roles is recovered as the orchestrator's, and a
+ * product owner's under #042's role-and-tracker name as the product owner's, so a server upgraded mid-run still finds them.
  * Open in Claude app ends the session before `claude --desktop --resume <id>` starts, under a terminal, in the project
  * root, and the app's session record is then watched rather than shadowed by the ended owned one; it refuses without
  * the launch token and without a live owned session, starting nothing.
@@ -144,18 +147,24 @@ function startFakeSupervisor(socketPath: string, record: Record<string, unknown>
   });
 }
 
-async function startFixture(recordNaming: 'role-qualified' | 'before-roles' = 'role-qualified'): Promise<Fixture> {
+/** `product-owner-before-launch-ids`: a product owner's record under the role-and-tracker name #042 gave the project's one. */
+type RecordNaming = 'role-qualified' | 'before-roles' | 'product-owner-before-launch-ids';
+
+function filePathsOfNaming(orchestratorDirectory: string, recordNaming: RecordNaming): { recordPath: string; socketPath: string } {
+  if (recordNaming === 'before-roles') return filePathsBeforeRolesOf(orchestratorDirectory, TRACKER_ID);
+  return orchestratorFilePathsOf(orchestratorDirectory, TRACKER_ID, recordNaming === 'role-qualified' ? 'orchestrator' : 'product-owner');
+}
+
+async function startFixture(recordNaming: RecordNaming = 'role-qualified'): Promise<Fixture> {
   const home = createShortScratchDirectory('as');
   const projectRoot = createExampleProjectRoot(home, 'example-storefront');
   writeExampleRegistry(home, { [TRACKER_ID]: exampleRegistryEntry(projectRoot, 'example-storefront') });
   const orchestratorDirectory = orchestratorDirectoryOf(home);
   mkdirSync(orchestratorDirectory, { recursive: true });
-  const paths = recordNaming === 'role-qualified'
-    ? orchestratorFilePathsOf(orchestratorDirectory, TRACKER_ID, 'orchestrator')
-    : filePathsBeforeRolesOf(orchestratorDirectory, TRACKER_ID);
+  const paths = filePathsOfNaming(orchestratorDirectory, recordNaming);
   const record: OrchestratorRecord = {
     trackerId:         TRACKER_ID,
-    role:              'orchestrator',
+    role:              recordNaming === 'product-owner-before-launch-ids' ? 'product-owner' : 'orchestrator',
     productOwnerMode:  null,
     root:              projectRoot,
     supervisorPid:     process.pid,
@@ -164,9 +173,11 @@ async function startFixture(recordNaming: 'role-qualified' | 'before-roles' = 'r
     socketPath:        paths.socketPath,
     claudeCodeVersion: null,
     startedAt:         EXAMPLE_INSTANT.toISOString(),
+    topic:             null,
   };
-  const recordWithoutRole = Object.fromEntries(Object.entries(record).filter(([field]) => field !== 'role'));
-  const writtenRecord: Record<string, unknown> = recordNaming === 'role-qualified' ? { ...record } : recordWithoutRole;
+  const recordWithoutRole = Object.fromEntries(Object.entries(record).filter(([field]) => field !== 'role' && field !== 'topic'));
+  const recordWithoutTopic = Object.fromEntries(Object.entries(record).filter(([field]) => field !== 'topic'));
+  const writtenRecord: Record<string, unknown> = recordNaming === 'before-roles' ? recordWithoutRole : recordWithoutTopic;
   const supervisor = await startFakeSupervisor(paths.socketPath, writtenRecord);
   writeFileSync(paths.recordPath, JSON.stringify(writtenRecord));
   const sessionOptions = {
@@ -177,8 +188,9 @@ async function startFixture(recordNaming: 'role-qualified' | 'before-roles' = 'r
     reconnectMilliseconds:    RECONNECT_MILLISECONDS,
     supervisorEnvironment:    {},
   };
-  const sessions = createOrchestratorSessions({ role: 'orchestrator', ...sessionOptions });
-  const productOwnerSessions = createOrchestratorSessions({ role: 'product-owner', ...sessionOptions });
+  const sessions = createOrchestratorSessions({ role: 'orchestrator', maximumLiveSessionsPerProject: 1, ...sessionOptions });
+  const maximumLiveSessionsPerProject = DASHBOARD_LIMITS.MAXIMUM_LIVE_PRODUCT_OWNERS_PER_PROJECT;
+  const productOwnerSessions = createOrchestratorSessions({ role: 'product-owner', maximumLiveSessionsPerProject, ...sessionOptions });
   const options = {
     port:                      0,
     homeDirectory:             home,
@@ -224,7 +236,8 @@ async function startFixture(recordNaming: 'role-qualified' | 'before-roles' = 'r
     }),
   };
   fixtures.push(fixture);
-  await waitUntil(() => sessions.sessionOf(TRACKER_ID)?.state === 'waiting-for-answer', 'the session showed the pending question');
+  const recoveredSessions = recordNaming === 'product-owner-before-launch-ids' ? productOwnerSessions : sessions;
+  await waitUntil(() => recoveredSessions.sessionOf(TRACKER_ID)?.state === 'waiting-for-answer', 'the session showed the pending question');
   return fixture;
 }
 
@@ -345,7 +358,9 @@ async function startLiveSessionFixture(dispatcherRunId: string | null): Promise<
 /** Stops the session and the server, and kills whatever a failed case left running before the scratch home goes. */
 async function stopLiveSessionFixture(fixture: LiveSessionFixture): Promise<void> {
   await fetch(liveProjectPath(fixture, DASHBOARD_PROTOCOL.ORCHESTRATOR_PATH_SUFFIX), { method: 'DELETE', headers: liveLaunchHeaders(fixture) });
-  await fetch(liveProjectPath(fixture, DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX), { method: 'DELETE', headers: liveLaunchHeaders(fixture) });
+  for (const productOwner of fixture.productOwnerSessions.sessionsOf(TRACKER_ID)) {
+    await fetch(productOwnerSessionPath(fixture, productOwner.sessionId), { method: 'DELETE', headers: liveLaunchHeaders(fixture) });
+  }
   await fixture.server.stop();
   for (const reading of readOrchestratorRecords(orchestratorDirectoryOf(fixture.home))) {
     if (reading.kind !== 'present') continue;
@@ -359,6 +374,11 @@ async function stopLiveSessionFixture(fixture: LiveSessionFixture): Promise<void
 
 function liveProjectPath(fixture: LiveSessionFixture, suffix: string): string {
   return `${fixture.server.url}${DASHBOARD_PROTOCOL.PROJECTS_API_PATH}/${TRACKER_ID}${suffix}`;
+}
+
+/** `<PRODUCT_OWNER_PATH_SUFFIX>/<sessionId>` and the suffix after it, on the project. */
+function productOwnerSessionPath(fixture: LiveSessionFixture, sessionId: string, suffix = ''): string {
+  return liveProjectPath(fixture, `${DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX}/${sessionId}${suffix}`);
 }
 
 function liveLaunchHeaders(fixture: LiveSessionFixture): Record<string, string> {
@@ -462,6 +482,18 @@ test('a record under the file name used before roles is recovered on server star
   const [project] = (await (await fetch(`${server.url}/api/snapshot`)).json() as DashboardSnapshot).projects;
   expect(project?.orchestrator?.sessionId).toBe('example-session');
   expect(project?.productOwner).toBeNull();
+  expect(project?.productOwners).toEqual([]);
+});
+
+test('a product owner\'s record under #042\'s role-and-tracker name is recovered on server start as the project\'s product owner', async () => {
+  const { server, sessions, productOwnerSessions } = await startFixture('product-owner-before-launch-ids');
+  expect(productOwnerSessions.sessionOf(TRACKER_ID)?.sessionId).toBe('example-session');
+  expect(productOwnerSessions.sessionOf(TRACKER_ID, 'example-session')?.topic).toBeNull();
+  expect(sessions.sessionOf(TRACKER_ID)).toBeNull();
+  const [project] = (await (await fetch(`${server.url}/api/snapshot`)).json() as DashboardSnapshot).projects;
+  expect(project?.orchestrator).toBeNull();
+  expect(project?.productOwners.map((productOwner) => productOwner.sessionId)).toEqual(['example-session']);
+  expect(project?.productOwner?.sessionId).toBe('example-session');
 });
 
 async function servedProductOwnerWhen(fixture: LiveSessionFixture, description: string, condition: (session: OrchestratorSession) => boolean): Promise<OrchestratorSession> {
@@ -477,7 +509,8 @@ async function servedProductOwnerWhen(fixture: LiveSessionFixture, description: 
 /** The text of every user line the fake `claude` with this pid read, in order. */
 function userTextsReadBy(fixture: LiveSessionFixture, sessionPid: number): string[] {
   return readFakeClaudeTranscript(fixture.home).flatMap((entry) => {
-    if (entry.event !== 'stdin' || entry.pid !== sessionPid) return [];
+    // A stopped session's stdin ends with an empty line as it closes.
+    if (entry.event !== 'stdin' || entry.pid !== sessionPid || entry.line.trim() === '') return [];
     const line = JSON.parse(entry.line) as { type?: string; message?: { content?: unknown } };
     return line.type === 'user' ? [String(line.message?.content ?? '')] : [];
   });
@@ -512,17 +545,124 @@ async function startBothRoles(fixture: LiveSessionFixture): Promise<{ orchestrat
   return { orchestrator, productOwner };
 }
 
-test('a product owner starts beside a live orchestrator with 201, a second start while it lives is 409, and a bad body is 400', async () => {
+async function startedProductOwner(fixture: LiveSessionFixture, start: { mode: 'spar' | 'file'; topic?: string }): Promise<OrchestratorSession> {
+  const response = await startProductOwner(fixture, JSON.stringify(start));
+  expect(response.status).toBe(201);
+  const started = await response.json() as OrchestratorSession;
+  const repliedToBrief = (): boolean => {
+    const session = fixture.productOwnerSessions.sessionOf(TRACKER_ID, started.sessionId);
+    return session?.state === 'idle' && session.lastAction !== null;
+  };
+  await waitUntil(repliedToBrief, `the product owner on ${start.topic ?? 'no topic'} replied to its brief`);
+  return started;
+}
+
+function productOwnerTookAnswer(fixture: LiveSessionFixture, sessionId: string): boolean {
+  return fixture.productOwnerSessions.conversationOf(TRACKER_ID, sessionId).some((message) => message.text.startsWith(FAKE_ANSWERED_PREFIX));
+}
+
+test('two product owners with topics both start with 201 and list live with their topics, briefed on them; a fifth live start is 409 naming the cap', async () => {
+  const fixture = await startLiveSessionFixture(null);
+  try {
+    expect((await servedSnapshotOf(fixture)).projects[0]?.productOwners).toEqual([]);
+    const stepper = await startedProductOwner(fixture, { mode: 'spar', topic: 'Stepper overflow' });
+    const roles = await startedProductOwner(fixture, { mode: 'file', topic: '  Roles stage ' });
+    expect([stepper.topic, roles.topic]).toEqual(['Stepper overflow', 'Roles stage']);
+    const [project] = (await servedSnapshotOf(fixture)).projects;
+    const listed = project?.productOwners.map((productOwner) => [productOwner.sessionId, productOwner.state, productOwner.topic]);
+    expect(listed).toEqual([[roles.sessionId, 'idle', 'Roles stage'], [stepper.sessionId, 'idle', 'Stepper overflow']]);
+    expect(userTextsReadBy(fixture, stepper.pid)).toEqual([productOwnerBriefTextOf('example-storefront', 'spar', 'Stepper overflow')]);
+    expect(userTextsReadBy(fixture, roles.pid)).toEqual([productOwnerBriefTextOf('example-storefront', 'file', 'Roles stage')]);
+
+    await startedProductOwner(fixture, { mode: 'spar' });
+    await startedProductOwner(fixture, { mode: 'file' });
+    const fifthStart = await startProductOwner(fixture, '{"mode":"spar","topic":"One too many"}');
+    expect(fifthStart.status).toBe(409);
+    const cap = DASHBOARD_LIMITS.MAXIMUM_LIVE_PRODUCT_OWNERS_PER_PROJECT;
+    expect(await fifthStart.text()).toBe(`This project already runs ${cap} dashboard-owned product owners, the most it may at once`);
+    expect(fixture.productOwnerSessions.sessionsOf(TRACKER_ID)).toHaveLength(DASHBOARD_LIMITS.MAXIMUM_LIVE_PRODUCT_OWNERS_PER_PROJECT);
+  } finally {
+    await stopLiveSessionFixture(fixture);
+  }
+}, LIVE_SESSION_SPEC_TIMEOUT_MILLISECONDS);
+
+test('of two live product owners, each takes only the messages and answers its session id route names, the id-less route is 409, and a stop leaves the other live', async () => {
+  const fixture = await startLiveSessionFixture(null);
+  try {
+    const sessionA = await startedProductOwner(fixture, { mode: 'spar', topic: 'Stepper overflow' });
+    const sessionB = await startedProductOwner(fixture, { mode: 'file', topic: 'Roles stage' });
+    const idLessChat = await chatWithProductOwner(fixture, { text: 'To whom?' });
+    expect(idLessChat.status).toBe(409);
+    expect(await idLessChat.text()).toBe('2 dashboard-owned product owners of this project run; address one by its session id');
+
+    const messagesOf = (session: OrchestratorSession): string => productOwnerSessionPath(fixture, session.sessionId, DASHBOARD_PROTOCOL.SESSION_MESSAGES_PATH_SUFFIX);
+    const answersOf = (session: OrchestratorSession): string => productOwnerSessionPath(fixture, session.sessionId, DASHBOARD_PROTOCOL.SESSION_ANSWERS_PATH_SUFFIX);
+    const post = (path: string, body: unknown): Promise<Response> => fetch(path, { method: 'POST', headers: liveLaunchHeaders(fixture), body: JSON.stringify(body) });
+    expect((await post(messagesOf(sessionA), { text: 'For A only' })).status).toBe(204);
+    const conversationOfA = (): ChatMessage[] => fixture.productOwnerSessions.conversationOf(TRACKER_ID, sessionA.sessionId);
+    await waitUntil(() => conversationOfA().some((message) => message.text === `${FAKE_REPLY_PREFIX}For A only`), 'A replied');
+    expect((await post(messagesOf(sessionB), { text: FAKE_ASK_MARKER })).status).toBe(204);
+    await waitUntil(() => (fixture.productOwnerSessions.sessionOf(TRACKER_ID, sessionB.sessionId)?.pendingQuestions.length ?? 0) > 0, 'B asked');
+    const answerBody = { requestId: FAKE_QUESTION_REQUEST_ID, answers: { [FAKE_QUESTION.question]: 'Red' } };
+    expect((await post(answersOf(sessionA), answerBody)).status).toBe(409);
+    expect((await post(answersOf(sessionB), answerBody)).status).toBe(204);
+    await waitUntil(() => productOwnerTookAnswer(fixture, sessionB.sessionId), 'B took the answer');
+    expect(productOwnerTookAnswer(fixture, sessionA.sessionId)).toBe(false);
+    expect(userTextsReadBy(fixture, sessionA.pid)).toEqual([productOwnerBriefTextOf('example-storefront', 'spar', 'Stepper overflow'), 'For A only']);
+    expect(userTextsReadBy(fixture, sessionB.pid)).toEqual([productOwnerBriefTextOf('example-storefront', 'file', 'Roles stage'), FAKE_ASK_MARKER]);
+    const unknownSession = await post(productOwnerSessionPath(fixture, 'example-unknown-session', DASHBOARD_PROTOCOL.SESSION_MESSAGES_PATH_SUFFIX), { text: 'Example' });
+    expect(unknownSession.status).toBe(404);
+
+    const eventsPathOfB = productOwnerSessionPath(fixture, sessionB.sessionId, DASHBOARD_PROTOCOL.SESSION_EVENTS_PATH_SUFFIX);
+    const eventsOfB = await firstEventsOf(await fetch(eventsPathOfB, { headers: { Origin: fixture.server.url } }));
+    expect((eventsOfB.session as OrchestratorSession).sessionId).toBe(sessionB.sessionId);
+    expect((eventsOfB.history as ChatMessage[]).map((message) => message.text)).not.toContain(`${FAKE_REPLY_PREFIX}For A only`);
+
+    const stopA = await fetch(productOwnerSessionPath(fixture, sessionA.sessionId), { method: 'DELETE', headers: liveLaunchHeaders(fixture) });
+    expect(stopA.status).toBe(204);
+    await waitUntil(() => fixture.productOwnerSessions.sessionOf(TRACKER_ID, sessionA.sessionId)?.state === 'ended', 'A ended');
+    expect(fixture.productOwnerSessions.isLive(TRACKER_ID, sessionB.sessionId)).toBe(true);
+    expect((await chatWithProductOwner(fixture, { text: 'Now for the one live' })).status).toBe(204);
+    await waitUntil(() => userTextsReadBy(fixture, sessionB.pid).includes('Now for the one live'), 'B read the id-less message');
+    expect(userTextsReadBy(fixture, sessionA.pid)).not.toContain('Now for the one live');
+  } finally {
+    await stopLiveSessionFixture(fixture);
+  }
+}, LIVE_SESSION_SPEC_TIMEOUT_MILLISECONDS);
+
+test('the served productOwner is productOwners\' first live entry, else its newest ended one, else null', async () => {
+  const fixture = await startLiveSessionFixture(null);
+  try {
+    const servedProject = async (): Promise<DashboardSnapshot['projects'][number] | undefined> => (await servedSnapshotOf(fixture)).projects[0];
+    expect((await servedProject())?.productOwner).toBeNull();
+    const first = await startedProductOwner(fixture, { mode: 'spar', topic: 'Stepper overflow' });
+    const second = await startedProductOwner(fixture, { mode: 'spar', topic: 'Roles stage' });
+    const stopAndAwaitEnded = async (session: OrchestratorSession): Promise<void> => {
+      expect((await fetch(productOwnerSessionPath(fixture, session.sessionId), { method: 'DELETE', headers: liveLaunchHeaders(fixture) })).status).toBe(204);
+      await waitUntil(() => fixture.productOwnerSessions.sessionOf(TRACKER_ID, session.sessionId)?.state === 'ended', `${session.topic ?? ''} ended`);
+    };
+    await stopAndAwaitEnded(second);
+    const withOneLive = await servedProject();
+    expect(withOneLive?.productOwners.map((productOwner) => [productOwner.sessionId, productOwner.state])).toEqual([[first.sessionId, 'idle'], [second.sessionId, 'ended']]);
+    expect(withOneLive?.productOwner).toEqual(withOneLive?.productOwners[0] ?? null);
+    await stopAndAwaitEnded(first);
+    const withNoneLive = await servedProject();
+    expect(withNoneLive?.productOwners.map((productOwner) => productOwner.sessionId)).toEqual([second.sessionId, first.sessionId]);
+    expect(withNoneLive?.productOwner?.sessionId).toBe(second.sessionId);
+  } finally {
+    await stopLiveSessionFixture(fixture);
+  }
+}, LIVE_SESSION_SPEC_TIMEOUT_MILLISECONDS);
+
+test('a product owner starts beside a live orchestrator with 201, and a bad body is 400', async () => {
   const fixture = await startLiveSessionFixture(null);
   try {
     expect((await servedSnapshotOf(fixture)).projects[0]?.productOwner).toBeNull();
     const { orchestrator, productOwner } = await startBothRoles(fixture);
     expect(productOwner.sessionId).not.toBe(orchestrator.sessionId);
     expect(fixture.sessions.isLive(TRACKER_ID)).toBe(true);
-    const secondStart = await startProductOwner(fixture, '{"mode":"file"}');
-    expect(secondStart.status).toBe(409);
-    expect(await secondStart.text()).toBe('A dashboard-owned product owner of this project already runs');
     expect((await startProductOwner(fixture, '{"mode":"later"}')).status).toBe(400);
+    expect((await startProductOwner(fixture, '{"mode":"spar","topic":""}')).status).toBe(400);
     expect((await startProductOwner(fixture, '{"startBuilding":true}')).status).toBe(400);
     const headersWithoutToken = { 'Origin': fixture.server.url, 'Content-Type': 'application/json' };
     const productOwnerPath = liveProjectPath(fixture, DASHBOARD_PROTOCOL.PRODUCT_OWNER_PATH_SUFFIX);

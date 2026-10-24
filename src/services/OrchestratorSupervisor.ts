@@ -39,6 +39,10 @@ export interface OrchestratorSupervisorOptions {
   role:                  SessionRole;
   /** Written into the record for the server to show; null for an orchestrator. */
   productOwnerMode:      ProductOwnerMode | null;
+  /** Keys this session's files beside the project's other sessions of the role; null for the role's one session. */
+  launchId:              string | null;
+  /** Written into the record for the server to show; null for none. */
+  topic:                 string | null;
   root:                  string;
   claudeExecutable:      string;
   orchestratorDirectory: string;
@@ -91,7 +95,7 @@ function interruptRequestLineOf(requestId: string): string {
 
 /** Resolves when the session has ended; a refusal (socket path too long, the executable not starting) spawns or leaves nothing. */
 export async function superviseOrchestrator(options: OrchestratorSupervisorOptions): Promise<OrchestratorSupervisorEnd> {
-  const paths = orchestratorFilePathsOf(options.orchestratorDirectory, options.trackerId, options.role);
+  const paths = orchestratorFilePathsOf(options.orchestratorDirectory, options.trackerId, options.role, options.launchId);
   if (Buffer.byteLength(paths.socketPath) > DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES) {
     return { kind: 'refused', reason: `The socket path ${paths.socketPath} is longer than ${DASHBOARD_LIMITS.MAXIMUM_SOCKET_PATH_BYTES} bytes` };
   }
@@ -124,6 +128,7 @@ export async function superviseOrchestrator(options: OrchestratorSupervisorOptio
     socketPath:        paths.socketPath,
     claudeCodeVersion: null,
     startedAt:         options.clock().toISOString(),
+    topic:             options.topic,
   };
   const clients = new Set<Socket>();
   const heldQuestions = new Map<string, HeldQuestion>();

@@ -27,10 +27,17 @@ describe('commands', () => {
   test('supervise takes a tracker id, a root and a known role, and refuses a missing or unknown role', () => {
     expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'product-owner']))
       .toEqual({
-        kind: 'supervise', trackerId: 'example-tracker', root: '/example/root', role: 'product-owner', productOwnerMode: null
+        kind: 'supervise', trackerId: 'example-tracker', root: '/example/root', role: 'product-owner', productOwnerMode: null, launchId: null, topic: null
       });
     expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root']).kind).toBe('refused');
     expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'example-role']).kind).toBe('refused');
+  });
+
+  test('supervise takes a launch id and a topic after a product owner\'s mode, a topic that reads as a help word among them', () => {
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'product-owner', 'spar', 'example-launch', '-h'])).toEqual({
+      kind: 'supervise', trackerId: 'example-tracker', root: '/example/root', role: 'product-owner', productOwnerMode: 'spar', launchId: 'example-launch', topic: '-h'
+    });
+    expect(parsedCommandLineOf(['supervise', 'example-tracker', '/example/root', 'product-owner', 'spar', 'example-launch', '-h', 'extra']).kind).toBe('refused');
   });
 
   test('supervise takes a product owner\'s mode after its role, and refuses a mode for an orchestrator or an unknown mode', () => {

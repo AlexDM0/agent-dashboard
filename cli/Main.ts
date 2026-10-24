@@ -37,7 +37,7 @@ export async function runCommandLine(commandLineArguments: readonly string[], co
   try {
     if (parsed.kind === 'supervise') {
       const { superviseCommand } = await import('./commands/SuperviseCommand.ts');
-      await superviseCommand(parsed.trackerId, parsed.root, parsed.role, parsed.productOwnerMode, context);
+      await superviseCommand(parsed, context);
       return 0;
     }
     const runCommand = await COMMAND_LOADERS[parsed.command]();

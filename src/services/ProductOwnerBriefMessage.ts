@@ -3,8 +3,11 @@
  * never does, and in `spar` mode the wrap-up rule and the `spar-table` instruction. A session has no system prompt, so this message is the brief.
  */
 import type { ProductOwnerMode } from '../shared/DashboardContract.ts';
+import { UnknownValueUtil }      from '../shared/UnknownValueUtil.ts';
+import { DASHBOARD_LIMITS }      from '../shared/constants/DashboardLimits.ts';
 
-export const PRODUCT_OWNER_START_BODY_REFUSAL = 'The body must be { "mode": "spar" } or { "mode": "file" }';
+export const PRODUCT_OWNER_START_BODY_REFUSAL = 'The body must be { "mode": "spar" | "file" } or { "mode": "spar" | "file", "topic": <string> }, '
+  + `the topic 1 to ${DASHBOARD_LIMITS.MAXIMUM_PRODUCT_OWNER_TOPIC_CHARACTERS} characters trimmed`;
 
 /** The text the overlay's Wrap up button sends, and the words a sparring product owner files on. */
 export const PRODUCT_OWNER_WRAP_UP_TEXT = 'wrap up';
@@ -42,24 +45,41 @@ export const SPAR_TABLE_INSTRUCTION = [
     + 'reply that changes nothing. The table is display only: filing still happens through agent-po at wrap-up.',
 ].join('\n');
 
-const FILE_INSTRUCTION = 'File each ticket as soon as the user and you have agreed on it.';
+const FILE_INSTRUCTION = 'This is a filing session: file each ticket as soon as the user and you have agreed on it.';
 
-/** The mode a body asks for, or null when it is not JSON or is anything but `{ "mode": "spar" | "file" }`. */
-export function productOwnerModeOf(bodyText: string): ProductOwnerMode | null {
+const TOPIC_INSTRUCTION_BY_MODE: Record<ProductOwnerMode, (topic: string) => string> = {
+  spar: (topic) => `Your topic is the question you research with the user: "${topic}". Other product owners may run beside you on other topics.`,
+  file: (topic) => `Your topic is the feature you file tickets for: "${topic}". Other product owners may run beside you on other topics.`,
+};
+
+export interface ProductOwnerStart {
+  mode:  ProductOwnerMode;
+  /** Trimmed; null when the body names none. */
+  topic: string | null;
+}
+
+/** What a body asks for, or null when it is not JSON or is anything but `{ "mode": "spar" | "file", "topic"?: <string> }`. */
+export function productOwnerStartOf(bodyText: string): ProductOwnerStart | null {
   let body: unknown;
   try {
     body = JSON.parse(bodyText);
   } catch {
     return null;
   }
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== 'mode') return null;
-  const { mode } = body as Record<string, unknown>;
-  return mode === 'spar' || mode === 'file' ? mode : null;
+  if (!UnknownValueUtil.isJsonObject(body)) return null;
+  const keys = Object.keys(body).sort().join();
+  if (keys !== 'mode' && keys !== 'mode,topic') return null;
+  const { mode, topic } = body;
+  if (mode !== 'spar' && mode !== 'file') return null;
+  if (topic === undefined) return { mode, topic: null };
+  if (typeof topic !== 'string') return null;
+  const trimmedTopic = topic.trim();
+  const topicFits = trimmedTopic.length > 0 && trimmedTopic.length <= DASHBOARD_LIMITS.MAXIMUM_PRODUCT_OWNER_TOPIC_CHARACTERS;
+  return topicFits ? { mode, topic: trimmedTopic } : null;
 }
 
-export function productOwnerBriefTextOf(project: string, mode: ProductOwnerMode): string {
+export function productOwnerBriefTextOf(project: string, mode: ProductOwnerMode, topic: string | null = null): string {
   const modeInstruction = mode === 'spar' ? `${SPAR_INSTRUCTION}\n\n${SPAR_TABLE_INSTRUCTION}` : FILE_INSTRUCTION;
-  return `${PRODUCT_OWNER_SKILL_COMMAND}\nThe project is ${project}. ${ROLE_INSTRUCTION} ${PROHIBITIONS} ${modeInstruction}`;
+  const topicInstruction = topic === null ? '' : ` ${TOPIC_INSTRUCTION_BY_MODE[mode](topic)}`;
+  return `${PRODUCT_OWNER_SKILL_COMMAND}\nThe project is ${project}. ${ROLE_INSTRUCTION} ${PROHIBITIONS}${topicInstruction} ${modeInstruction}`;
 }

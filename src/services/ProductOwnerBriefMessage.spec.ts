@@ -1,8 +1,9 @@
 /**
  * The brief is the product owner's whole instruction, so each mode's text must name the skill and the prohibitions, and
  * only `spar` may carry the wrap-up rule and #043's `spar-table` paragraph, whose exact words the web's reader relies on;
- * the start body is exactly `{ "mode": ... }` with a known mode, anything else
- * refused rather than guessed.
+ * the start body is exactly `{ "mode": ... }` with a known mode and an optional topic of 1 to 120 characters trimmed,
+ * anything else refused rather than guessed. A topic names the question a sparring product owner researches or the
+ * feature a filing one files for, so several product owners of one project each know their own.
  */
 import { expect, test } from 'bun:test';
 
@@ -10,16 +11,40 @@ import {
   PRODUCT_OWNER_WRAP_UP_TEXT,
   SPAR_TABLE_INSTRUCTION,
   productOwnerBriefTextOf,
-  productOwnerModeOf,
+  productOwnerStartOf,
 } from './ProductOwnerBriefMessage.ts';
 
+const LONGEST_TOPIC_CHARACTERS = 120;
+
 test('a body naming spar or file is that mode, and any other body is null', () => {
-  expect(productOwnerModeOf('{"mode":"spar"}')).toBe('spar');
-  expect(productOwnerModeOf('{"mode":"file"}')).toBe('file');
-  expect(productOwnerModeOf('{"mode":"later"}')).toBeNull();
-  expect(productOwnerModeOf('{"mode":"spar","startBuilding":true}')).toBeNull();
-  expect(productOwnerModeOf('["spar"]')).toBeNull();
-  expect(productOwnerModeOf('not json')).toBeNull();
+  expect(productOwnerStartOf('{"mode":"spar"}')).toEqual({ mode: 'spar', topic: null });
+  expect(productOwnerStartOf('{"mode":"file"}')).toEqual({ mode: 'file', topic: null });
+  expect(productOwnerStartOf('{"mode":"later"}')).toBeNull();
+  expect(productOwnerStartOf('{"mode":"spar","startBuilding":true}')).toBeNull();
+  expect(productOwnerStartOf('["spar"]')).toBeNull();
+  expect(productOwnerStartOf('not json')).toBeNull();
+});
+
+test('a topic is taken trimmed from 1 to 120 characters, and an empty, overlong or non-text topic refuses the body', () => {
+  expect(productOwnerStartOf('{"mode":"spar","topic":"  Stepper overflow  "}')).toEqual({ mode: 'spar', topic: 'Stepper overflow' });
+  const longestTopic = 'x'.repeat(LONGEST_TOPIC_CHARACTERS);
+  expect(productOwnerStartOf(JSON.stringify({ mode: 'file', topic: longestTopic }))).toEqual({ mode: 'file', topic: longestTopic });
+  expect(productOwnerStartOf(JSON.stringify({ mode: 'file', topic: `${longestTopic}x` }))).toBeNull();
+  expect(productOwnerStartOf('{"mode":"spar","topic":"   "}')).toBeNull();
+  expect(productOwnerStartOf('{"mode":"spar","topic":7}')).toBeNull();
+  expect(productOwnerStartOf('{"mode":"spar","topic":"Example","extra":1}')).toBeNull();
+});
+
+test('a spar brief names its topic as the question researched, a file brief as the feature filed for, and a brief without one names none', () => {
+  const sparBrief = productOwnerBriefTextOf('example-storefront', 'spar', 'Stepper overflow');
+  expect(sparBrief).toContain('Your topic is the question you research with the user: "Stepper overflow". Other product owners may run beside you on other topics.');
+  expect(sparBrief).toContain('This is a sparring session');
+  const fileBrief = productOwnerBriefTextOf('example-storefront', 'file', 'Roles stage');
+  expect(fileBrief).toContain('Your topic is the feature you file tickets for: "Roles stage". Other product owners may run beside you on other topics.');
+  expect(fileBrief).toContain('This is a filing session');
+  const briefWithoutTopic = productOwnerBriefTextOf('example-storefront', 'spar');
+  expect(briefWithoutTopic).not.toContain('Your topic');
+  expect(briefWithoutTopic).toBe(productOwnerBriefTextOf('example-storefront', 'spar', null));
 });
 
 test('both briefs open with the /agent-po command and name the project and the prohibitions; only the spar brief has the wrap-up rule', () => {

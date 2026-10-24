@@ -30,8 +30,18 @@ export const DASHBOARD_PROTOCOL = {
   /** `POST`, no body, carrying the launch token: stops the dashboard-owned session, then opens it in the Claude desktop app. */
   ORCHESTRATOR_OPEN_IN_APP_PATH_SUFFIX:  '/orchestrator/open-in-app',
   PRODUCT_OWNER_OPEN_IN_APP_PATH_SUFFIX: '/product-owner/open-in-app',
-  /** `POST` (a `ProductOwnerStartRequest`) or `DELETE <PROJECTS_API_PATH>/<trackerId><PRODUCT_OWNER_PATH_SUFFIX>`. */
+  /**
+   * `POST` (a `ProductOwnerStartRequest`) or `DELETE <PROJECTS_API_PATH>/<trackerId><PRODUCT_OWNER_PATH_SUFFIX>`; with
+   * `/<sessionId>` after it, `DELETE` stops that product owner and the `SESSION_*` suffixes after that address it.
+   * The id-less routes act on the project's one live product owner and are refused while several live.
+   */
   PRODUCT_OWNER_PATH_SUFFIX:             '/product-owner',
+  /** After `<PRODUCT_OWNER_PATH_SUFFIX>/<sessionId>`: `POST` an `OrchestratorChatRequest`, carrying the launch token. */
+  SESSION_MESSAGES_PATH_SUFFIX:          '/messages',
+  /** After `<PRODUCT_OWNER_PATH_SUFFIX>/<sessionId>`: `POST` an `OrchestratorAnswerRequest`, carrying the launch token. */
+  SESSION_ANSWERS_PATH_SUFFIX:           '/answers',
+  /** After `<PRODUCT_OWNER_PATH_SUFFIX>/<sessionId>`: `GET` Server-Sent Events of that session's conversation and state. */
+  SESSION_EVENTS_PATH_SUFFIX:            '/events',
   /** `POST` an `OrchestratorChatRequest` to the product owner, carrying the launch token. */
   PRODUCT_OWNER_MESSAGES_PATH_SUFFIX:    '/product-owner/messages',
   /** `POST` an `OrchestratorAnswerRequest` to the product owner, carrying the launch token. */

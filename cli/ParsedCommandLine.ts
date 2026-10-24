@@ -20,7 +20,15 @@ export interface CommandOptions {
 export type ParsedCommandLine =
   | { kind: 'command'; command: Exclude<CommandName, 'help'>; options: CommandOptions }
   | { kind: 'help' }
-  | { kind: 'supervise'; trackerId: string; root: string; role: SessionRole; productOwnerMode: ProductOwnerMode | null }
+  | {
+    kind:             'supervise';
+    trackerId:        string;
+    root:             string;
+    role:             SessionRole;
+    productOwnerMode: ProductOwnerMode | null;
+    launchId:         string | null;
+    topic:            string | null;
+  }
   | { kind: 'unknown-command'; commandWord: string }
   | { kind: 'refused'; reason: string };
 
@@ -88,28 +96,35 @@ function optionsFor(command: Exclude<CommandName, 'help'>, optionArguments: read
   return { kind: 'command', command, options: { port: port ?? DASHBOARD_LIMITS.DEFAULT_PORT, portIsGiven: port !== null, browserOpens } };
 }
 
+/**
+ * A product owner's mode, launch id and topic follow its role, each optional after the last. Read before any help word
+ * is looked for, since a topic is the user's own text and may be one.
+ */
+function supervisionOf(supervisionArguments: readonly string[]): ParsedCommandLine {
+  const [trackerId, root, role, mode, launchId, topic, ...extraArguments] = supervisionArguments;
+  const sessionRole = SESSION_ROLES.find((knownRole) => knownRole === role);
+  const productOwnerMode = PRODUCT_OWNER_MODES.find((knownMode) => knownMode === mode) ?? null;
+  const modeIsWellPlaced = mode === undefined || (sessionRole === 'product-owner' && productOwnerMode !== null);
+  if (trackerId === undefined || root === undefined || sessionRole === undefined || !modeIsWellPlaced || launchId === '' || extraArguments.length > 0) {
+    return {
+      kind:   'refused',
+      reason: `supervise takes a tracker id, a project root, a role (${SESSION_ROLES.join(' or ')}) and, for a product owner, `
+        + `a mode (${PRODUCT_OWNER_MODES.join(' or ')}), optionally followed by a launch id and a topic.`
+    };
+  }
+  return {
+    kind: 'supervise', trackerId, root, role: sessionRole, productOwnerMode, launchId: launchId ?? null, topic: topic ?? null
+  };
+}
+
 /** No command word, or options alone, is `open`: the bare `agent-dashboard` is the everyday call. */
 export function parsedCommandLineOf(commandLineArguments: readonly string[]): ParsedCommandLine {
-  if (commandLineArguments.some((argument) => HELP_WORDS.has(argument) && argument !== 'help')) return { kind: 'help' };
   const [firstArgument, ...remainingArguments] = commandLineArguments;
+  if (firstArgument === DASHBOARD_PROTOCOL.SUPERVISE_COMMAND) return supervisionOf(remainingArguments);
+  if (commandLineArguments.some((argument) => HELP_WORDS.has(argument) && argument !== 'help')) return { kind: 'help' };
   if (firstArgument === undefined) return optionsFor('open', []);
   if (firstArgument === 'help') return remainingArguments.length === 0 ? { kind: 'help' } : { kind: 'refused', reason: 'help takes no arguments.' };
   if (firstArgument.startsWith('-')) return optionsFor('open', commandLineArguments);
-  if (firstArgument === DASHBOARD_PROTOCOL.SUPERVISE_COMMAND) {
-    const [trackerId, root, role, mode, ...extraArguments] = remainingArguments;
-    const sessionRole = SESSION_ROLES.find((knownRole) => knownRole === role);
-    const productOwnerMode = PRODUCT_OWNER_MODES.find((knownMode) => knownMode === mode) ?? null;
-    const modeIsWellPlaced = mode === undefined || (sessionRole === 'product-owner' && productOwnerMode !== null);
-    if (trackerId === undefined || root === undefined || sessionRole === undefined || !modeIsWellPlaced || extraArguments.length > 0) {
-      return {
-        kind:   'refused',
-        reason: `supervise takes a tracker id, a project root, a role (${SESSION_ROLES.join(' or ')}) and, for a product owner, a mode (${PRODUCT_OWNER_MODES.join(' or ')}).`
-      };
-    }
-    return {
-      kind: 'supervise', trackerId, root, role: sessionRole, productOwnerMode
-    };
-  }
   const command = commandNameOf(firstArgument);
   if (command === null) return { kind: 'unknown-command', commandWord: firstArgument };
   return optionsFor(command, remainingArguments);

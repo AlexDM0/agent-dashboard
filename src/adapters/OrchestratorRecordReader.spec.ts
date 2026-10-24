@@ -27,6 +27,7 @@ const EXAMPLE_RECORD = {
   socketPath:        '/tmp/example.sock',
   claudeCodeVersion: null,
   startedAt:         '2026-10-22T10:00:00.000Z',
+  topic:             'Stepper overflow',
 };
 
 let directory = '';
@@ -63,6 +64,16 @@ test('a record without a product owner mode, as a supervisor started before mode
   const unknownModePath = join(directory, 'unknown-mode.json');
   writeFileSync(unknownModePath, JSON.stringify({ ...EXAMPLE_RECORD, productOwnerMode: 'example-mode' }));
   expect(readOrchestratorRecord(unknownModePath).kind).toBe('unreadable');
+});
+
+test('a record without a topic, as an orchestrator\'s or an older product owner\'s, reads with a null one; a topic not text is unreadable', () => {
+  const recordWithoutTopic = Object.fromEntries(Object.entries(EXAMPLE_RECORD).filter(([field]) => field !== 'topic'));
+  const recordPath = join(directory, 'without-topic.json');
+  writeFileSync(recordPath, JSON.stringify(recordWithoutTopic));
+  expect(readOrchestratorRecord(recordPath)).toEqual({ kind: 'present', record: { ...EXAMPLE_RECORD, topic: null }, recordPath });
+  const numberTopicPath = join(directory, 'number-topic.json');
+  writeFileSync(numberTopicPath, JSON.stringify({ ...EXAMPLE_RECORD, topic: 7 }));
+  expect(readOrchestratorRecord(numberTopicPath).kind).toBe('unreadable');
 });
 
 test('a missing record is missing and a damaged one unreadable, never a throw', () => {
