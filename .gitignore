@@ -6,3 +6,5 @@ node_modules/
 .claude/skills/agent-progress-orchestrate/
 .claude/skills/agent-po/
 .claude/.evidence/
+.readme-graphics/build/
+__pycache__/
