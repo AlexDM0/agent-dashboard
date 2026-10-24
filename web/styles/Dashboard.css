@@ -704,6 +704,15 @@ ul { padding: 0; list-style: none; }
 .ap-fleet-action-age { flex: none; font-size: var(--fs-micro); }
 .ap-fleet-unreadable { grid-column: span 3; }
 .ap-fleet-run { justify-content: flex-end; }
+/* On one line the crew is sized to its content first, then the name takes the rest, never below about 16 characters;
+   the Queue and Run cells stack onto the row's two crew lines instead of widening their columns. */
+@container fleet-table (min-width: 980px) {
+  .ap-fleet-table { grid-template-columns: minmax(13rem, 1fr) minmax(0, max-content) max-content max-content min-content; }
+  .ap-fleet-cell { column-gap: 6px; padding-inline: 6px; }
+  .ap-fleet-crew-line { column-gap: 6px; }
+  .ap-fleet-queue { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .ap-fleet-run { flex-wrap: wrap; row-gap: 4px; }
+}
 
 .ap-needs-you { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .ap-needs-you-title { font: 600 var(--fs-body)/1.3 var(--font-ui); }
