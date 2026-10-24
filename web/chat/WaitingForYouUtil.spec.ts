@@ -1,12 +1,20 @@
 /**
  * The chat window's Waiting for you section (A1, A2): its badge is the old inbox count, questions plus alerts, the
  * count `document.title` carries; its rows keep the inbox's order; a session's badge counts its question and its alert
- * together; and the window opens on the first waiting entry, docking an alert when that entry is one.
+ * together; the window opens on the first waiting entry, docking an alert when that entry is one; and with both roles
+ * asking, a product owner question still reaches the product owner, where the asking-role fallback would not (#058).
  */
 import { expect, test } from 'bun:test';
 
-import { InboxUtil }                from '../inbox/InboxUtil.ts';
-import { inboxSnapshotWith }        from '../testing/SnapshotFixtures.ts';
+import { InboxUtil }                     from '../inbox/InboxUtil.ts';
+import { OrchestratorSessionUtil }       from '../orchestrator/OrchestratorSessionUtil.ts';
+import { crewDrawerHashOf, hashRouteOf } from '../shell/HashRoute.ts';
+import {
+  inboxSnapshotWith,
+  orchestratorSessionWith,
+  pendingQuestionWith,
+  projectSnapshotWith
+} from '../testing/SnapshotFixtures.ts';
 import { ChatConversationListUtil } from './ChatConversationListUtil.ts';
 import { WaitingForYouUtil }        from './WaitingForYouUtil.ts';
 
@@ -47,6 +55,24 @@ test('the window opens on the first waiting entry with its card docked, else on 
   const lastOpenedKey = 'orchestrator:tracker-example-notes';
   const ruleKey = ChatConversationListUtil.openingKeyOf(conversations, lastOpenedKey);
   expect(WaitingForYouUtil.openingOf([], conversations, lastOpenedKey)).toEqual({ key: ruleKey, docked: null });
+});
+
+test('with both roles asking, each question selects its own role\'s session and collapses to that role\'s crew tab', () => {
+  const orchestratorQuestion = pendingQuestionWith('request-orchestrator', '2026-10-21T09:50:00+02:00');
+  const productOwnerQuestion = pendingQuestionWith('request-product-owner', '2026-10-21T09:55:00+02:00');
+  const askingProject = projectSnapshotWith('example-both-asking', {
+    orchestrator: orchestratorSessionWith({ state: 'waiting-for-answer', pendingQuestions: [orchestratorQuestion] }),
+    productOwner: orchestratorSessionWith({ sessionId: 'product-owner-example', state: 'waiting-for-answer', pendingQuestions: [productOwnerQuestion] }),
+  });
+  expect(OrchestratorSessionUtil.askingRoleOf(askingProject)).toBe('orchestrator');
+  const items = WaitingForYouUtil.waitingItemsOf([askingProject]);
+  expect(items.map((item) => item.conversationKey)).toEqual(['orchestrator:tracker-example-both-asking', 'product-owner:tracker-example-both-asking']);
+  for (const item of items) {
+    if (item.kind !== 'question') continue;
+    expect(hashRouteOf(crewDrawerHashOf(item.entry.trackerId, item.entry.role))).toStrictEqual({
+      kind: 'board', trackerId: 'tracker-example-both-asking', opensCrewDrawer: true, crewDrawerTab: item.entry.role
+    });
+  }
 });
 
 test('the row marked as shown is the one whose session and docked card are selected', () => {
