@@ -49,11 +49,18 @@ test('the refusal names a pending question first, then a session that is not idl
     health:       { kind: 'ready', board: boardSummaryWith({ dispatcherState: 'running' }) },
     orchestrator: orchestratorSessionWith({ state: 'busy' })
   });
-  expect([askingWhileIdle, unreadable, running, projectAt(90_000, 'stopping')].map((project) => refusalOf(project))).toEqual([
+  const idleWhileDispatching = projectSnapshotWith('example-dispatching', {
+    health:       { kind: 'ready', board: boardSummaryWith({ dispatcherState: 'running' }) },
+    orchestrator: orchestratorSessionWith({ state: 'idle' })
+  });
+  const awaitingAnswer = projectAt(90_000, 'waiting-for-answer');
+  expect([askingWhileIdle, awaitingAnswer, unreadable, running, projectAt(90_000, 'stopping'), idleWhileDispatching].map((project) => refusalOf(project))).toEqual([
+    'A question of the orchestrator is pending; answer it before refreshing',
     'A question of the orchestrator is pending; answer it before refreshing',
     'The board cannot be read, so whether its dispatcher runs is unknown',
     'The orchestrator is busy; refresh once it is idle',
     'The orchestrator is stopping; refresh once it is idle',
+    'The board\'s dispatcher is running; refresh once it has stopped or finished',
   ]);
 });
 
